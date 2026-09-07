@@ -2,9 +2,12 @@ import SwiftUI
 
 struct TaskRowView: View {
     @Bindable var task: MissionTask
+    let onDelete: () -> Void
 
     var body: some View {
-        Button { task.isCompleted.toggle() } label: {
+        Button {
+            task.isCompleted.toggle()
+        } label: {
             HStack(spacing: 12) {
                 Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
@@ -14,10 +17,18 @@ struct TaskRowView: View {
                     .foregroundStyle(task.isCompleted ? .secondary : .primary)
                 Spacer()
             }
-            .padding(.vertical, 13)
+            .frame(minHeight: 44)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: task.isCompleted)
+        .contextMenu {
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete Task", systemImage: "trash")
+            }
+        }
         .accessibilityLabel("\(task.title), \(task.isCompleted ? "completed" : "not completed")")
+        .accessibilityHint("Double tap to mark \(task.isCompleted ? "incomplete" : "complete")")
     }
 }

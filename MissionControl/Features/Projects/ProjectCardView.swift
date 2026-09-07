@@ -5,24 +5,28 @@ struct ProjectCardView: View {
 
     var body: some View {
         Link(destination: repository.htmlURL) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Image(systemName: "folder")
-                        .foregroundStyle(Color.accentColor)
-                    Text(repository.name).font(.headline)
-                    Spacer()
-                    Image(systemName: "arrow.up.right").font(.caption).foregroundStyle(.tertiary)
+            MissionCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "folder.fill")
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(MissionTheme.tint)
+                        Text(repository.name).font(.headline)
+                        Spacer()
+                        Image(systemName: "arrow.up.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                    }
+                    if let description = repository.description {
+                        Text(description).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    HStack {
+                        Label(lastActivity, systemImage: "clock")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(MissionTheme.quietText)
+                        Spacer()
+                    }
                 }
-                if let description = repository.description {
-                    Text(description).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
-                }
-                Label(lastActivity, systemImage: "clock")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .background(.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .frame(maxWidth: .infinity, minHeight: 150, alignment: .leading)
         }
         .buttonStyle(.plain)
     }
