@@ -60,7 +60,7 @@ To schedule a task, turn on **Specific time** when adding it. Use the task's ell
 From the repository root on a Mac with Xcode installed:
 
 ```sh
-xcrun swiftc -parse-as-library MissionControl/Models/MissionTask.swift MissionControl/Services/TaskFocusSelection.swift Tests/TaskFocusSelectionChecks.swift -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker Tests/FocusChecks-Info.plist -o /tmp/mission-focus-checks
+xcrun swiftc -parse-as-library MissionControl/Legacy/Models/MissionTask.swift MissionControl/Legacy/Services/TaskFocusSelection.swift Tests/TaskFocusSelectionChecks.swift -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker Tests/FocusChecks-Info.plist -o /tmp/mission-focus-checks
 /tmp/mission-focus-checks
 ```
 
