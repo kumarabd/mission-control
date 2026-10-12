@@ -9,7 +9,7 @@ enum ClerkConfiguration {
     /// are intentionally safe to ship in an iOS client. The Info.plist value lets
     /// each build configuration override this, while the fallback keeps generated
     /// Info.plists (including simulator builds) from launching without Clerk.
-    private static let bundledPublishableKey = "pk_test_cHJpbWFyeS1qYXktMjEuY2xlcmsuYWNjb3VudHMuZGV2JA"
+    private static let bundledPublishableKey = "pk_live_Y2xlcmsubmlnaHRoYXdrbGFicy5vcmck"
 
     static let publishableKey: String = {
         let configuredKey = (Bundle.main.object(forInfoDictionaryKey: "ClerkPublishableKey") as? String ?? "")

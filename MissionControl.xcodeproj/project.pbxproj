@@ -173,7 +173,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CLERK_PUBLISHABLE_KEY = pk_test_cHJpbWFyeS1qYXktMjEuY2xlcmsuYWNjb3VudHMuZGV2JA;
+				CLERK_PUBLISHABLE_KEY = pk_live_Y2xlcmsubmlnaHRoYXdrbGFicy5vcmck;
 				CODE_SIGN_ENTITLEMENTS = MissionControl/MissionControl.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
@@ -203,7 +203,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CLERK_PUBLISHABLE_KEY = pk_test_cHJpbWFyeS1qYXktMjEuY2xlcmsuYWNjb3VudHMuZGV2JA;
+				CLERK_PUBLISHABLE_KEY = pk_live_Y2xlcmsubmlnaHRoYXdrbGFicy5vcmck;
 				CODE_SIGN_ENTITLEMENTS = MissionControl/MissionControl.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;

@@ -26,6 +26,17 @@
         <string>IBMPlexMono-Regular.ttf</string>
         <string>IBMPlexMono-Medium.ttf</string>
     </array>
+    <key>RouterBaseURL</key>
+    <string>https://harness-router.nighthawklabs.org</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>com.kumarabd.missioncontrol</string>
+            </array>
+        </dict>
+    </array>
     <key>ClerkPublishableKey</key>
     <string>$(CLERK_PUBLISHABLE_KEY)</string>
     <key>NSCameraUsageDescription</key>
