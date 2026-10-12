@@ -49,6 +49,7 @@ final class AuthService {
 
     /// Signing out clears everything the app kept on this phone for this person.
     func signOut() async {
+        await PushRegistrar.shared.unregister()   // while the session is still valid
         LocalState.wipe(owner: userId ?? "")
         try? await Clerk.shared.auth.signOut()
     }

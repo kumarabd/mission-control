@@ -48,6 +48,7 @@ struct WelcomeView: View {
 /// rebuilt on sign-out. Capture floats over the productivity tabs.
 struct MainTabs: View {
     let userId: String
+    @Environment(AuthService.self) private var auth
     @State private var life: Life?
     @State private var tab = Tab.today
     @State private var capturing = false
@@ -70,6 +71,12 @@ struct MainTabs: View {
                 }
                 .sheet(isPresented: $capturing) { CaptureSheet().environment(life) }
                 .task { await life.load() }
+                .task { PushRegistrar.shared.attach(auth) }
+                .onChange(of: DeepLink.shared.pending) { _, target in
+                    guard let target else { return }
+                    tab = switch target.section { case .today: .today; case .goals: .goals; case .journal: .journal; case .memory: .memory }
+                    DeepLink.shared.pending = nil
+                }
             } else {
                 Tok.background.ignoresSafeArea()
             }

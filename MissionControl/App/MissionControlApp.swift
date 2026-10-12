@@ -4,6 +4,7 @@ import ClerkKit
 
 @main
 struct MissionControlApp: App {
+    @UIApplicationDelegateAdaptor(MissionControlAppDelegate.self) private var appDelegate
     @State private var auth = AuthService()
     @State private var lock = AppLock()
     @Environment(\.scenePhase) private var phase

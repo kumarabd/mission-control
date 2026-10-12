@@ -283,7 +283,7 @@ private struct ServerFrame: Decodable {
     }
 }
 
-private enum GatewayDeviceIdentity {
+enum GatewayDeviceIdentity {
     private static let service = "com.kumarabd.MissionControl"; private static let account = "gateway-device-id"
     static var value: String {
         if let data = read(), let value = String(data: data, encoding: .utf8) { return value }

@@ -60,3 +60,10 @@ xcrun swiftc -parse-as-library MissionControl/Core/Domain/Models.swift MissionCo
 ## Provisioning gate classification
 
 `Tests/ProvisioningChecks.swift` checks `Provisioning.isMissing`; compile it with the `Provisioning` enum from `MissionControl/Core/Onboarding/ProvisionGate.swift` (a `Config.routerBaseURL` stub is needed).
+
+## Push helpers (device-token hex, notification link to app section)
+
+```sh
+xcrun swiftc -parse-as-library MissionControl/Core/Push/PushLink.swift Tests/PushLinkChecks.swift -o /private/tmp/mission-push-link-checks
+/private/tmp/mission-push-link-checks
+```

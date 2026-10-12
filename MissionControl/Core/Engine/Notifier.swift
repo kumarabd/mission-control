@@ -10,7 +10,8 @@ enum Notifier {
 
     static func schedule(id: UUID, title: String, at date: Date) async {
         let center = UNUserNotificationCenter.current()
-        guard (try? await center.requestAuthorization(options: [.alert, .sound])) == true else { return }
+        guard (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) == true else { return }
+        await PushRegistrar.shared.start()   // now allowed: ask iOS for a device token so reminders can arrive while the app is closed
         let content = UNMutableNotificationContent()
         content.title = "Reminder"; content.body = title; content.sound = .default
         let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: date)
