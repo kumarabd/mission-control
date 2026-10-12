@@ -96,13 +96,13 @@ final class MobileGateway {
         socket?.cancel(with: .goingAway, reason: nil); socket = nil
     }
 
-    func sendMessage(_ text: String) -> String {
+    func sendMessage(_ text: String, mode: String = "voice") -> String {
         let clientMessageID = UUID().uuidString
         enqueue([
             "type": "message",
             "client_msg_id": clientMessageID,
             "text": text,
-            "mode": "voice",
+            "mode": mode,
             "device_id": deviceID,
         ])
         return clientMessageID
