@@ -19,7 +19,7 @@ struct ProvisionGate: View {
             case .onboarding(let model):
                 OnboardingFlow(model: model) { stage = .ready }
             case .ready:
-                MainTabs().id(userId)   // a different user is a different shell, never a reused one
+                MainTabs(userId: userId).id(userId)   // a different user is a different shell, never a reused one
             }
         }
         .animation(.easeInOut(duration: 0.3), value: stageName)

@@ -39,6 +39,8 @@
     </array>
     <key>ClerkPublishableKey</key>
     <string>$(CLERK_PUBLISHABLE_KEY)</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Mission Control shows today's appointments next to your plan. Events stay on this device.</string>
     <key>NSCameraUsageDescription</key>
     <string>Mission Control uses the camera to scan text and codes or read a photo you choose.</string>
 	<key>NSMicrophoneUsageDescription</key>

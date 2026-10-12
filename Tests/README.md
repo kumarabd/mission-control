@@ -49,3 +49,14 @@ xcrun swiftc -parse-as-library MissionControl/Legacy/Features/Dashboard/Dashboar
 ```
 
 Covers sparse, dense, exact-fit, overflowing, and large-content allocations. On-device appearance, Dynamic Type, and interaction checks still need to be performed in the app.
+
+## Planner rules (capture classification, "I have N minutes", replan, close the day, weekly review)
+
+```sh
+xcrun swiftc -parse-as-library MissionControl/Core/Domain/Models.swift MissionControl/Core/Domain/Planner.swift Tests/PlannerChecks.swift -o /private/tmp/mission-planner-checks
+/private/tmp/mission-planner-checks
+```
+
+## Provisioning gate classification
+
+`Tests/ProvisioningChecks.swift` checks `Provisioning.isMissing`; compile it with the `Provisioning` enum from `MissionControl/Core/Onboarding/ProvisionGate.swift` (a `Config.routerBaseURL` stub is needed).

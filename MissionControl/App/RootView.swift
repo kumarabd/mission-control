@@ -44,11 +44,36 @@ struct WelcomeView: View {
     }
 }
 
-/// Signed-in shell. The productivity tabs join Classic as they are built.
+/// Signed-in shell: four productivity tabs plus the original dashboard as Classic. Owns the per-person model so it is
+/// rebuilt on sign-out. Capture floats over the productivity tabs.
 struct MainTabs: View {
+    let userId: String
+    @State private var life: Life?
+    @State private var tab = Tab.today
+    @State private var capturing = false
+
+    enum Tab: Hashable { case today, goals, journal, memory, classic }
+
     var body: some View {
-        TabView {
-            DashboardView().tabItem { Label("Classic", systemImage: "square.grid.2x2") }
+        Group {
+            if let life {
+                TabView(selection: $tab) {
+                    TodayView().tabItem { Label("Today", systemImage: "sun.max") }.tag(Tab.today)
+                    GoalsView().tabItem { Label("Goals", systemImage: "flag") }.tag(Tab.goals)
+                    JournalView().tabItem { Label("Journal", systemImage: "book") }.tag(Tab.journal)
+                    MemoryView().tabItem { Label("Memory", systemImage: "brain.head.profile") }.tag(Tab.memory)
+                    DashboardView().tabItem { Label("Classic", systemImage: "square.grid.2x2") }.tag(Tab.classic)
+                }
+                .environment(life)
+                .overlay(alignment: .bottomTrailing) {
+                    if tab != .classic { CaptureButton { capturing = true }.padding(.trailing, Space.l).padding(.bottom, 64) }
+                }
+                .sheet(isPresented: $capturing) { CaptureSheet().environment(life) }
+                .task { await life.load() }
+            } else {
+                Tok.background.ignoresSafeArea()
+            }
         }
+        .task { life = Life(engine: LocalEngine(owner: userId)) }
     }
 }
