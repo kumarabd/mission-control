@@ -32,7 +32,7 @@ struct PrimaryButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.headline)
+            .font(.mission(.headline, .medium))
             .foregroundStyle(Tok.onAccent)
             .frame(maxWidth: .infinity, minHeight: 52)
             .background(Tok.accent.opacity(enabled ? 1 : 0.35), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
