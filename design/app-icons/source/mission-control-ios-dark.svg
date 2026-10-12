@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="signal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#E2ECD9"/>
+      <stop offset="1" stop-color="#A9C985"/>
+    </linearGradient>
+    <linearGradient id="telemetry" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#B9E6ED"/>
+      <stop offset="1" stop-color="#74B9C8"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop offset="0" stop-color="#A9C985" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#A9C985" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <circle cx="512" cy="512" r="430" fill="url(#glow)"/>
+  <circle cx="512" cy="512" r="380" fill="none" stroke="#D1DFC4" stroke-width="4" opacity="0.17"/>
+  <rect x="291" y="291" width="442" height="442" rx="134" fill="none" stroke="url(#signal)" stroke-width="23" transform="rotate(28 512 512)"/>
+  <rect x="333" y="314" width="358" height="396" rx="109" fill="none" stroke="url(#telemetry)" stroke-width="17" opacity="0.78" transform="rotate(64 512 512)"/>
+  <g fill="url(#signal)">
+    <rect x="387" y="454" width="36" height="116" rx="18"/>
+    <rect x="445" y="413" width="36" height="198" rx="18"/>
+    <rect x="503" y="375" width="36" height="274" rx="18"/>
+    <rect x="561" y="423" width="36" height="178" rx="18"/>
+    <rect x="619" y="461" width="36" height="102" rx="18"/>
+  </g>
+</svg>

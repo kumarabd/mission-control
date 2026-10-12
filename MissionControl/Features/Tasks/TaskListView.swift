@@ -6,7 +6,7 @@ struct TaskListView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeading("Today", detail: "\(tasks.filter { !$0.isCompleted }.count) open")
+            SectionHeading("Tasks", detail: "\(tasks.filter { !$0.isCompleted }.count) open")
 
             if tasks.isEmpty {
                 ContentUnavailableView("Nothing planned", systemImage: "checkmark.circle", description: Text("Add a task to shape your day."))
@@ -17,7 +17,7 @@ struct TaskListView: View {
                     VStack(spacing: 0) {
                         ForEach(tasks) { task in
                             TaskRowView(task: task, onDelete: { onDelete(task) })
-                            if task.id != tasks.last?.id { Divider().padding(.leading, 38) }
+                            if task.id != tasks.last?.id { Divider().padding(.leading, 58) }
                         }
                     }
                 }
@@ -28,8 +28,10 @@ struct TaskListView: View {
 
 struct NewTaskSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let onSave: (String) -> Void
+    let onSave: (String, Date?) -> Void
     @State private var title = ""
+    @State private var hasTime = false
+    @State private var scheduledAt = Date.now
 
     var body: some View {
         NavigationStack {
@@ -39,7 +41,10 @@ struct NewTaskSheet: View {
                         .submitLabel(.done)
                         .onSubmit(save)
                 }
+                TaskTimingFields(hasTime: $hasTime, scheduledAt: $scheduledAt)
             }
+                .scrollContentBackground(.hidden)
+                .background(MissionTheme.canvas)
                 .navigationTitle("New Task")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -48,5 +53,10 @@ struct NewTaskSheet: View {
         }
     }
 
-    private func save() { onSave(title); dismiss() }
+    private func save() {
+        let cleaned = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        onSave(cleaned, hasTime ? scheduledAt : nil)
+        dismiss()
+    }
 }

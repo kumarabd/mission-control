@@ -1,0 +1,19 @@
+<resources>
+    <style name="Theme.MissionControl" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#101211</item>
+        <item name="android:statusBarColor">#101211</item>
+        <item name="android:navigationBarColor">#101211</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColorPrimary">#E8EEE9</item>
+        <item name="android:textColorSecondary">#A8B2AA</item>
+        <item name="android:textColorHint">#778379</item>
+        <item name="android:colorAccent">#A9C985</item>
+        <item name="android:colorControlActivated">#A9C985</item>
+        <item name="android:colorButtonNormal">#A9C985</item>
+        <item name="android:fontFamily">@font/hanken_grotesk</item>
+        <item name="android:buttonStyle">@style/Widget.Mission.Button</item>
+    </style>
+    <style name="Widget.Mission.Button" parent="android:Widget.Material.Button">
+        <item name="android:textColor">#18211B</item>
+    </style>
+</resources>

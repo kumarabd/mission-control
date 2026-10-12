@@ -4,35 +4,41 @@ struct ProjectCardView: View {
     let repository: GitHubRepository
 
     var body: some View {
-        Link(destination: repository.htmlURL) {
+        NavigationLink(value: repository) {
             MissionCard {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 8) {
-                        Image(systemName: "folder.fill")
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(MissionTheme.tint)
-                        Text(repository.name).font(.headline)
+                        MissionIconBadge(symbol: projectSymbol, color: projectTint)
+                        Text(repository.name).font(.mission(.headline))
                         Spacer()
-                        Image(systemName: "arrow.up.right").font(.caption.weight(.bold)).foregroundStyle(.tertiary)
+                        Image(systemName: "chevron.right").font(.mission(.caption, .medium)).foregroundStyle(MissionTheme.quietText)
                     }
                     if let description = repository.description {
-                        Text(description).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                        Text(description).font(.mission(.subheadline)).foregroundStyle(MissionTheme.quietText)
                     }
                     HStack {
                         Label(lastActivity, systemImage: "clock")
-                            .font(.caption.weight(.medium))
+                            .font(.mission(.caption, .medium))
                             .foregroundStyle(MissionTheme.quietText)
                         Spacer()
                     }
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 150, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MissionPressStyle())
     }
 
     private var lastActivity: String {
         guard let pushedAt = repository.pushedAt else { return "No recent activity" }
-        return "Updated \(pushedAt.formatted(.relative(presentation: .named)))"
+        return "Last push \(pushedAt.formatted(.relative(presentation: .named)))"
+    }
+
+    private var projectTint: Color {
+        MissionTheme.scheduled
+    }
+
+    private var projectSymbol: String {
+        "folder"
     }
 }

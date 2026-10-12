@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import ClerkKit
 
 @main
 struct MissionControlApp: App {
@@ -9,9 +10,17 @@ struct MissionControlApp: App {
         return try! ModelContainer(for: schema, configurations: [configuration])
     }()
 
+    init() {
+        ClerkConfiguration.configure()
+    }
+
     var body: some Scene {
         WindowGroup {
             DashboardView()
+                .environment(Clerk.shared)
+                .onOpenURL { url in
+                    Task { try? await Clerk.shared.handle(url) }
+                }
         }
         .modelContainer(modelContainer)
     }

@@ -3,116 +3,92 @@ import SwiftData
 
 struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \MissionTask.createdAt) private var tasks: [MissionTask]
+    @AppStorage("dashboardAppearance") private var appearance = "graphite"
+    @AppStorage("dashboardAmbientMotion") private var ambientMotion = true
+    @AppStorage("dashboardFocusReference") private var focusReference = ""
+    @State private var space: DashboardSpace?
     @State private var showingNewTask = false
+    @State private var showingSettings = false
+    @State private var saveError: String?
 
     private let repositories = MockGitHubService().repositories()
+    private var focus: MissionTask? { TaskFocusSelection.resolve(tasks: tasks, reference: focusReference) }
+    private var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
+    private var animateAmbient: Bool {
+        ambientMotion && !reduceMotion && scenePhase == .active && space == nil && !showingNewTask && !showingSettings
+    }
+    private var scheme: ColorScheme? {
+        appearance == "system" ? nil : (appearance == "pearl" ? .light : .dark)
+    }
 
     var body: some View {
-        NavigationStack {
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 32) {
-                        DashboardHeader(date: context.date, remainingTaskCount: remainingTaskCount)
-                        TaskListView(tasks: tasks, onDelete: deleteTask)
-                    ProjectListView(repositories: repositories)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 20)
-                }
-                .scrollIndicators(.hidden)
+        assistantHome
+        .background(MissionTheme.canvas.ignoresSafeArea())
+        .foregroundStyle(MissionTheme.ink).tint(MissionTheme.tint)
+        .preferredColorScheme(scheme)
+        // Only the dashboard is immersive. Keep native navigation in task/detail flows.
+        .statusBarHidden(space == nil && !showingNewTask && !showingSettings)
+        .overlay {
+            if let selected = space {
+                DashboardSpaceSheet(space: selected, tasks: tasks, repositories: repositories, selectedFocus: focus,
+                                    onChooseFocus: chooseFocus, onDelete: deleteTask,
+                                    onDismiss: dismissSpace)
+                    .preferredColorScheme(scheme)
             }
-            .background(MissionTheme.canvas)
-            .navigationTitle("Mission Control")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Add task", systemImage: "plus") { showingNewTask = true }
-                        .accessibilityHint("Creates a task for today")
-                }
-            }
-        }
-        .tint(MissionTheme.tint)
-        .task {
-            if tasks.isEmpty { addStarterTasks() }
         }
         .sheet(isPresented: $showingNewTask) {
-            NewTaskSheet(onSave: addTask)
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
+            NewTaskSheet(onSave: addTask).preferredColorScheme(scheme)
+                .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showingSettings) {
+            DashboardSettings(appearance: $appearance, ambientMotion: $ambientMotion).preferredColorScheme(scheme)
+        }
+        .alert("Couldn’t save your change", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
+            Button("OK") { saveError = nil }
+        } message: { Text(saveError ?? "Please try again.") }
+    }
+
+    private var assistantHome: some View {
+        AssistantHomeView(tasks: tasks, focus: focus, compact: isPhone, ambient: animateAmbient,
+                          onOpen: openSpace, onAdd: { showingNewTask = true },
+                          onSettings: { showingSettings = true })
+    }
+
+    private func openSpace(_ selected: DashboardSpace) {
+        withAnimation(reduceMotion ? .linear(duration: 0.12) : .spring(response: 0.46, dampingFraction: 0.86)) {
+            space = selected
         }
     }
 
-    private func addTask(title: String) {
-        let cleanedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanedTitle.isEmpty else { return }
-        modelContext.insert(MissionTask(title: cleanedTitle))
+    private func dismissSpace() {
+        withAnimation(reduceMotion ? .linear(duration: 0.12) : .spring(response: 0.36, dampingFraction: 0.92)) {
+            space = nil
+        }
     }
 
-    private func addStarterTasks() {
-        ["Design Mission Control UI", "Review agent harness notes", "Buy groceries"].forEach { addTask(title: $0) }
+    private func chooseFocus(_ task: MissionTask) {
+        guard !task.isCompleted else { return }
+        focusReference = TaskFocusSelection.reference(for: task)
     }
 
+    private func addTask(title: String, scheduledAt: Date?) {
+        let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        let task = MissionTask(title: clean, scheduledAt: scheduledAt)
+        modelContext.insert(task)
+        do { try modelContext.save() }
+        catch { modelContext.delete(task); saveError = error.localizedDescription }
+    }
     private func deleteTask(_ task: MissionTask) {
         modelContext.delete(task)
-    }
-
-    private var remainingTaskCount: Int {
-        tasks.filter { !$0.isCompleted }.count
-    }
-}
-
-private struct DashboardHeader: View {
-    let date: Date
-    let remainingTaskCount: Int
-
-    var body: some View {
-        MissionCard {
-            VStack(alignment: .leading, spacing: 22) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(greeting)
-                            .font(.headline)
-                            .foregroundStyle(MissionTheme.quietText)
-                        Text(date, format: .dateTime.weekday(.wide).month(.wide).day())
-                            .font(.title2.weight(.bold))
-                    }
-                    Spacer()
-                    Image(systemName: "sun.max.fill")
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.yellow)
-                        .font(.title2)
-                        .accessibilityHidden(true)
-                }
-
-                HStack(alignment: .lastTextBaseline) {
-                    Text(date, format: .dateTime.hour().minute())
-                        .font(.largeTitle.weight(.bold))
-                        .monospacedDigit()
-                    Spacer()
-                    Label(taskSummary, systemImage: remainingTaskCount == 0 ? "checkmark.circle.fill" : "circle.dotted")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(remainingTaskCount == 0 ? .green : MissionTheme.tint)
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var greeting: String {
-        switch Calendar.current.component(.hour, from: date) {
-        case 5..<12: "Good morning"
-        case 12..<18: "Good afternoon"
-        default: "Good evening"
-        }
-    }
-
-    private var taskSummary: String {
-        remainingTaskCount == 0 ? "All clear" : "\(remainingTaskCount) to focus on"
+        do { try modelContext.save() }
+        catch { modelContext.rollback(); saveError = error.localizedDescription }
     }
 }
 
 #Preview {
-    DashboardView()
-        .modelContainer(for: MissionTask.self, inMemory: true)
+    DashboardView().modelContainer(for: MissionTask.self, inMemory: true)
 }

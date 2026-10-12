@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1600" viewBox="0 0 1600 1600">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F7F8F3"/>
+      <stop offset="1" stop-color="#E5E8DF"/>
+    </linearGradient>
+    <radialGradient id="icon" cx="36%" cy="28%" r="90%">
+      <stop offset="0" stop-color="#27332A"/>
+      <stop offset="0.55" stop-color="#151917"/>
+      <stop offset="1" stop-color="#0B0D0C"/>
+    </radialGradient>
+    <linearGradient id="signal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#D1DFC4"/>
+      <stop offset="1" stop-color="#A9C985"/>
+    </linearGradient>
+    <linearGradient id="telemetry" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#A8DCE5"/>
+      <stop offset="1" stop-color="#74B9C8"/>
+    </linearGradient>
+    <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="18" stdDeviation="25" flood-color="#101211" flood-opacity="0.13"/>
+    </filter>
+    <filter id="iconShadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#101211" flood-opacity="0.34"/>
+    </filter>
+    <clipPath id="iosMask"><rect x="0" y="0" width="320" height="320" rx="72"/></clipPath>
+    <clipPath id="androidMask"><circle cx="160" cy="160" r="160"/></clipPath>
+    <clipPath id="macMask"><rect x="14" y="14" width="292" height="292" rx="67"/></clipPath>
+
+    <g id="glyph">
+      <circle cx="160" cy="160" r="99" fill="#A9C985" opacity="0.07"/>
+      <rect x="91" y="91" width="138" height="138" rx="42" fill="none" stroke="url(#signal)" stroke-width="7" transform="rotate(28 160 160)"/>
+      <rect x="104" y="98" width="112" height="124" rx="34" fill="none" stroke="url(#telemetry)" stroke-width="5" opacity="0.68" transform="rotate(64 160 160)"/>
+      <g fill="url(#signal)">
+        <rect x="121" y="142" width="11" height="36" rx="5.5"/>
+        <rect x="139" y="129" width="11" height="62" rx="5.5"/>
+        <rect x="157" y="117" width="11" height="86" rx="5.5"/>
+        <rect x="175" y="132" width="11" height="56" rx="5.5"/>
+        <rect x="193" y="144" width="11" height="32" rx="5.5"/>
+      </g>
+      <circle cx="160" cy="160" r="119" fill="none" stroke="#D1DFC4" stroke-width="1" opacity="0.13"/>
+    </g>
+
+    <g id="monoGlyph" fill="none" stroke="#263124" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="30" y="30" width="68" height="68" rx="20" stroke-width="4" transform="rotate(28 64 64)"/>
+      <rect x="37" y="34" width="54" height="60" rx="16" stroke-width="3" opacity="0.60" transform="rotate(64 64 64)"/>
+      <path d="M47 69V59 M56 77V51 M65 82V46 M74 75V53 M83 68V60" stroke-width="5"/>
+    </g>
+  </defs>
+
+  <rect width="1600" height="1050" fill="url(#page)"/>
+  <text x="100" y="105" fill="#252821" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="48" font-weight="700">Mission Control app icon</text>
+  <text x="100" y="151" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="23">One assistant identity, adapted to each platform’s native mask and icon behavior</text>
+
+  <g transform="translate(80 210)" filter="url(#cardShadow)">
+    <rect width="440" height="610" rx="34" fill="#FAF9F5" stroke="#CED1C5"/>
+    <text x="42" y="58" fill="#252821" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="28" font-weight="650">iPhone &amp; iPad</text>
+    <text x="42" y="91" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18">Full-bleed, system-masked</text>
+    <g transform="translate(60 130)" filter="url(#iconShadow)" clip-path="url(#iosMask)">
+      <rect width="320" height="320" fill="url(#icon)"/>
+      <use href="#glyph"/>
+      <path d="M0 0H320V78C250 43 149 42 0 110Z" fill="#FFFFFF" opacity="0.035"/>
+    </g>
+    <g transform="translate(42 492)">
+      <circle cx="38" cy="38" r="38" fill="#E5E8DF"/>
+      <g transform="translate(0 0) scale(.59)"><use href="#monoGlyph"/></g>
+      <text x="94" y="31" fill="#252821" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18" font-weight="600">Tinted appearance</text>
+      <text x="94" y="57" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16">Single-color mark remains legible</text>
+    </g>
+  </g>
+
+  <g transform="translate(580 210)" filter="url(#cardShadow)">
+    <rect width="440" height="610" rx="34" fill="#FAF9F5" stroke="#CED1C5"/>
+    <text x="42" y="58" fill="#252821" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="28" font-weight="650">Android</text>
+    <text x="42" y="91" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18">Adaptive icon safe zone</text>
+    <g transform="translate(60 130)" filter="url(#iconShadow)" clip-path="url(#androidMask)">
+      <circle cx="160" cy="160" r="160" fill="url(#icon)"/>
+      <g transform="translate(20 20) scale(.875)"><use href="#glyph"/></g>
+      <path d="M0 0H320V74C225 45 130 53 0 123Z" fill="#FFFFFF" opacity="0.03"/>
+    </g>
+    <g transform="translate(42 492)">
+      <circle cx="38" cy="38" r="38" fill="#D1DFC4"/>
+      <g transform="translate(0 0) scale(.59)"><use href="#monoGlyph"/></g>
+      <text x="94" y="31" fill="#252821" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18" font-weight="600">Themed icon</text>
+      <text x="94" y="57" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16">Dedicated monochrome foreground</text>
+    </g>
+  </g>
+
+  <g transform="translate(1080 210)" filter="url(#cardShadow)">
+    <rect width="440" height="610" rx="34" fill="#FAF9F5" stroke="#CED1C5"/>
+    <text x="42" y="58" fill="#252821" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="28" font-weight="650">macOS</text>
+    <text x="42" y="91" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18">Inset tile with desktop depth</text>
+    <g transform="translate(60 130)" filter="url(#iconShadow)">
+      <rect x="14" y="14" width="292" height="292" rx="67" fill="url(#icon)" stroke="#3B463D" stroke-width="2"/>
+      <g transform="translate(0 0)"><use href="#glyph"/></g>
+      <path d="M30 28H290V88C222 58 136 59 30 115Z" fill="#FFFFFF" opacity="0.045" clip-path="url(#macMask)"/>
+    </g>
+    <g transform="translate(42 492)">
+      <rect x="0" y="0" width="76" height="76" rx="18" fill="#101211"/>
+      <g transform="translate(0 0) scale(.59)"><use href="#monoGlyph" stroke="#D1DFC4"/></g>
+      <text x="94" y="31" fill="#252821" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18" font-weight="600">Dock-scale clarity</text>
+      <text x="94" y="57" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16">Simplified silhouette holds at 16 px</text>
+    </g>
+  </g>
+
+  <g transform="translate(100 890)">
+    <rect width="1400" height="90" rx="25" fill="#FFFFFF" opacity="0.72" stroke="#CED1C5"/>
+    <circle cx="46" cy="45" r="10" fill="#A9C985"/>
+    <text x="72" y="39" fill="#252821" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="19" font-weight="650">Design intent</text>
+    <text x="72" y="66" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17">Graphite foundation · signal sage waveform · telemetry-blue inner orbit · no letters, mascot, or platform-specific branding</text>
+  </g>
+
+  <text x="100" y="1065" fill="#252821" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="28" font-weight="650">Production package after approval</text>
+
+  <g transform="translate(100 1110)">
+    <rect width="420" height="270" rx="28" fill="#FAF9F5" stroke="#CED1C5"/>
+    <circle cx="54" cy="55" r="25" fill="#E5E8DF"/>
+    <text x="54" y="63" text-anchor="middle" fill="#263124" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="24" font-weight="700"></text>
+    <text x="94" y="50" fill="#252821" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="21" font-weight="650">iOS &amp; iPadOS</text>
+    <text x="36" y="112" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17">• 1024 px source artwork</text>
+    <text x="36" y="148" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17">• Default, dark, and tinted appearances</text>
+    <text x="36" y="184" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17">• Asset-catalog integration</text>
+    <text x="36" y="232" fill="#7A817B" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15">System applies the final corner mask.</text>
+  </g>
+
+  <g transform="translate(590 1110)">
+    <rect width="420" height="270" rx="28" fill="#FAF9F5" stroke="#CED1C5"/>
+    <circle cx="54" cy="55" r="25" fill="#D1DFC4"/>
+    <circle cx="54" cy="55" r="11" fill="#263124"/>
+    <text x="94" y="50" fill="#252821" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="21" font-weight="650">Android</text>
+    <text x="36" y="112" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17">• Adaptive foreground and background</text>
+    <text x="36" y="148" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17">• Material You monochrome layer</text>
+    <text x="36" y="184" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17">• Legacy launcher raster sizes</text>
+    <text x="36" y="232" fill="#7A817B" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15">Safe across circle, squircle, and other masks.</text>
+  </g>
+
+  <g transform="translate(1080 1110)">
+    <rect width="420" height="270" rx="28" fill="#FAF9F5" stroke="#CED1C5"/>
+    <rect x="29" y="30" width="50" height="50" rx="13" fill="#101211"/>
+    <text x="94" y="50" fill="#252821" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="21" font-weight="650">macOS</text>
+    <text x="36" y="112" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17">• Desktop icon sizes from 16–1024 px</text>
+    <text x="36" y="148" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17">• Native inset and depth treatment</text>
+    <text x="36" y="184" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="17">• Asset-catalog and build integration</text>
+    <text x="36" y="232" fill="#7A817B" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15">Legible in Finder, Dock, and Settings.</text>
+  </g>
+
+  <text x="800" y="1482" text-anchor="middle" fill="#566159" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18">Preview only — no application assets have been replaced yet</text>
+</svg>
