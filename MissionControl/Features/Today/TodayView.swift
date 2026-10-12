@@ -6,7 +6,7 @@ struct TodayView: View {
     @State private var minutes: Int?
     @State private var sheet: Sheet?
 
-    enum Sheet: Identifiable { case add, replan, close
+    enum Sheet: Identifiable { case add, reminder, replan, close
         var id: Self { self }
     }
 
@@ -19,7 +19,7 @@ struct TodayView: View {
                 nextSection
                 timeSection
                 daySection
-                if !life.openReminders.isEmpty { remindersSection }
+                if !life.reminders.isEmpty { remindersSection }
             }
             .scrollContentBackground(.hidden).screenBackground()
             .navigationTitle(Date().formatted(.dateTime.weekday(.wide).day().month()))
@@ -27,6 +27,7 @@ struct TodayView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button("Add to today", systemImage: "plus") { sheet = .add }
+                        Button("Add a reminder", systemImage: "bell") { sheet = .reminder }
                         Button("My day changed", systemImage: "arrow.triangle.2.circlepath") { sheet = .replan }
                         Button("Close the day", systemImage: "moon.stars") { sheet = .close }
                     } label: { Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44) }
@@ -36,6 +37,7 @@ struct TodayView: View {
             .sheet(item: $sheet) { s in
                 switch s {
                 case .add: AddPlanItemSheet()
+                case .reminder: AddReminderSheet()
                 case .replan: ReplanSheet()
                 case .close: CloseDaySheet()
                 }
@@ -120,17 +122,26 @@ struct TodayView: View {
 
     private var remindersSection: some View {
         Section {
-            ForEach(life.openReminders) { r in
-                Button { Task { await life.setReminder(r.id, done: true) } } label: {
+            ForEach(life.reminders) { r in
+                Button { Task { await life.completeReminder(r) } } label: {
                     HStack(spacing: Space.m) {
                         Image(systemName: "circle").foregroundStyle(MissionTone.reminder.color)
                         VStack(alignment: .leading) {
                             Text(r.title).font(.mission(.body)).foregroundStyle(Tok.text)
-                            if let due = r.due { Text(due.formatted(date: .abbreviated, time: .shortened)).font(.missionMono(.caption)).foregroundStyle(Tok.muted) }
+                            if let when = r.snoozedUntil ?? r.dueAt {
+                                Label(when.formatted(date: .abbreviated, time: .shortened), systemImage: r.recurrence == nil ? "clock" : "repeat")
+                                    .font(.missionMono(.caption)).foregroundStyle(when < Date() ? Tok.warn : Tok.muted)
+                            }
                         }
                     }.frame(minHeight: 44)
                 }
                 .accessibilityLabel("\(r.title). Mark done")
+                .swipeActions(edge: .trailing) {
+                    Button("Delete", role: .destructive) { Task { await life.deleteReminder(r) } }
+                }
+                .swipeActions(edge: .leading) {
+                    Button("Snooze 1 hr", systemImage: "moon.zzz") { Task { await life.snoozeReminder(r, until: Date().addingTimeInterval(3600)) } }.tint(MissionTone.reminder.color)
+                }
             }
         } header: { Text("Reminders").font(.mission(.subheadline, .medium)) }
         .listRowBackground(Tok.surface)
@@ -301,6 +312,53 @@ struct CloseDaySheet: View {
             .padding(Space.l).screenBackground()
             .navigationTitle("Close the day").navigationBarTitleDisplayMode(.inline)
             .toolbar { if result == nil { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } } }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+/// A reminder with a real date and time chosen on screen: no text is interpreted, so what is saved is exactly what was picked.
+struct AddReminderSheet: View {
+    @Environment(Life.self) private var life
+    @Environment(\.dismiss) private var dismiss
+    @State private var title = ""
+    @State private var notes = ""
+    @State private var hasTime = true
+    @State private var due = Calendar.current.date(byAdding: .hour, value: 1, to: Date()).map { Calendar.current.date(bySetting: .minute, value: 0, of: $0) ?? $0 } ?? Date()
+    @State private var repeatRule = "none"
+    @State private var saving = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section { TextField("What should we remind you of?", text: $title) }
+                Section {
+                    Toggle("Set a time", isOn: $hasTime)
+                    if hasTime {
+                        DatePicker("When", selection: $due, displayedComponents: [.date, .hourAndMinute])
+                        Picker("Repeat", selection: $repeatRule) {
+                            Text("Never").tag("none"); Text("Every day").tag("daily"); Text("Every week").tag("weekly"); Text("Every month").tag("monthly")
+                        }
+                    }
+                } footer: { if !hasTime { Text("Without a time it stays on your list until you finish it.") } }
+                Section("Notes (optional)") { TextField("Anything to remember", text: $notes, axis: .vertical) }
+                if let error = life.error { Section { Text(error).foregroundStyle(Tok.critical) } }
+            }
+            .scrollContentBackground(.hidden).screenBackground()
+            .navigationTitle("New reminder").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        saving = true
+                        Task {
+                            let rule: Wire.Recurrence? = hasTime && repeatRule != "none" ? .init(freq: repeatRule, interval: nil, weekdays: nil) : nil
+                            if await life.addReminder(title: title.trimmed, notes: notes.trimmed, due: hasTime ? due : nil, recurrence: rule) { dismiss() }
+                            saving = false
+                        }
+                    }.disabled(title.trimmed.isEmpty || saving)
+                }
+            }
         }
         .presentationDetents([.medium, .large])
     }

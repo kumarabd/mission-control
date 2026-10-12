@@ -49,6 +49,7 @@ struct WelcomeView: View {
 struct MainTabs: View {
     let userId: String
     @Environment(AuthService.self) private var auth
+    @Environment(\.scenePhase) private var scenePhase
     @State private var life: Life?
     @State private var tab = Tab.today
     @State private var capturing = false
@@ -70,7 +71,8 @@ struct MainTabs: View {
                     if tab != .classic { CaptureButton { capturing = true }.padding(.trailing, Space.l).padding(.bottom, 64) }
                 }
                 .sheet(isPresented: $capturing) { CaptureSheet().environment(life) }
-                .task { await life.load() }
+                .task { await life.load(); await life.loadReminders() }
+                .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await life.loadReminders() } } }
                 .task { PushRegistrar.shared.attach(auth) }
                 .onChange(of: DeepLink.shared.pending) { _, target in
                     guard let target else { return }
@@ -81,6 +83,13 @@ struct MainTabs: View {
                 Tok.background.ignoresSafeArea()
             }
         }
-        .task { life = Life(engine: LocalEngine(owner: userId)) }
+        .task {
+            let l = Life(engine: LocalEngine(owner: userId))
+            // Reminders live in the Life Engine; without a router (developer mode) there is nowhere to keep them.
+            if !Config.devEngine, !Config.routerBaseURL.isEmpty {
+                l.attachReminders(RemindersService(api: LifeAPI(baseURL: Config.routerBaseURL + "/life/api/v1", token: { [auth] in await auth.token() })))
+            }
+            life = l
+        }
     }
 }

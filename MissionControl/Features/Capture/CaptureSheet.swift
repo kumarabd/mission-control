@@ -21,10 +21,11 @@ struct CaptureSheet: View {
                         .overlay { MissionTheme.cardShape.strokeBorder(Tok.hairline) }
                     Text("Try \u{201C}remind me to call Sam tomorrow\u{201D}, \u{201C}decided to walk after lunch because I focus better\u{201D}, or \u{201C}today I felt calm\u{201D}. Tap the keyboard's microphone to speak.")
                         .font(.mission(.footnote)).foregroundStyle(Tok.muted)
+                    if let error = life.error { Text(error).font(.mission(.callout)).foregroundStyle(Tok.critical) }
                     Spacer()
                     Button {
                         saving = true
-                        Task { outcome = await life.capture(text); saving = false; if let o = outcome { await Notifier.schedule(o) } }
+                        Task { outcome = await life.capture(text); saving = false }
                     } label: { if saving { ProgressView().tint(Tok.onAccent) } else { Text("Save") } }
                         .buttonStyle(PrimaryButtonStyle()).disabled(text.trimmed.isEmpty || saving)
                 }

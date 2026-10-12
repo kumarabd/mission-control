@@ -15,7 +15,48 @@ final class Life {
     var todayItems: [PlanItem] {
         store.plan.filter { $0.day == today }.sorted { ($0.start ?? .distantFuture, $0.title) < ($1.start ?? .distantFuture, $1.title) }
     }
-    var openReminders: [Reminder] { store.reminders.filter { $0.doneAt == nil } }
+
+    // MARK: Reminders. Always the Life Engine, through the same operations the agent calls; never a local invention.
+
+    private(set) var reminders: [Wire.Reminder] = []
+    private var reminderService: RemindersService?
+    /// False when there is no workspace to talk to (developer mode, or no router configured).
+    var remindersAvailable: Bool { reminderService != nil }
+
+    func attachReminders(_ service: RemindersService?) { reminderService = service }
+
+    func loadReminders() async {
+        guard let service = reminderService else { return }
+        do { reminders = try await service.pending(); await Notifier.sync(reminders) } catch { self.error = Self.reminderMessage(error) }
+    }
+
+    @discardableResult
+    func addReminder(title: String, notes: String? = nil, due: Date?, recurrence: Wire.Recurrence? = nil) async -> Bool {
+        await reminderAction { try await $0.create(title: title, notes: notes, due: due, recurrence: recurrence) }
+    }
+    func completeReminder(_ r: Wire.Reminder) async { await reminderAction { try await $0.complete(r) } }
+    func snoozeReminder(_ r: Wire.Reminder, until: Date) async { await reminderAction { try await $0.snooze(r, until: until) } }
+    func deleteReminder(_ r: Wire.Reminder) async { await reminderAction { try await $0.delete(r) } }
+
+    /// Runs a change, then re-reads the list so the screen shows the server's truth (including a stale-version refusal).
+    @discardableResult
+    private func reminderAction<T>(_ body: (RemindersService) async throws -> T) async -> Bool {
+        guard let service = reminderService else { error = "Reminders need your workspace, and it isn't reachable right now."; return false }
+        var ok = true
+        do { _ = try await body(service); error = nil } catch { self.error = Self.reminderMessage(error); ok = false }
+        await loadReminders()
+        return ok
+    }
+
+    private static func reminderMessage(_ e: Error) -> String {
+        switch e as? LifeError {
+        case .unauthorized: "Please sign in again."
+        case .notProvisioned: "Your workspace isn't ready for reminders yet."
+        case .engine(let code, let message): code == "conflict" ? "That reminder changed elsewhere. It has been refreshed." : message
+        case .retry: "You're offline, or the service is busy. Try again in a moment."
+        default: "Something went wrong with reminders."
+        }
+    }
 
     func load() async { await run { try await self.engine.snapshot() } }
 
@@ -33,9 +74,13 @@ final class Life {
     func setRoutine(_ id: UUID, done: Bool) async { await run { try await self.engine.setRoutine(id, day: self.today, done: done) } }
     func addJournal(text: String, goals: [UUID] = [], tomorrow: String? = nil) async { await run { try await self.engine.addJournal(text: text, goals: goals, tomorrow: tomorrow) } }
     func addMemory(_ m: Memory) async { await run { try await self.engine.addMemory(m) } }
-    func setReminder(_ id: UUID, done: Bool) async { await run { try await self.engine.setReminder(id, done: done) } }
 
     func capture(_ text: String) async -> CaptureOutcome? {
+        // A reminder is made by the Life Engine like any other: the words are read here, but creating it is the same
+        // operation the agent calls, so there is one way for a reminder to exist.
+        if case .reminder(let draft) = Planner.capture(text) {
+            return await addReminder(title: draft.title, due: draft.due) ? .reminder(draft) : nil
+        }
         do { let (o, s) = try await engine.capture(text); store = s; return o } catch { self.error = Self.message(error); return nil }
     }
 

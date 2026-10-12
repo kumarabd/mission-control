@@ -67,3 +67,12 @@ xcrun swiftc -parse-as-library MissionControl/Core/Domain/Models.swift MissionCo
 xcrun swiftc -parse-as-library MissionControl/Core/Push/PushLink.swift Tests/PushLinkChecks.swift -o /private/tmp/mission-push-link-checks
 /private/tmp/mission-push-link-checks
 ```
+
+## Life Engine contract (real recorded responses, request shapes, error classification)
+
+```sh
+xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/LifeAPI.swift MissionControl/Core/Remote/RemindersService.swift Tests/LifeContractChecks.swift -o /private/tmp/mission-life-contract-checks
+/private/tmp/mission-life-contract-checks Tests/Fixtures/life
+```
+
+`Tests/Fixtures/life` is copied from the `life-engine` repository's `fixtures/`; regenerate there when the contract changes.
