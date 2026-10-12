@@ -76,11 +76,8 @@ final class Life {
     func addMemory(_ m: Memory) async { await run { try await self.engine.addMemory(m) } }
 
     func capture(_ text: String) async -> CaptureOutcome? {
-        // A reminder is made by the Life Engine like any other: the words are read here, but creating it is the same
-        // operation the agent calls, so there is one way for a reminder to exist.
-        if case .reminder(let draft) = Planner.capture(text) {
-            return await addReminder(title: draft.title, due: draft.due) ? .reminder(draft) : nil
-        }
+        // Reminders never come through here: the capture sheet reviews them and saves them with addReminder, the Life Engine's
+        // own operation. Everything else is still kept on this phone.
         do { let (o, s) = try await engine.capture(text); store = s; return o } catch { self.error = Self.message(error); return nil }
     }
 

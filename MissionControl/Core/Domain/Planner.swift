@@ -10,10 +10,10 @@ enum Planner {
     static func capture(_ raw: String, now: Date = Date(), cal: Calendar = .current) -> CaptureOutcome {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let l = text.lowercased()
-        let tomorrow9 = cal.date(bySettingHour: 9, minute: 0, second: 0, of: cal.date(byAdding: .day, value: 1, to: now) ?? now)
+        let when = detectDate(in: text, now: now, cal: cal)
         if l.hasPrefix("remind") || l.contains("don't forget") || l.contains("dont forget") || l.contains("deadline") {
-            let title = stripped(text, prefixes: ["remind me to ", "remind me ", "don't forget to ", "dont forget to "])
-            return .reminder(Reminder(title: title, due: l.contains("tomorrow") ? tomorrow9 : nil))
+            let title = stripped(without(when?.range, in: text), prefixes: ["remind me to ", "remind me ", "don't forget to ", "dont forget to "])
+            return .reminder(Reminder(title: title.isEmpty ? text : title, due: when?.date))
         }
         if l.hasPrefix("decided") || l.hasPrefix("i decided") || l.hasPrefix("remember") || l.hasPrefix("learned") || l.hasPrefix("i learned") {
             let kind: MemoryKind = l.contains("decid") ? .decision : .note
@@ -23,7 +23,43 @@ enum Planner {
         if ["today i", "i felt", "i feel", "grateful", "i'm tired", "i am tired", "journal"].contains(where: l.contains) {
             return .journal(JournalEntry(date: now, text: text))
         }
+        // Something with a time on it ("call Mum at 5pm") is a reminder whether or not it says so.
+        if let when {
+            let title = stripped(without(when.range, in: text), prefixes: ["to "])
+            return .reminder(Reminder(title: title.isEmpty ? text : title, due: when.date))
+        }
         return .task(PlanItem(title: text, minutes: 25, day: startOfDay(now, cal)))
+    }
+
+    /// The first date or time the person wrote, using the system's own detector (so "tomorrow at 5pm", "in 2 hours",
+    /// "next Friday" and "March 3" all work in the device's language). A day with no time means 09:00; a bare time that has
+    /// already passed today means tomorrow.
+    static func detectDate(in text: String, now: Date = Date(), cal: Calendar = .current) -> (date: Date, range: Range<String.Index>)? {
+        // The system detector does not read durations, so "in 20 minutes" and "in an hour" are read here.
+        if let m = text.range(of: #"\bin\s+(half an?|an?|\d+)\s*(minutes?|mins?|hours?|hrs?)\b"#, options: [.regularExpression, .caseInsensitive]) {
+            let words = text[m].lowercased().split(separator: " ").dropFirst().map(String.init)
+            let unitIsHours = words.last.map { $0.hasPrefix("h") } ?? false
+            let count: Double = words.first == "half" ? 0.5 : (Double(words.first ?? "") ?? 1)
+            return (now.addingTimeInterval(count * (unitIsHours ? 3600 : 60)), m)
+        }
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue),
+              let match = detector.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              var date = match.date, let range = Range(match.range, in: text) else { return nil }
+        let phrase = text[range].lowercased()
+        let hasTime = phrase.range(of: #"\d\s*(am|pm|a\.m\.|p\.m\.)|\d:\d\d|\bnoon\b|\bmidnight\b|\bat \d|o'clock|\bin \d+\s*(minutes?|mins?|hours?|hrs?)\b|\bhalf an hour\b|\ban hour\b|\btonight\b"#, options: .regularExpression) != nil
+        if !hasTime, let nine = cal.date(bySettingHour: 9, minute: 0, second: 0, of: date) { date = nine }
+        let timeOnly = phrase.range(of: #"^(at\s+)?\d{1,2}(:\d{2})?\s*(am|pm)?$"#, options: .regularExpression) != nil
+        if timeOnly, date <= now { date = cal.date(byAdding: .day, value: 1, to: date) ?? date }
+        return (date, range)
+    }
+
+    /// The text with the date phrase taken out and the leftover connecting word ("at", "on", ...) tidied away.
+    private static func without(_ range: Range<String.Index>?, in text: String) -> String {
+        guard let range else { return text }
+        var t = text; t.removeSubrange(range)
+        t = t.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        for tail in [" at", " on", " by", " in", " for", " around", " this"] where t.lowercased().hasSuffix(tail) { t = String(t.dropLast(tail.count)) }
+        return t.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func stripped(_ text: String, prefixes: [String]) -> String {
