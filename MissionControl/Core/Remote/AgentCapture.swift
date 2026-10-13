@@ -30,7 +30,7 @@ final class AgentCapture {
         }
     }
 
-    private let gateway = MobileGateway()
+    private let gateway = MobileGateway(usesResumeCursor: false)
     // Events wait here until `outcome` asks for them, one at a time.
     private var queue: [MobileGateway.Event] = []
     private var waiter: CheckedContinuation<MobileGateway.Event, Never>?

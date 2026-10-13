@@ -28,6 +28,13 @@ final class MobileGateway {
 
     var onEvent: ((Event) -> Void)?
 
+    /// The voice assistant resumes from the last turn it finished. That saved position is one number for the whole app, so a
+    /// client that only wants the turn it just started (capture) turns it off: a stale number from an older session would
+    /// make the gateway skip every turn at or below it, and the reply would never arrive.
+    private let usesResumeCursor: Bool
+
+    init(usesResumeCursor: Bool = true) { self.usesResumeCursor = usesResumeCursor }
+
     private let authentication: any AgentGatewayAuthenticating = ClerkGatewayAuthentication()
     private let gatewayURL = URL(string: "https://harness-router.nighthawklabs.org/gateway/ios/ws")!
     private let deviceID = GatewayDeviceIdentity.value
@@ -131,7 +138,7 @@ final class MobileGateway {
             let task = URLSession.shared.webSocketTask(with: websocketEndpoint(token: token))
             socket = task; task.resume()
             var auth: [String: Any] = ["type": "auth", "token": token, "device_id": deviceID]
-            if let cursor = UserDefaults.standard.object(forKey: cursorKey) as? Int { auth["after_turn_seq"] = cursor }
+            if usesResumeCursor, let cursor = UserDefaults.standard.object(forKey: cursorKey) as? Int { auth["after_turn_seq"] = cursor }
             try await send(auth, on: task)
             guard !Task.isCancelled, socket === task, transportGeneration == generation else { return }
             startPing(for: task)
@@ -230,7 +237,7 @@ final class MobileGateway {
             }
         case "turn_end":
             if let turn = frame.turnSequence {
-                UserDefaults.standard.set(max(turn, UserDefaults.standard.integer(forKey: cursorKey)), forKey: cursorKey)
+                if usesResumeCursor { UserDefaults.standard.set(max(turn, UserDefaults.standard.integer(forKey: cursorKey)), forKey: cursorKey) }
                 onEvent?(.turnEnded(turn, status: frame.status ?? "completed"))
             }
         case "resumed":
