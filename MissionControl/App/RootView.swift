@@ -61,7 +61,7 @@ struct MainTabs: View {
             if let life {
                 TabView(selection: $tab) {
                     TodayView().tabItem { Label("Today", systemImage: "sun.max") }.tag(Tab.today)
-                    GoalsView().tabItem { Label("Goals", systemImage: "flag") }.tag(Tab.goals)
+                    ProgressTab().tabItem { Label("Progress", systemImage: "chart.bar") }.tag(Tab.goals)
                     JournalView().tabItem { Label("Journal", systemImage: "book") }.tag(Tab.journal)
                     MemoryView().tabItem { Label("Memory", systemImage: "brain.head.profile") }.tag(Tab.memory)
                     DashboardView().tabItem { Label("Classic", systemImage: "square.grid.2x2") }.tag(Tab.classic)
@@ -71,8 +71,8 @@ struct MainTabs: View {
                     if tab != .classic { CaptureButton { capturing = true }.padding(.trailing, Space.l).padding(.bottom, 64) }
                 }
                 .sheet(isPresented: $capturing) { CaptureSheet().environment(life) }
-                .task { await life.load(); await life.loadReminders() }
-                .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await life.loadReminders() } } }
+                .task { await life.load(); await life.loadReminders(); await life.loadRoutines() }
+                .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await life.loadReminders(); await life.loadRoutines() } } }
                 .task { PushRegistrar.shared.attach(auth) }
                 .onChange(of: DeepLink.shared.pending) { _, target in
                     guard let target else { return }
@@ -87,7 +87,9 @@ struct MainTabs: View {
             let l = Life(engine: LocalEngine(owner: userId))
             // Reminders live in the Life Engine; without a router (developer mode) there is nowhere to keep them.
             if !Config.devEngine, !Config.routerBaseURL.isEmpty {
-                l.attachReminders(RemindersService(api: LifeAPI(baseURL: Config.routerBaseURL + "/life/api/v1", token: { [auth] in await auth.token() })))
+                let api = LifeAPI(baseURL: Config.routerBaseURL + "/life/api/v1", token: { [auth] in await auth.token() })
+                l.attachReminders(RemindersService(api: api))
+                l.attachRoutines(RoutinesService(api: api))
             }
             life = l
         }

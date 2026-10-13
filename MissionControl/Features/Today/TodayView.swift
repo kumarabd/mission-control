@@ -20,6 +20,7 @@ struct TodayView: View {
                 nextSection
                 timeSection
                 daySection
+                if !todayRoutines.isEmpty { routinesSection }
                 if !life.reminders.isEmpty { remindersSection }
             }
             .scrollContentBackground(.hidden).screenBackground()
@@ -119,6 +120,27 @@ struct TodayView: View {
                 }
             }
         } header: { Text("Today").font(.mission(.subheadline, .medium)) }
+        .listRowBackground(Tok.surface)
+    }
+
+    private var todayRoutines: [Wire.RoutineStatus] { life.routines.filter(\.scheduled) }
+
+    private var routinesSection: some View {
+        Section {
+            ForEach(todayRoutines) { s in
+                HStack(spacing: Space.m) {
+                    CountRing(count: s.count, target: s.target, size: 40)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(s.routine.title).font(.mission(.body)).foregroundStyle(s.done ? Tok.muted : Tok.text)
+                        Text(s.done ? "Done today" : s.hint).font(.mission(.caption)).foregroundStyle(s.gap && !s.done ? Tok.warn : Tok.muted).lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
+                    PlusButton(status: s)
+                }
+                .frame(minHeight: 44)
+                .accessibilityElement(children: .contain)
+            }
+        } header: { Text("Routines").font(.mission(.subheadline, .medium)) }
         .listRowBackground(Tok.surface)
     }
 

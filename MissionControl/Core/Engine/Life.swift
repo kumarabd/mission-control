@@ -16,6 +16,63 @@ final class Life {
         store.plan.filter { $0.day == today }.sorted { ($0.start ?? .distantFuture, $0.title) < ($1.start ?? .distantFuture, $1.title) }
     }
 
+    // MARK: Routines. The Life Engine's, with today's count; the tracker reads history on demand.
+
+    private(set) var routines: [Wire.RoutineStatus] = []
+    private var routineService: RoutinesService?
+    /// Routines with a change in flight; a second tap waits for the first.
+    private(set) var busyRoutines: Set<String> = []
+    var routinesAvailable: Bool { routineService != nil }
+
+    func attachRoutines(_ service: RoutinesService?) { routineService = service }
+
+    func loadRoutines() async {
+        guard let service = routineService else { return }
+        do { routines = try await service.status() } catch { self.error = Self.routineMessage(error) }
+    }
+
+    /// Adds one (or takes one back with `-1`) and shows the new count at once from the engine's answer.
+    func logRoutine(_ id: String, delta: Int = 1, short: Bool = false) async {
+        guard let service = routineService, !busyRoutines.contains(id) else { return }
+        busyRoutines.insert(id); defer { busyRoutines.remove(id) }
+        do {
+            let updated = try await service.log(id, delta: delta, short: short)
+            if let i = routines.firstIndex(where: { $0.id == id }) { routines[i] = updated }
+            error = nil
+        } catch { self.error = Self.routineMessage(error); await loadRoutines() }
+    }
+
+    func history(for id: String, days: Int = 30) async -> Wire.RoutineHistory? {
+        guard let service = routineService else { return nil }
+        do { return try await service.history(id, days: days) } catch { self.error = Self.routineMessage(error); return nil }
+    }
+
+    @discardableResult
+    func addRoutine(title: String, targetPerDay: Int, cues: [String], weekdays: [Int], shortTitle: String, minutes: Int, shortMinutes: Int) async -> Bool {
+        guard let service = routineService else { error = "Routines need your workspace, and it isn't reachable right now."; return false }
+        do {
+            _ = try await service.create(title: title, targetPerDay: targetPerDay, cues: cues, weekdays: weekdays,
+                                         shortTitle: shortTitle.isEmpty ? "A smaller version" : shortTitle, minutes: minutes, shortMinutes: shortMinutes)
+            error = nil; await loadRoutines(); return true
+        } catch { self.error = Self.routineMessage(error); return false }
+    }
+
+    func deleteRoutine(_ r: Wire.Routine) async {
+        guard let service = routineService else { return }
+        do { try await service.delete(r); error = nil } catch { self.error = Self.routineMessage(error) }
+        await loadRoutines()
+    }
+
+    private static func routineMessage(_ e: Error) -> String {
+        switch e as? LifeError {
+        case .unauthorized: "Please sign in again."
+        case .notProvisioned: "Your workspace isn't ready for routines yet."
+        case .engine(_, let message): message
+        case .retry: "You're offline, or the service is busy. Try again in a moment."
+        default: "Something went wrong with routines."
+        }
+    }
+
     // MARK: Reminders. Always the Life Engine, through the same operations the agent calls; never a local invention.
 
     private(set) var reminders: [Wire.Reminder] = []

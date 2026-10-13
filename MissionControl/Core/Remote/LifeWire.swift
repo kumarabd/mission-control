@@ -33,6 +33,66 @@ enum Wire {
         var isDone: Bool { state == "done" }
     }
 
+    struct Routine: Codable, Equatable, Identifiable {
+        var id: String
+        var title: String
+        var minutes: Int
+        var shortTitle: String
+        var shortMinutes: Int
+        var weekdays: [Int]          // 0 = Sunday ... 6; empty means every day
+        var targetPerDay: Int
+        var cues: [String]           // "HH:MM" local nudge times
+        var timeZone: String
+        var version: Int
+        var deletedAt: Date?
+        var createdAt: Date
+        var updatedAt: Date
+    }
+
+    /// One routine on one day: how many times so far against its target, and how it is going.
+    struct RoutineStatus: Codable, Equatable, Identifiable {
+        var routine: Routine
+        var scheduled: Bool
+        var target: Int
+        var count: Int
+        var done: Bool
+        var variant: String?
+        var streak: Int
+        var daysSinceLast: Int?
+        var gap: Bool
+        var hint: String
+        var id: String { routine.id }
+    }
+
+    struct RoutinesStatus: Codable, Equatable {
+        var day: String
+        var items: [RoutineStatus]
+    }
+
+    struct HistoryDay: Codable, Equatable, Identifiable {
+        var day: String
+        var scheduled: Bool
+        var count: Int
+        var target: Int
+        var done: Bool
+        var id: String { day }
+    }
+
+    struct Consistency: Codable, Equatable {
+        var done: Int
+        var scheduled: Int
+    }
+
+    /// What a tracker draws: recent days (oldest first, ending today), a rate over 7 and 30 days, and the best run.
+    struct RoutineHistory: Codable, Equatable {
+        var routine: Routine
+        var days: [HistoryDay]
+        var last7: Consistency
+        var last30: Consistency
+        var streak: Int
+        var bestStreak: Int
+    }
+
     struct Page<T: Codable & Equatable>: Codable, Equatable {
         var items: [T]
         var total: Int

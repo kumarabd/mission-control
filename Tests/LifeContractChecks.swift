@@ -26,6 +26,19 @@ struct LifeContractChecks {
         let page = load(Wire.Page<Wire.Reminder>.self, "reminders_page", in: dir)
         precondition(page.total == page.items.count && page.nextOffset == nil && page.items.count >= 3)
 
+        // Routines: a daily target, several cues, a count against the target, and a history for the tracker.
+        let routine = load(Wire.Routine.self, "routine", in: dir)
+        precondition(routine.title == "Morning run" && routine.targetPerDay == 1 && routine.cues == ["07:30"] && routine.weekdays == [1, 2, 3, 4, 5])
+        let counted = load(Wire.Routine.self, "routine_counted", in: dir)
+        precondition(counted.targetPerDay == 3 && counted.cues == ["09:00", "13:00", "17:00"])
+        let logged = load(Wire.RoutineStatus.self, "routine_log", in: dir)
+        precondition(logged.target == 3 && logged.count == 1 && !logged.done && logged.hint == "1 of 3 today so far." && logged.id == counted.id)
+        let routinesToday = load(Wire.RoutinesStatus.self, "routines_status", in: dir)
+        precondition(!routinesToday.items.isEmpty && routinesToday.items[0].target >= 1 && routinesToday.items[0].count >= 0)
+        let history = load(Wire.RoutineHistory.self, "routine_history", in: dir)
+        precondition(history.days.count == 14)
+        precondition(history.days.last?.count == 1 && history.days.last?.target == 3 && history.last7.scheduled == 7 && history.bestStreak >= 0)
+
         let goal = load(Wire.Goal.self, "goal", in: dir)
         precondition(goal.steps.count == 2 && goal.steps[1].position == 2 && goal.nextStep?.title == "Pick a course" && goal.progress == .init(done: 0, total: 2) && goal.weeklyTarget == 4)
         precondition(load(Wire.Page<Wire.Goal>.self, "goals_page", in: dir).items.first?.progress.done == 1)
@@ -102,6 +115,31 @@ struct LifeContractChecks {
         try! await service.delete(r)
         precondition(sent[5].path == "reminders_delete")
         precondition(Set(sent.dropFirst().map { $0.body["idempotency_key"] as? String ?? "" }).count == 5, "every intent has its own key")
+
+        // The routines service sends what the engine's operations take and reads what they return.
+        func fixtureData(_ name: String) -> Data { try! Data(contentsOf: URL(fileURLWithPath: dir).appendingPathComponent(name + ".json")) }
+        var routineCalls: [(path: String, body: [String: Any])] = []
+        let routines = RoutinesService(api: LifeAPI(baseURL: "https://router.example/life/api/v1", token: { "tok" }) { request in
+            let op = request.url!.lastPathComponent
+            routineCalls.append((op, try! JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]))
+            let file = ["routines_status": "routines_status", "routines_log": "routine_log", "routines_history": "routine_history", "routines_create": "routine_counted", "routines_delete": "routine_counted"][op]!
+            return (fixtureData(file), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        })
+        let items = try! await routines.status()
+        precondition(routineCalls[0].path == "routines_status" && items.count == routinesToday.items.count)
+        let after = try! await routines.log("r1", delta: -1, short: true)
+        precondition(routineCalls[1].path == "routines_log" && routineCalls[1].body["routine_id"] as? String == "r1" && routineCalls[1].body["delta"] as? Int == -1)
+        precondition(routineCalls[1].body["variant"] as? String == "short" && !(routineCalls[1].body["idempotency_key"] as? String ?? "").isEmpty && after.target == 3)
+        let hist = try! await routines.history("r1", days: 14)
+        precondition(routineCalls[2].path == "routines_history" && routineCalls[2].body["days"] as? Int == 14 && hist.days.count == 14)
+        _ = try! await routines.create(title: "Drink water", targetPerDay: 3, cues: ["09:00", "13:00", "17:00"], weekdays: [1, 2], shortTitle: "One glass",
+                                       minutes: 2, shortMinutes: 1, timeZone: "Europe/London", key: "rk")
+        let made = routineCalls[3].body
+        precondition(routineCalls[3].path == "routines_create" && made["idempotency_key"] as? String == "rk" && made["target_per_day"] as? Int == 3)
+        precondition(made["cues"] as? [String] == ["09:00", "13:00", "17:00"] && made["short_title"] as? String == "One glass" && made["time_zone"] as? String == "Europe/London")
+        precondition(made["weekdays"] as? [Int] == [1, 2] && made["minutes"] as? Int == 2 && made["short_minutes"] as? Int == 1)
+        try! await routines.delete(counted)
+        precondition(routineCalls[4].path == "routines_delete" && routineCalls[4].body["expected_version"] as? Int == counted.version)
         print("LifeContractChecks passed")
     }
 }
