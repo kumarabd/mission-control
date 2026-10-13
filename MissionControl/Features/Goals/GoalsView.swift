@@ -1,40 +1,47 @@
 import SwiftUI
 
-/// The goals list. The Progress tab owns the navigation, the title and the add button.
+struct GoalRef: Hashable, Identifiable { let id: String }
+
+/// The goals list. They are the Life Engine's, so a goal the assistant makes is here. The Progress tab owns the navigation,
+/// the title and the add button, and a new goal starts as a conversation with the assistant.
 struct GoalsList: View {
     @Environment(Life.self) private var life
     let onNew: () -> Void
 
     var body: some View {
         Group {
-            if life.store.goals.isEmpty {
+            if !life.goalsAvailable {
+                EmptyState(symbol: "icloud.slash", title: "Goals need your workspace", message: "They are kept with your assistant, which isn't reachable right now.")
+            } else if life.goals.isEmpty {
                 EmptyState(symbol: "flag", title: "Start with one thing you care about",
-                           message: "Add a goal and we'll turn it into small steps and show you the next one.",
-                           actionTitle: "Add a goal", action: onNew)
+                           message: "Tell your assistant what you want to achieve and it will turn it into small steps and routines.",
+                           actionTitle: "Tell your assistant", action: onNew)
             } else {
                 List {
                     Section {
-                        ForEach(life.store.goals) { g in
-                            NavigationLink(value: g.id) { GoalRow(goal: g) }
-                        }
-                        .onDelete { idx in let ids = idx.map { life.store.goals[$0].id }; Task { for id in ids { await life.deleteGoal(id) } } }
+                        ForEach(life.goals) { g in NavigationLink(value: GoalRef(id: g.id)) { GoalRow(goal: g) } }
                     } header: { Text("Goals").font(.mission(.subheadline, .medium)) }
                     .listRowBackground(Tok.surface)
                 }
                 .scrollContentBackground(.hidden)
+                .refreshable { await life.loadGoals() }
             }
         }
+        .task { await life.loadGoals() }
     }
 }
 
 struct GoalRow: View {
-    let goal: Goal
+    let goal: Wire.Goal
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             Text(goal.title).font(.mission(.headline, .medium))
-            MissionProgressBar(fraction: goal.fraction, label: "\(goal.steps.filter(\.isDone).count) of \(goal.steps.count) steps")
+            if goal.progress.total > 0 {
+                MissionProgressBar(fraction: Double(goal.progress.done) / Double(goal.progress.total), label: "\(goal.progress.done) of \(goal.progress.total) steps")
+            }
             if let n = goal.nextStep { Text("Next: \(n.title)").font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
-            else if !goal.steps.isEmpty { Text("All steps done").font(.mission(.subheadline)).foregroundStyle(Tok.accent) }
+            else if goal.progress.total > 0 { Text("All steps done").font(.mission(.subheadline)).foregroundStyle(Tok.accent) }
+            else { Text("No steps yet").font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
         }
         .padding(.vertical, Space.xs)
         .accessibilityElement(children: .combine)
@@ -43,31 +50,39 @@ struct GoalRow: View {
 
 struct GoalDetail: View {
     @Environment(Life.self) private var life
-    let goalID: UUID
+    @Environment(\.dismiss) private var dismiss
+    let goalID: String
     @State private var newStep = ""
-    @State private var askObstacle = false
+    @State private var askAssistant: AssistantPrompt?
+    @State private var confirmArchive = false
 
-    private var goal: Goal? { life.store.goals.first { $0.id == goalID } }
+    struct AssistantPrompt: Identifiable { let id = UUID(); let text: String }
+
+    private var goal: Wire.Goal? { life.goals.first { $0.id == goalID } }
 
     var body: some View {
         if let goal {
             List {
                 Section {
                     if !goal.why.isEmpty { Text(goal.why).font(.mission(.body)).foregroundStyle(Tok.muted) }
-                    MissionProgressBar(fraction: goal.fraction, label: "\(goal.steps.filter(\.isDone).count) of \(goal.steps.count) steps · \(goal.weeklyTarget) a week")
+                    if goal.progress.total > 0 {
+                        MissionProgressBar(fraction: Double(goal.progress.done) / Double(goal.progress.total),
+                                           label: "\(goal.progress.done) of \(goal.progress.total) steps · \(goal.weeklyTarget) a week")
+                    }
                 }
                 .listRowBackground(Tok.surface)
                 Section {
                     ForEach(goal.steps) { s in
-                        Button { Task { await life.setStep(goal: goal.id, step: s.id, done: !s.isDone) } } label: {
+                        Button { Task { await life.setStepDone(s, done: s.doneAt == nil) } } label: {
                             HStack(spacing: Space.m) {
-                                Image(systemName: s.isDone ? "checkmark.circle.fill" : "circle").font(.mission(.title3)).foregroundStyle(s.isDone ? Tok.accent : Tok.muted)
-                                Text(s.title).font(.mission(.body)).foregroundStyle(s.isDone ? Tok.muted : Tok.text).strikethrough(s.isDone)
+                                Image(systemName: s.doneAt != nil ? "checkmark.circle.fill" : "circle").font(.mission(.title3)).foregroundStyle(s.doneAt != nil ? Tok.accent : Tok.muted)
+                                Text(s.title).font(.mission(.body)).foregroundStyle(s.doneAt != nil ? Tok.muted : Tok.text).strikethrough(s.doneAt != nil)
                                 Spacer()
                                 Text("\(s.minutes) min").font(.missionMono(.caption)).foregroundStyle(Tok.muted)
                             }.frame(minHeight: 44)
                         }
-                        .accessibilityLabel("\(s.title), \(s.minutes) minutes, \(s.isDone ? "done" : "not done")")
+                        .disabled(life.busySteps.contains(s.id))
+                        .accessibilityLabel("\(s.title), \(s.minutes) minutes, \(s.doneAt != nil ? "done" : "not done")")
                     }
                     HStack {
                         TextField("Add a step", text: $newStep).font(.mission(.body)).onSubmit(add)
@@ -76,16 +91,24 @@ struct GoalDetail: View {
                 } header: { Text("Steps").font(.mission(.subheadline, .medium)) }
                 .listRowBackground(Tok.surface)
                 Section {
-                    Button { askObstacle = true } label: { Label("I keep putting this off", systemImage: "hourglass") }
-                        .frame(minHeight: 44)
-                } footer: { Text("Tell us what's in the way and we'll add a smaller first step.").font(.mission(.footnote)) }
+                    Button { askAssistant = AssistantPrompt(text: "I keep putting off \u{201C}\(goal.title)\u{201D}. Help me make the next step smaller. ") } label: {
+                        Label("I keep putting this off", systemImage: "hourglass")
+                    }.frame(minHeight: 44)
+                    Button { askAssistant = AssistantPrompt(text: "About my goal \u{201C}\(goal.title)\u{201D}: ") } label: {
+                        Label("Talk to your assistant about this", systemImage: "bubble.left")
+                    }.frame(minHeight: 44)
+                } footer: { Text("The routines and reminders that serve it are set up by your assistant; ask it to change them.").font(.mission(.footnote)) }
                 .listRowBackground(Tok.surface)
+                Section { Button("Archive goal", systemImage: "archivebox", role: .destructive) { confirmArchive = true } }.listRowBackground(Tok.surface)
             }
             .scrollContentBackground(.hidden).screenBackground()
             .navigationTitle(goal.title).navigationBarTitleDisplayMode(.inline)
-            .confirmationDialog("What's in the way?", isPresented: $askObstacle, titleVisibility: .visible) {
-                ForEach(Obstacle.allCases) { o in Button(o.title) { Task { await life.shrink(goal: goal.id, obstacle: o) } } }
-            }
+            .sheet(item: $askAssistant) { CaptureSheet(draft: $0.text).environment(life) }
+            .confirmationDialog("Archive this goal?", isPresented: $confirmArchive, titleVisibility: .visible) {
+                Button("Archive", role: .destructive) { Task { await life.archiveGoal(goal); dismiss() } }
+            } message: { Text("It can be restored later.") }
+        } else {
+            ContentUnavailableView("This goal is gone", systemImage: "flag", description: Text("It was archived or removed."))
         }
     }
 
@@ -93,33 +116,6 @@ struct GoalDetail: View {
         let t = newStep.trimmed
         guard !t.isEmpty else { return }
         newStep = ""
-        Task { await life.addStep(goal: goalID, title: t, minutes: 15) }
-    }
-}
-
-struct NewGoalSheet: View {
-    @Environment(Life.self) private var life
-    @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var why = ""
-    @State private var weekly = 3
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section { TextField("What do you want to make progress on?", text: $title) }
-                Section("Why it matters (optional)") { TextField("In a sentence", text: $why, axis: .vertical) }
-                Section { Stepper("\(weekly) steps a week", value: $weekly, in: 1...14) } footer: { Text("A small weekly commitment you can keep beats a big one you drop.") }
-            }
-            .scrollContentBackground(.hidden).screenBackground()
-            .navigationTitle("New goal").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") { Task { await life.addGoal(title: title.trimmed, why: why.trimmed, weeklyTarget: weekly); dismiss() } }.disabled(title.trimmed.isEmpty)
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
+        Task { await life.addGoalStep(goal: goalID, title: t) }
     }
 }

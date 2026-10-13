@@ -16,6 +16,50 @@ final class Life {
         store.plan.filter { $0.day == today }.sorted { ($0.start ?? .distantFuture, $0.title) < ($1.start ?? .distantFuture, $1.title) }
     }
 
+    // MARK: Goals. The Life Engine's, so a goal the assistant creates is the goal the screen shows.
+
+    private(set) var goals: [Wire.Goal] = []
+    private var goalService: GoalsService?
+    /// Steps with a change in flight.
+    private(set) var busySteps: Set<String> = []
+    var goalsAvailable: Bool { goalService != nil }
+
+    func attachGoals(_ service: GoalsService?) { goalService = service }
+
+    func loadGoals() async {
+        guard let service = goalService else { return }
+        do { goals = try await service.list() } catch { self.error = Self.goalMessage(error) }
+    }
+
+    func setStepDone(_ step: Wire.Step, done: Bool) async {
+        guard let service = goalService, !busySteps.contains(step.id) else { return }
+        busySteps.insert(step.id); defer { busySteps.remove(step.id) }
+        do { _ = try await service.setStep(step, done: done); error = nil } catch { self.error = Self.goalMessage(error) }
+        await loadGoals()
+    }
+
+    func addGoalStep(goal: String, title: String, minutes: Int = 15) async {
+        guard let service = goalService else { return }
+        do { _ = try await service.addStep(goal: goal, title: title, minutes: minutes); error = nil } catch { self.error = Self.goalMessage(error) }
+        await loadGoals()
+    }
+
+    func archiveGoal(_ goal: Wire.Goal) async {
+        guard let service = goalService else { return }
+        do { try await service.archive(goal); error = nil } catch { self.error = Self.goalMessage(error) }
+        await loadGoals()
+    }
+
+    private static func goalMessage(_ e: Error) -> String {
+        switch e as? LifeError {
+        case .unauthorized: "Please sign in again."
+        case .notProvisioned: "Your workspace isn't ready for goals yet."
+        case .engine(let code, let message): code == "conflict" ? "That changed elsewhere. It has been refreshed." : message
+        case .retry: "You're offline, or the service is busy. Try again in a moment."
+        default: "Something went wrong with goals."
+        }
+    }
+
     // MARK: Routines. The Life Engine's, with today's count; the tracker reads history on demand.
 
     private(set) var routines: [Wire.RoutineStatus] = []

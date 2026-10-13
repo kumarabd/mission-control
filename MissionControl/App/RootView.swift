@@ -71,8 +71,8 @@ struct MainTabs: View {
                     if tab != .classic { CaptureButton { capturing = true }.padding(.trailing, Space.l).padding(.bottom, 64) }
                 }
                 .sheet(isPresented: $capturing) { CaptureSheet().environment(life) }
-                .task { await life.load(); await life.loadReminders(); await life.loadRoutines() }
-                .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await life.loadReminders(); await life.loadRoutines() } } }
+                .task { await life.load(); await life.loadReminders(); await life.loadRoutines(); await life.loadGoals() }
+                .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await life.loadReminders(); await life.loadRoutines(); await life.loadGoals() } } }
                 .task { PushRegistrar.shared.attach(auth) }
                 .onChange(of: DeepLink.shared.pending) { _, target in
                     guard let target else { return }
@@ -90,6 +90,7 @@ struct MainTabs: View {
                 let api = LifeAPI(baseURL: Config.routerBaseURL + "/life/api/v1", token: { [auth] in await auth.token() })
                 l.attachReminders(RemindersService(api: api))
                 l.attachRoutines(RoutinesService(api: api))
+                l.attachGoals(GoalsService(api: api))
             }
             life = l
         }

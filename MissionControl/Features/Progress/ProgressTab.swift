@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Where long-running things live: routines you keep doing, and goals you are working toward.
 struct ProgressTab: View {
+    @Environment(Life.self) private var life
     @State private var segment = Segment.routines
     @State private var sheet: Sheet?
 
@@ -22,7 +23,7 @@ struct ProgressTab: View {
             }
             .screenBackground()
             .navigationTitle("Progress")
-            .navigationDestination(for: UUID.self) { GoalDetail(goalID: $0) }
+            .navigationDestination(for: GoalRef.self) { GoalDetail(goalID: $0.id) }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { sheet = segment == .routines ? .routine : .goal } label: { Image(systemName: "plus").frame(minWidth: 44, minHeight: 44) }
@@ -30,7 +31,10 @@ struct ProgressTab: View {
                 }
             }
             .sheet(item: $sheet) { s in
-                switch s { case .routine: NewRoutineSheet(); case .goal: NewGoalSheet() }
+                switch s {
+                case .routine: NewRoutineSheet().environment(life)
+                case .goal: CaptureSheet(draft: "I want to ").environment(life)
+                }
             }
         }
     }

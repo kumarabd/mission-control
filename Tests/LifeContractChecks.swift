@@ -151,6 +151,23 @@ struct LifeContractChecks {
         precondition(made["weekdays"] as? [Int] == [1, 2] && made["minutes"] as? Int == 2 && made["short_minutes"] as? Int == 1)
         try! await routines.delete(counted)
         precondition(routineCalls[4].path == "routines_delete" && routineCalls[4].body["expected_version"] as? Int == counted.version)
+        // Goals: read the engine's, tick a step, add one, archive.
+        var goalCalls: [(path: String, body: [String: Any])] = []
+        let goalsService = GoalsService(api: LifeAPI(baseURL: "https://router.example/life/api/v1", token: { "tok" }) { request in
+            let op = request.url!.lastPathComponent
+            goalCalls.append((op, try! JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]))
+            let file = ["goals_list": "goals_page", "steps_complete": "step_completed", "steps_add": "step_completed", "goals_archive": "goal"][op]!
+            return (fixtureData(file), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        })
+        let goalsNow = try! await goalsService.list()
+        precondition(goalCalls[0].path == "goals_list" && !goalsNow.isEmpty && goalsNow[0].steps.count >= 0)
+        let step = goal.steps[0]
+        _ = try! await goalsService.setStep(step, done: true)
+        precondition(goalCalls[1].path == "steps_complete" && goalCalls[1].body["id"] as? String == step.id && goalCalls[1].body["done"] as? Bool == true && goalCalls[1].body["expected_version"] as? Int == step.version)
+        _ = try! await goalsService.addStep(goal: goal.id, title: "Book the course", minutes: 20)
+        precondition(goalCalls[2].path == "steps_add" && goalCalls[2].body["goal_id"] as? String == goal.id && goalCalls[2].body["minutes"] as? Int == 20)
+        try! await goalsService.archive(goal)
+        precondition(goalCalls[3].path == "goals_archive" && goalCalls[3].body["expected_version"] as? Int == goal.version)
         print("LifeContractChecks passed")
     }
 }

@@ -20,6 +20,9 @@ struct CaptureSheet: View {
     @State private var agent = AgentCapture()
     @FocusState private var focused: Bool
 
+    /// `draft` pre-fills the box, for a screen that starts the conversation (a new goal, a goal you keep putting off).
+    init(draft: String = "") { _draft = State(initialValue: draft) }
+
     private var voiceOn: Bool { voice.state != .idle && voice.state != .unavailable }
     private var you: String { voiceOn ? voice.conversationText.displayedUserText : request }
     private var assistant: String { voiceOn ? voice.conversationText.assistantText : response }
