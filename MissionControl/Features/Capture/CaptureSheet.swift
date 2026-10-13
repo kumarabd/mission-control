@@ -75,7 +75,7 @@ struct CaptureSheet: View {
     private func line(_ label: String, _ text: String, emphasised: Bool) -> some View {
         VStack(alignment: .leading, spacing: Space.xs) {
             Text(label).font(.missionMono(.caption)).foregroundStyle(Tok.muted)
-            Text(text).font(.mission(emphasised ? .title3 : .body)).foregroundStyle(Tok.text).textSelection(.enabled)
+            if emphasised { MarkdownView(text: text) } else { Text(text).font(.mission(.body)).foregroundStyle(Tok.text).textSelection(.enabled) }
         }
         .accessibilityElement(children: .combine)
     }
@@ -83,7 +83,7 @@ struct CaptureSheet: View {
     /// A question the assistant needs answered, with its suggested answers as buttons.
     private func askBlock(_ q: AgentCapture.Question) -> some View {
         VStack(alignment: .leading, spacing: Space.s) {
-            Text(q.prompt).font(.mission(.body))
+            MarkdownView(text: q.prompt)
             ForEach(q.options, id: \.id) { option in
                 Button(option.label) { answer(q, optionID: option.id, shown: option.label) }
                     .buttonStyle(SecondaryButtonStyle()).disabled(sending)

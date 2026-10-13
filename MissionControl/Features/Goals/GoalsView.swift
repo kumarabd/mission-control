@@ -64,7 +64,7 @@ struct GoalDetail: View {
         if let goal {
             List {
                 Section {
-                    if !goal.why.isEmpty { Text(goal.why).font(.mission(.body)).foregroundStyle(Tok.muted) }
+                    MarkdownView(text: Overview.goal(goal))
                     if goal.progress.total > 0 {
                         MissionProgressBar(fraction: Double(goal.progress.done) / Double(goal.progress.total),
                                            label: "\(goal.progress.done) of \(goal.progress.total) steps · \(goal.weeklyTarget) a week")

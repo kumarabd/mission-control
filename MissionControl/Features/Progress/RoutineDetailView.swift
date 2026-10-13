@@ -29,12 +29,22 @@ struct RoutineDetailView: View {
 
     private func content(_ s: Wire.RoutineStatus) -> some View {
         List {
+            overviewSection(s)
             todaySection(s)
             if let h = history { weekSection(h); monthSection(h); consistencySection(h) }
             detailsSection(s.routine)
             Section { Button("Delete routine", systemImage: "trash", role: .destructive) { confirmDelete = true } }
                 .listRowBackground(Tok.surface)
         }
+    }
+
+    // MARK: Overview
+
+    private func overviewSection(_ s: Wire.RoutineStatus) -> some View {
+        Section {
+            MarkdownView(text: Overview.routine(s.routine, count: s.count, target: s.target, history: history, clock: Self.clock, days: Self.weekdays(s.routine.weekdays)))
+        }
+        .listRowBackground(Tok.surface)
     }
 
     // MARK: Today
