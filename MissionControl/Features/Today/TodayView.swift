@@ -15,16 +15,31 @@ struct TodayView: View {
     }
 
     private var tasksToday: [Wire.PlanItem] { life.tasks.filter { $0.kind != "event" } }
+    private var todayRoutines: [Wire.RoutineStatus] { life.routines.filter(\.scheduled) }
+
+    /// The tasks still to do, as cards: today's priorities, then its other tasks without a time, the next milestone of a goal, and the
+    /// routines due (the one with the nearest nudge first). Anything with a start time lives in the Schedule instead.
+    private var dueCards: [TaskCard] {
+        let open = tasksToday.filter { $0.startAt == nil && $0.doneAt == nil }
+        var cards = (open.filter(\.isPriority) + open.filter { !$0.isPriority }).map(TaskCard.task)
+        if let s = life.nextSuggestion, s.source == "goal_step" { cards.append(.step(s)) }
+        let due = todayRoutines.filter { !$0.done }.sorted {
+            let a = RoutineSchedule.nextCue(cues: $0.routine.cues, zone: $0.routine.timeZone), b = RoutineSchedule.nextCue(cues: $1.routine.cues, zone: $1.routine.timeZone)
+            switch (a, b) { case let (x?, y?): return x < y; case (_?, nil): return true; case (nil, _?): return false; default: return $0.routine.title < $1.routine.title }
+        }
+        return cards + due.map(TaskCard.routine)
+    }
+    /// Cards finished today: tasks without a time and routines.
+    private var doneItems: Int { tasksToday.filter { $0.startAt == nil && $0.doneAt != nil }.count + todayRoutines.filter(\.done).count }
 
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
                 List {
                     if dayTotal > 0 { ringSection(proxy) }
-                    nextSection
+                    tasksSection
                     timeSection
-                    daySection
-                    if !later.isEmpty { laterSection }
+                    ScheduleSection(events: events) { detail = ReminderRef(id: $0) }
                 }
             }
             .scrollContentBackground(.hidden).screenBackground()
@@ -57,32 +72,27 @@ struct TodayView: View {
         }
     }
 
-    // MARK: Sections
+    // MARK: Tasks. What to do today, one card at a time.
 
-    private var nextSection: some View {
+    private var tasksSection: some View {
         Section {
-            if let next = life.nextSuggestion {
-                VStack(alignment: .leading, spacing: Space.s) {
-                    Label("Do this next", systemImage: "scope").font(.missionMono(.caption, .medium)).foregroundStyle(Tok.accent)
-                    Text(next.title).font(.mission(.title2, .medium))
-                    Text("\(next.minutes) min").font(.missionMono(.subheadline)).foregroundStyle(Tok.muted)
-                    if !next.reason.isEmpty { Text(next.reason).font(.mission(.footnote)).foregroundStyle(Tok.muted) }
-                    Button("Mark done") { Task { await life.completeSuggestion(next) } }
-                        .buttonStyle(PrimaryButtonStyle()).padding(.top, Space.xs)
-                }
-                .padding(.vertical, Space.xs)
-                .accessibilityElement(children: .contain)
-            } else {
-                VStack(alignment: .leading, spacing: Space.s) {
-                    Text(tasksToday.isEmpty ? "Nothing planned yet" : "Everything on today's list is done").font(.mission(.title3, .medium))
-                    Text("Add one thing that would make today a good day.").font(.mission(.body)).foregroundStyle(Tok.muted)
-                    Button("Add to today") { sheet = .add }.buttonStyle(SecondaryButtonStyle())
-                }
-                .padding(.vertical, Space.xs)
+            TaskDeck(cards: dueCards, doneToday: doneItems) { card in
+                if case .routine(let s) = card { openRoutine = RoutineRef(id: s.id) }
             }
+            .listRowInsets(EdgeInsets(top: Space.s, leading: Space.l, bottom: Space.s, trailing: Space.l))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        } header: {
+            HStack {
+                Text("Tasks")
+                Spacer()
+                Text("\(doneItems) of \(doneItems + dueCards.count)").font(.missionMono(.caption)).foregroundStyle(Tok.muted)
+            }
+            .font(.mission(.subheadline, .medium)).id(DayKind.tasks)
         }
-        .listRowBackground(Tok.surface)
     }
+
+    // MARK: I have a little time
 
     private var timeSection: some View {
         Section {
@@ -115,101 +125,6 @@ struct TodayView: View {
 
     /// Tasks without a time come first; then everything with a time in the order it happens: calendar events, timed tasks, and the reminders
     /// as they are due to fire.
-    private var daySection: some View {
-        Section {
-            let untimed = tasksToday.filter { $0.startAt == nil }
-            let timed = timeline
-            if untimed.isEmpty && timed.isEmpty && todayRoutines.isEmpty { Text("Your day is open.").font(.mission(.body)).foregroundStyle(Tok.muted) }
-            ForEach(untimed) { PlanRow(item: $0) }
-            ForEach(todayRoutines) { routineRow($0) }
-            ForEach(timed) { row in
-                switch row {
-                case .event(let e): eventRow(e)
-                case .item(let i): PlanRow(item: i)
-                case .cue(let c): cueRow(Cue(id: c.id, reminder: c.reminder, at: c.at, item: c))
-                }
-            }
-        } header: { Text("Tasks").font(.mission(.subheadline, .medium)).id(DayKind.tasks) }
-        .listRowBackground(Tok.surface)
-    }
-
-    private var todayRoutines: [Wire.RoutineStatus] { life.routines.filter(\.scheduled) }
-
-    // MARK: Reminders. A reminder is a cue: you are told, and you can clear one that has fired. It sits in the day at the time it fires.
-
-    private struct Cue: Identifiable {
-        let id: String
-        let reminder: Wire.Reminder
-        let at: Date
-        let item: Wire.AgendaItem?   // nil for a cue on a later day
-        var due: Bool { item?.state == "due" }
-        var cleared: Bool { item?.state == "acknowledged" }
-    }
-
-    /// The next few reminders on later days.
-    private var later: [Cue] {
-        let onToday = Set(life.agenda.map(\.reminder.id))
-        let tomorrow = Calendar.current.startOfDay(for: Date()).addingTimeInterval(86_400)
-        return Array(life.reminders.compactMap { r -> Cue? in
-            guard !r.isDone, !onToday.contains(r.id), let at = r.snoozedUntil ?? r.dueAt, at >= tomorrow else { return nil }
-            return Cue(id: r.id + "@later", reminder: r, at: at, item: nil)
-        }.sorted { $0.at < $1.at }.prefix(4))
-    }
-
-    private var laterSection: some View {
-        Section {
-            ForEach(later) { cueRow($0) }
-        } header: { Text("Later").font(.mission(.subheadline, .medium)) }
-        .listRowBackground(Tok.surface)
-    }
-
-    /// A reminder in the same shape as everything else in the day: a bell for its state (to come, waiting for you, cleared), the title, the
-    /// time it fires, and a check that clears one that has fired.
-    private func cueRow(_ cue: Cue) -> some View {
-        DayRowLayout(title: cue.reminder.title, detail: Self.cueTime(cue.at) + (cue.reminder.recurrence != nil ? " · repeats" : ""), dimmed: cue.cleared, warn: cue.due) {
-            Button { detail = ReminderRef(id: cue.reminder.id) } label: {
-                Image(systemName: cue.cleared ? "bell.slash" : cue.due ? "bell.badge.fill" : "bell").font(.mission(.title3))
-                    .foregroundStyle(cue.due ? Tok.warn : MissionTone.reminder.color).frame(width: 44, height: 44).contentShape(Rectangle())
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel("\(cue.reminder.title), reminder at \(Self.cueTime(cue.at)). Show details")
-        } trailing: {
-            if cue.due, let item = cue.item {
-                Button { Task { await life.ackCue(item) } } label: {
-                    Image(systemName: "checkmark.circle").font(.mission(.title2)).foregroundStyle(Tok.accent).frame(width: 44, height: 44)
-                }
-                .buttonStyle(.borderless).disabled(life.busyReminders.contains(cue.reminder.id))
-                .accessibilityLabel("Got it: \(cue.reminder.title)")
-            }
-        }
-        .swipeActions(edge: .trailing) { Button("Delete", role: .destructive) { Task { await life.deleteReminder(cue.reminder) } } }
-        .swipeActions(edge: .leading) {
-            Button("Snooze 1 hr", systemImage: "moon.zzz") { Task { await life.snoozeReminder(cue.reminder, until: Date().addingTimeInterval(3600)) } }.tint(MissionTone.reminder.color)
-        }
-    }
-
-    /// A routine due today is one more thing to do today: the same row, with its ring as the control.
-    private func routineRow(_ s: Wire.RoutineStatus) -> some View {
-        let detail = s.done ? "Done today" : [s.count > 0 ? "\(s.count) of \(s.target)" : (s.target > 1 ? "\(s.target) times" : nil), Self.nudgeText(s)].compactMap { $0 }.joined(separator: " · ")
-        return DayRowLayout(title: s.routine.title, detail: detail.isEmpty ? s.hint : detail, dimmed: s.done, warn: s.gap && !s.done) {
-            LogRing(status: s, size: 44)
-        } trailing: {
-            Button { openRoutine = RoutineRef(id: s.id) } label: { Image(systemName: "chevron.right").font(.footnote).foregroundStyle(Tok.muted).frame(width: 32, height: 44) }
-                .buttonStyle(.borderless).accessibilityLabel("Show \(s.routine.title) details")
-        }
-    }
-
-    /// "Next nudge 1:00 PM", or nil when the routine has none left today.
-    static func nudgeText(_ s: Wire.RoutineStatus) -> String? {
-        RoutineSchedule.nextCue(cues: s.routine.cues, zone: s.routine.timeZone).map { "Next nudge \($0.formatted(date: .omitted, time: .shortened))" }
-    }
-
-    /// "5:00 PM" for today; "Thu 9:00 AM" for another day.
-    static func cueTime(_ date: Date) -> String {
-        Calendar.current.isDateInToday(date) ? date.formatted(date: .omitted, time: .shortened)
-            : date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
-    }
-
     // MARK: Your day. One ring for the whole day, a segment for each kind of thing in it.
 
     private var daySegments: [DaySegment] {
@@ -225,7 +140,7 @@ struct TodayView: View {
                 DayRing(segments: segments)
                 VStack(alignment: .leading, spacing: Space.xs) {
                     ForEach(segments) { seg in
-                        Button { withAnimation { proxy.scrollTo(DayKind.tasks, anchor: .top) } } label: {
+                        Button { withAnimation { proxy.scrollTo(seg.kind, anchor: .top) } } label: {
                             HStack(spacing: Space.s) {
                                 RoundedRectangle(cornerRadius: 3, style: .continuous).fill(seg.kind.color).frame(width: 12, height: 12).accessibilityHidden(true)
                                 Text(seg.kind.rawValue).font(.mission(.subheadline)).foregroundStyle(Tok.text)
@@ -241,81 +156,6 @@ struct TodayView: View {
             .padding(.vertical, Space.xs)
         } header: { Text("Your day").font(.mission(.subheadline, .medium)) }
         .listRowBackground(Tok.surface)
-    }
-
-    private func eventRow(_ e: DayEvent) -> some View {
-        DayRowLayout(title: e.title, detail: "\(e.start.formatted(date: .omitted, time: .shortened)) · \(e.minutes) min") {
-            Image(systemName: "calendar").font(.mission(.title3)).foregroundStyle(MissionTone.scheduled.color).accessibilityLabel("Calendar event")
-        } trailing: { EmptyView() }
-        .accessibilityElement(children: .combine)
-    }
-
-    private enum Row: Identifiable {
-        case event(DayEvent), item(Wire.PlanItem), cue(Wire.AgendaItem)
-        var id: String { switch self { case .event(let e): e.id; case .item(let i): i.id; case .cue(let c): "cue:" + c.id } }
-        var start: Date? { switch self { case .event(let e): e.start; case .item(let i): i.startAt; case .cue(let c): c.at } }
-    }
-
-    private var timeline: [Row] {
-        let rows = events.map(Row.event) + life.tasks.filter { $0.kind != "event" && $0.startAt != nil }.map(Row.item) + life.agenda.map(Row.cue)
-        return rows.sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
-    }
-}
-
-/// Every row in the day has the same anatomy: a 44pt slot with the thing's icon or control, the title, and a line of detail that
-/// starts with the time when it has one. Only the icon and the action differ, so a task, a routine, a reminder and a calendar event
-/// read as parts of one list.
-struct DayRowLayout<Leading: View, Trailing: View>: View {
-    let title: String
-    var detail: String?
-    var dimmed = false
-    var strike = false
-    var warn = false
-    @ViewBuilder let leading: Leading
-    @ViewBuilder let trailing: Trailing
-
-    var body: some View {
-        HStack(spacing: Space.m) {
-            leading.frame(width: 44, height: 44)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.mission(.body)).foregroundStyle(dimmed ? Tok.muted : Tok.text).strikethrough(strike).multilineTextAlignment(.leading)
-                if let detail, !detail.isEmpty {
-                    Text(detail).font(.missionMono(.caption)).foregroundStyle(warn ? Tok.warn : Tok.muted).lineLimit(2).multilineTextAlignment(.leading)
-                }
-            }
-            Spacer(minLength: 0)
-            trailing
-        }
-        .frame(minHeight: 52).contentShape(Rectangle())
-    }
-}
-
-struct PlanRow: View {
-    @Environment(Life.self) private var life
-    let item: Wire.PlanItem
-    private var done: Bool { item.doneAt != nil }
-
-    var body: some View {
-        DayRowLayout(title: item.title, detail: detail, dimmed: done, strike: done) {
-            Button { Task { await life.completeTask(item, done: !done) } } label: {
-                Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.mission(.title2)).foregroundStyle(done ? Tok.accent : Tok.muted)
-                    .frame(width: 44, height: 44).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain).disabled(life.busyTasks.contains(item.id))
-            .accessibilityLabel(done ? "Mark \(item.title) not done" : "Mark \(item.title) done")
-        } trailing: {
-            if item.isPriority { Image(systemName: "star.fill").foregroundStyle(MissionTone.attention.color).accessibilityLabel("Priority") }
-        }
-        .swipeActions(edge: .trailing) {
-            Button("Delete", role: .destructive) { Task { await life.deleteTask(item) } }
-        }
-        .swipeActions(edge: .leading) {
-            Button(item.isPriority ? "Unstar" : "Priority", systemImage: "star") { Task { await life.setTaskPriority(item, !item.isPriority) } }.tint(MissionTone.attention.color)
-        }
-    }
-
-    private var detail: String {
-        [item.startAt.map { $0.formatted(date: .omitted, time: .shortened) }, "\(item.minutes) min"].compactMap { $0 }.joined(separator: " · ")
     }
 }
 
@@ -555,8 +395,7 @@ extension DayKind {
     /// Each kind has its own colour; the legend and the ring use the same one.
     var color: Color {
         switch self {
-        case .routines: MissionTone.focus.color
-        case .tasks: MissionTone.scheduled.color
+        case .tasks: MissionTone.focus.color
         case .cues: MissionTone.reminder.color
         }
     }

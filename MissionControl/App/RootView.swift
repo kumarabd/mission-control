@@ -94,6 +94,14 @@ struct MainTabs: View {
                 l.attachPlan(PlanService(api: api))
                 l.attachSettings(SettingsService(api: api))
             }
+            #if DEBUG
+            if Config.devEngine {
+                // Developer mode serves sample data in place of a workspace, so every screen can be run and looked at.
+                let api = DevWorld().api()
+                l.attachReminders(RemindersService(api: api)); l.attachRoutines(RoutinesService(api: api)); l.attachGoals(GoalsService(api: api))
+                l.attachPlan(PlanService(api: api)); l.attachSettings(SettingsService(api: api))
+            }
+            #endif
             life = l
         }
     }

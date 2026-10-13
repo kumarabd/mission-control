@@ -38,10 +38,10 @@ struct ReminderStateChecks {
         precondition(cue("upcoming", "a").hasFired == false && cue("due", "a").hasFired && cue("acknowledged", "a").hasFired)
         precondition(cue("due", "a").id != cue("due", "b").id, "each occurrence is its own item")
 
-        // The ring: routines in units of their target (capped), tasks one each, cues once fired; empty kinds drop out.
+        // The ring: routines (in units of their target, capped) and one-off tasks together are Tasks; reminders count once fired; empty kinds drop out.
         let segments = DayProgress.segments(routines: [routine(2, of: 3), routine(5, of: 1), routine(0, of: 2, scheduled: false)],
                                             tasksDone: 1, tasksTotal: 3, cues: [cue("due", "a"), cue("upcoming", "b"), cue("acknowledged", "c")])
-        precondition(segments == [DaySegment(kind: .routines, done: 3, total: 4), DaySegment(kind: .tasks, done: 1, total: 3), DaySegment(kind: .cues, done: 2, total: 3)],
+        precondition(segments == [DaySegment(kind: .tasks, done: 1 + 3, total: 3 + 4), DaySegment(kind: .cues, done: 2, total: 3)],
                      "a routine over target counts only up to its target; one not scheduled today is left out")
         precondition(DayProgress.segments(routines: [], tasksDone: 0, tasksTotal: 0, cues: []).isEmpty, "an empty day has no ring")
         precondition(DayProgress.segments(routines: [], tasksDone: 0, tasksTotal: 2, cues: []).map(\.kind) == [.tasks], "only kinds with something in them")
