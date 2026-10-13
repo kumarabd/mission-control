@@ -97,7 +97,9 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
     private let ttsPlayback = TTSPlaybackNode()
     private let playsStartupCue: Bool
     private let synthesizer = AVSpeechSynthesizer()
-    private let gateway = MobileGateway()
+    // No saved resume position: it is one number for the whole app, and when it is ahead of this session's turn numbers the
+    // gateway skips the very turn we just started. Replayed history is ignored by `historyLoaded` below.
+    private let gateway = MobileGateway(usesResumeCursor: false)
     private var speechLocale: Locale?
     private var captureFormat: AVAudioFormat?
     private var transcriber: SpeechTranscriber?
