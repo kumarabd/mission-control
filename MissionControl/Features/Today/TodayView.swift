@@ -5,6 +5,7 @@ struct TodayView: View {
     @State private var events: [DayEvent] = []
     @State private var minutes: Int?
     @State private var sheet: Sheet?
+    @State private var detail: ReminderRef?
 
     enum Sheet: Identifiable { case add, reminder, replan, close
         var id: Self { self }
@@ -42,6 +43,7 @@ struct TodayView: View {
                 case .close: CloseDaySheet()
                 }
             }
+            .sheet(item: $detail) { ReminderDetailSheet(id: $0.id) }
             .task { events = await DayEvents.today() }
             .alert("Something went wrong", isPresented: Binding(get: { life.error != nil }, set: { if !$0 { life.error = nil } })) {
                 Button("OK") { life.error = nil }
@@ -123,28 +125,49 @@ struct TodayView: View {
     private var remindersSection: some View {
         Section {
             ForEach(life.reminders) { r in
-                Button { Task { await life.completeReminder(r) } } label: {
-                    HStack(spacing: Space.m) {
-                        Image(systemName: "circle").foregroundStyle(MissionTone.reminder.color)
-                        VStack(alignment: .leading) {
-                            Text(r.title).font(.mission(.body)).foregroundStyle(Tok.text)
-                            if let when = r.snoozedUntil ?? r.dueAt {
-                                Label(when.formatted(date: .abbreviated, time: .shortened), systemImage: r.recurrence == nil ? "clock" : "repeat")
-                                    .font(.missionMono(.caption)).foregroundStyle(when < Date() ? Tok.warn : Tok.muted)
-                            }
+                reminderRow(r)
+                    .swipeActions(edge: .trailing) {
+                        Button("Delete", role: .destructive) { Task { await life.deleteReminder(r) } }
+                    }
+                    .swipeActions(edge: .leading) {
+                        if !r.doneForNow() {
+                            Button("Snooze 1 hr", systemImage: "moon.zzz") { Task { await life.snoozeReminder(r, until: Date().addingTimeInterval(3600)) } }.tint(MissionTone.reminder.color)
                         }
-                    }.frame(minHeight: 44)
-                }
-                .accessibilityLabel("\(r.title). Mark done")
-                .swipeActions(edge: .trailing) {
-                    Button("Delete", role: .destructive) { Task { await life.deleteReminder(r) } }
-                }
-                .swipeActions(edge: .leading) {
-                    Button("Snooze 1 hr", systemImage: "moon.zzz") { Task { await life.snoozeReminder(r, until: Date().addingTimeInterval(3600)) } }.tint(MissionTone.reminder.color)
-                }
+                    }
             }
         } header: { Text("Reminders").font(.mission(.subheadline, .medium)) }
         .listRowBackground(Tok.surface)
+    }
+
+    /// The tick completes it; the rest of the row opens its details. A finished one stays, struck through.
+    private func reminderRow(_ r: Wire.Reminder) -> some View {
+        let done = r.doneForNow()
+        return HStack(spacing: Space.s) {
+            Button { Task { await life.completeReminder(r) } } label: {
+                Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.title2)
+                    .foregroundStyle(done ? Tok.accent : MissionTone.reminder.color)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless).disabled(done || life.busyReminders.contains(r.id))
+            .accessibilityLabel(done ? "\(r.title), done" : "Mark \(r.title) done")
+
+            Button { detail = ReminderRef(id: r.id) } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(r.title).font(.mission(.body)).foregroundStyle(done ? Tok.muted : Tok.text).strikethrough(done)
+                        if let when = r.snoozedUntil ?? r.dueAt {
+                            Label(when.formatted(date: .abbreviated, time: .shortened), systemImage: r.recurrence == nil ? "clock" : "repeat")
+                                .font(.missionMono(.caption)).foregroundStyle(!done && when < Date() ? Tok.warn : Tok.muted)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").font(.footnote).foregroundStyle(Tok.muted)
+                }
+                .frame(minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("\(r.title). Show details")
+        }
     }
 
     private func eventRow(_ e: DayEvent) -> some View {
@@ -361,5 +384,68 @@ struct AddReminderSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+}
+
+
+struct ReminderRef: Identifiable { let id: String }
+
+/// Everything the engine holds about one reminder, with the same actions as the row. It reads the live list, so a change made
+/// here (or by the assistant) shows straight away.
+struct ReminderDetailSheet: View {
+    let id: String
+    @Environment(Life.self) private var life
+    @Environment(\.dismiss) private var dismiss
+
+    private var reminder: Wire.Reminder? { life.reminders.first { $0.id == id } }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let r = reminder { details(r) } else {
+                    ContentUnavailableView("This reminder is gone", systemImage: "bell.slash", description: Text("It was finished a while ago or removed."))
+                }
+            }
+            .scrollContentBackground(.hidden).screenBackground()
+            .navigationTitle("Reminder").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func details(_ r: Wire.Reminder) -> some View {
+        let done = r.doneForNow()
+        return List {
+            Section {
+                Text(r.title).font(.mission(.title3)).strikethrough(done).foregroundStyle(done ? Tok.muted : Tok.text)
+                if !r.notes.isEmpty { Text(r.notes).font(.mission(.body)).foregroundStyle(Tok.text) }
+            }
+            Section("When") {
+                row("Due", r.dueAt.map { $0.formatted(date: .complete, time: .shortened) } ?? "No time set")
+                if let until = r.snoozedUntil { row("Snoozed until", until.formatted(date: .abbreviated, time: .shortened)) }
+                if let rule = r.repeatDescription { row("Repeats", rule) }
+                if r.dueAt != nil { row("Time zone", r.timeZone) }
+            }
+            Section("Status") {
+                row("State", r.isDone ? "Done" : done ? "Done for now" : "Open")
+                if let when = r.completedAt ?? r.lastCompletedAt { row(r.isDone ? "Finished" : "Last done", when.formatted(date: .abbreviated, time: .shortened)) }
+            }
+            Section("Origin") {
+                row("Set by", r.source == "agent" ? "Your assistant" : "You")
+                row("Created", r.createdAt.formatted(date: .abbreviated, time: .shortened))
+            }
+            if !r.isDone {
+                Section {
+                    if !done { Button("Mark done", systemImage: "checkmark.circle") { Task { await life.completeReminder(r) } }.disabled(life.busyReminders.contains(r.id)) }
+                    if !done { Button("Snooze for an hour", systemImage: "moon.zzz") { Task { await life.snoozeReminder(r, until: Date().addingTimeInterval(3600)) } } }
+                    Button("Delete", systemImage: "trash", role: .destructive) { Task { await life.deleteReminder(r); dismiss() } }
+                }
+            }
+        }
+        .listRowBackground(Tok.surface)
+    }
+
+    private func row(_ label: String, _ value: String) -> some View {
+        LabeledContent(label) { Text(value).foregroundStyle(Tok.muted).multilineTextAlignment(.trailing) }
     }
 }

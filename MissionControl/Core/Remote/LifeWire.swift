@@ -129,3 +129,49 @@ enum Wire {
         let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f
     }()
 }
+
+
+extension Wire.Reminder {
+    /// Done, or a repeating reminder whose latest occurrence has been ticked off. It stays on screen, struck through, until
+    /// the next occurrence is due (a repeating reminder is never "finished", so the engine keeps it pending).
+    func doneForNow(now: Date = Date()) -> Bool {
+        if isDone { return true }
+        guard let rule = recurrence, let completed = lastCompletedAt, let due = snoozedUntil == nil ? dueAt : nil else { return false }
+        return completed > due.addingTimeInterval(-rule.approximatePeriod)
+    }
+
+    /// Open reminders always; a finished one only for a day, so the list shows what you just did without keeping it forever.
+    func isShown(now: Date = Date()) -> Bool {
+        guard isDone else { return true }
+        return (completedAt ?? updatedAt) > now.addingTimeInterval(-24 * 3600)
+    }
+
+    /// "Every day", "Every 2 weeks on Mon, Wed", for the detail screen.
+    var repeatDescription: String? {
+        guard let rule = recurrence else { return nil }
+        let n = max(rule.interval ?? 1, 1)
+        let unit = ["daily": "day", "weekly": "week", "monthly": "month"][rule.freq] ?? rule.freq
+        var text = n == 1 ? "Every \(unit)" : "Every \(n) \(unit)s"
+        if rule.freq == "weekly", let days = rule.weekdays, !days.isEmpty {
+            let names = Calendar.current.shortWeekdaySymbols
+            text += " on " + days.sorted().compactMap { names.indices.contains($0) ? names[$0] : nil }.joined(separator: ", ")
+        }
+        return text
+    }
+}
+
+extension Wire.Recurrence {
+    /// The shortest gap between two occurrences, for deciding whether the latest one has been completed.
+    var approximatePeriod: TimeInterval {
+        let n = TimeInterval(max(interval ?? 1, 1))
+        switch freq {
+        case "daily": return n * 86_400
+        case "monthly": return n * 28 * 86_400
+        default:
+            guard let days = weekdays, days.count > 1 else { return n * 7 * 86_400 }
+            let sorted = days.sorted()
+            let gaps = zip(sorted, sorted.dropFirst() + [sorted[0] + 7]).map { $1 - $0 }
+            return TimeInterval(gaps.min() ?? 7) * 86_400
+        }
+    }
+}

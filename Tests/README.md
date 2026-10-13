@@ -76,3 +76,7 @@ xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift Mission
 ```
 
 `Tests/Fixtures/life` is copied from the `life-engine` repository's `fixtures/`; regenerate there when the contract changes.
+
+Reminder state (when a reminder shows as done, and for how long):
+
+    xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift Tests/ReminderStateChecks.swift -o /private/tmp/reminder-state-checks && /private/tmp/reminder-state-checks

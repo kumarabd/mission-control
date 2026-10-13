@@ -6,7 +6,7 @@ import Foundation
 struct RemindersService {
     var api: LifeAPI
 
-    private struct ListIn: Encodable { var status = "pending"; var limit = 200 }
+    private struct ListIn: Encodable { var status = "all"; var limit = 200 }
     private struct CreateIn: Encodable {
         var idempotencyKey: String; var title: String; var notes: String?; var dueAt: Date?
         var timeZone: String; var recurrence: Wire.Recurrence?; var source = "user"
@@ -14,8 +14,8 @@ struct RemindersService {
     private struct EditIn: Encodable { var idempotencyKey: String; var id: String; var expectedVersion: Int }
     private struct SnoozeIn: Encodable { var idempotencyKey: String; var id: String; var expectedVersion: Int; var until: Date }
 
-    /// Pending reminders, soonest first (undated last).
-    func pending() async throws -> [Wire.Reminder] {
+    /// Reminders soonest first (undated last), finished ones included; the caller decides how long a finished one stays visible.
+    func list() async throws -> [Wire.Reminder] {
         let page: Wire.Page<Wire.Reminder> = try await api.call("reminders_list", ListIn())
         return page.items
     }

@@ -27,16 +27,39 @@ final class Life {
 
     func loadReminders() async {
         guard let service = reminderService else { return }
-        do { reminders = try await service.pending(); await Notifier.sync(reminders) } catch { self.error = Self.reminderMessage(error) }
+        do { reminders = try await service.list().filter { $0.isShown() }; await Notifier.sync(reminders) } catch { self.error = Self.reminderMessage(error) }
     }
 
     @discardableResult
     func addReminder(title: String, notes: String? = nil, due: Date?, recurrence: Wire.Recurrence? = nil) async -> Bool {
         await reminderAction { try await $0.create(title: title, notes: notes, due: due, recurrence: recurrence) }
     }
-    func completeReminder(_ r: Wire.Reminder) async { await reminderAction { try await $0.complete(r) } }
-    func snoozeReminder(_ r: Wire.Reminder, until: Date) async { await reminderAction { try await $0.snooze(r, until: until) } }
-    func deleteReminder(_ r: Wire.Reminder) async { await reminderAction { try await $0.delete(r) } }
+    /// Reminders with a change in flight. A second tap on the same one waits, so it cannot collide with its own first.
+    private(set) var busyReminders: Set<String> = []
+
+    func completeReminder(_ r: Wire.Reminder) async {
+        guard !busyReminders.contains(r.id), !r.doneForNow() else { return }
+        busyReminders.insert(r.id); defer { busyReminders.remove(r.id) }
+        guard let service = reminderService else { error = "Reminders need your workspace, and it isn't reachable right now."; return }
+        do { _ = try await service.complete(r); error = nil; await loadReminders() }
+        catch LifeError.engine(let code, _) where code == "conflict" {
+            // It changed under us (the assistant edited it, or it already fired). Look again; only try once more if it is still open.
+            await loadReminders()
+            guard let fresh = reminders.first(where: { $0.id == r.id }), !fresh.doneForNow() else { return }
+            do { _ = try await service.complete(fresh); error = nil } catch { self.error = Self.reminderMessage(error) }
+            await loadReminders()
+        } catch { self.error = Self.reminderMessage(error); await loadReminders() }
+    }
+    func snoozeReminder(_ r: Wire.Reminder, until: Date) async {
+        guard !busyReminders.contains(r.id) else { return }
+        busyReminders.insert(r.id); defer { busyReminders.remove(r.id) }
+        await reminderAction { try await $0.snooze(r, until: until) }
+    }
+    func deleteReminder(_ r: Wire.Reminder) async {
+        guard !busyReminders.contains(r.id) else { return }
+        busyReminders.insert(r.id); defer { busyReminders.remove(r.id) }
+        await reminderAction { try await $0.delete(r) }
+    }
 
     /// Runs a change, then re-reads the list so the screen shows the server's truth (including a stale-version refusal).
     @discardableResult
