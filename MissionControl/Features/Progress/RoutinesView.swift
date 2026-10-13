@@ -12,8 +12,12 @@ struct LogRing: View {
     var size: CGFloat = 48
     /// False where the ring only shows how the routine is going (on a goal); recording happens in the routine's own screen.
     var interactive = true
+    /// True on a sage card: the ring is drawn in the card's ink instead of the accent, which would vanish against it.
+    var onAccent = false
 
     private var lineWidth: CGFloat { size * 0.09 }
+    private var ink: Color { onAccent ? Tok.onAccent : Tok.accent }
+    private var track: Color { onAccent ? Tok.onAccent.opacity(0.3) : Tok.hairline }
     private var segments: Int { min(status.target, 12) }
 
     var body: some View {
@@ -46,15 +50,15 @@ struct LogRing: View {
                 ForEach(0..<segments, id: \.self) { i in
                     let gap = segments > 1 ? 0.02 : 0
                     let start = Double(i) / Double(segments) + gap / 2, end = Double(i + 1) / Double(segments) - gap / 2
-                    Circle().trim(from: start, to: end).stroke(i < status.count ? Tok.accent : Tok.hairline, style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
+                    Circle().trim(from: start, to: end).stroke(i < status.count ? ink : track, style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
                         .rotationEffect(.degrees(-90))
                         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: status.count)
                 }
                 if status.done {
-                    Circle().fill(Tok.accent).padding(lineWidth * 1.4)
-                    Image(systemName: "checkmark").font(.system(size: size * 0.32, weight: .bold)).foregroundStyle(Tok.onAccent)
+                    Circle().fill(ink).padding(lineWidth * 1.4)
+                    Image(systemName: "checkmark").font(.system(size: size * 0.32, weight: .bold)).foregroundStyle(onAccent ? Tok.accent : Tok.onAccent)
                 } else {
-                    Image(systemName: "checkmark").font(.system(size: size * 0.3, weight: .bold)).foregroundStyle(Tok.accent.opacity(0.4))
+                    Image(systemName: "checkmark").font(.system(size: size * 0.3, weight: .bold)).foregroundStyle(ink.opacity(0.45))
                 }
             }
         }

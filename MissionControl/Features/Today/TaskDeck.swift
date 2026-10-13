@@ -101,7 +101,7 @@ struct TaskDeck: View {
         let progress = min(abs(drag) / threshold, 1)
         return ZStack {
             ForEach(Array(deck.prefix(3).enumerated()).reversed(), id: \.element.id) { depth, card in
-                face(card)
+                face(card, depth: depth)
                     .scaleEffect(depth == 0 ? 1 : 1 - 0.05 * CGFloat(depth) + (depth == 1 ? 0.05 * progress : 0))
                     .offset(y: depth == 0 ? 0 : CGFloat(depth) * 12 - (depth == 1 ? 12 * progress : 0))
                     .opacity(depth == 2 ? 0.75 : 1)
@@ -123,32 +123,40 @@ struct TaskDeck: View {
         .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.42, dampingFraction: 0.82), value: deck.map(\.id))
     }
 
-    private func face(_ card: TaskCard) -> some View {
-        VStack(alignment: .leading, spacing: Space.s) {
+    /// The top card is the theme's sage, solid with a soft gradient; the cards behind step through lighter tints of the same sage, so the
+    /// stack reads as depth and a card that rises to the top turns sage as it arrives. Text on every card clears 4.5:1 in light and dark.
+    private func face(_ card: TaskCard, depth: Int) -> some View {
+        let top = depth == 0
+        let ink = top ? Tok.onAccent : Tok.text
+        let quiet = top ? Tok.onAccent.opacity(0.92) : Tok.text.opacity(0.85)
+        let fill: AnyShapeStyle = top
+            ? AnyShapeStyle(LinearGradient(colors: [Tok.accent, Tok.accent.mix(with: .black, by: 0.16)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            : AnyShapeStyle(Tok.accent.mix(with: Tok.surface, by: depth == 1 ? 0.62 : 0.8))
+        return VStack(alignment: .leading, spacing: Space.s) {
             HStack {
-                Label(card.kind, systemImage: card.symbol).font(.missionMono(.caption, .medium)).foregroundStyle(Tok.accent)
+                Label(card.kind, systemImage: card.symbol).font(.missionMono(.caption, .medium)).foregroundStyle(top ? Tok.onAccent : Tok.text.opacity(0.85))
                 Spacer()
-                if case .routine(let s) = card { LogRing(status: s, size: 52, interactive: false) }
+                if case .routine(let s) = card { LogRing(status: s, size: 52, interactive: false, onAccent: top) }
             }
-            Text(card.title).font(.mission(.title2, .medium)).foregroundStyle(Tok.text).lineLimit(3).multilineTextAlignment(.leading)
-            Text(card.detail).font(.missionMono(.subheadline)).foregroundStyle(Tok.muted).lineLimit(2).multilineTextAlignment(.leading)
+            Text(card.title).font(.mission(.title2, .medium)).foregroundStyle(ink).lineLimit(3).multilineTextAlignment(.leading)
+            Text(card.detail).font(.missionMono(.subheadline)).foregroundStyle(quiet).lineLimit(2).multilineTextAlignment(.leading)
             Spacer(minLength: 0)
         }
         .padding(Space.l)
         .frame(maxWidth: .infinity, minHeight: 176, maxHeight: 176, alignment: .topLeading)
-        .background(Tok.surface, in: MissionTheme.cardShape)
-        .overlay { MissionTheme.cardShape.strokeBorder(Tok.hairline) }
-        .shadow(color: .black.opacity(0.08), radius: 10, y: 5)
+        .background(fill, in: MissionTheme.cardShape)
+        .overlay { MissionTheme.cardShape.strokeBorder(Color.white.opacity(top ? 0.16 : 0.0), lineWidth: 1) }
+        .shadow(color: Tok.accent.opacity(top ? 0.30 : 0.12), radius: top ? 16 : 8, y: top ? 9 : 4)
     }
 
     /// What the swipe will do, shown on the edge it is heading for as the card moves.
     private func hints(progress: CGFloat) -> some View {
         ZStack {
-            MissionTheme.cardShape.fill((drag >= 0 ? Tok.accent : Tok.muted).opacity(0.14 * progress))
+            MissionTheme.cardShape.fill((drag >= 0 ? Color.white : Color.black).opacity((drag >= 0 ? 0.16 : 0.18) * progress))
             HStack {
-                hint("checkmark", color: Tok.accent, show: drag > 0, amount: progress)
+                hint("checkmark", color: Tok.onAccent, show: drag > 0, amount: progress)
                 Spacer()
-                hint("forward.end.fill", color: Tok.muted, show: drag < 0, amount: progress)
+                hint("forward.end.fill", color: Tok.onAccent, show: drag < 0, amount: progress)
             }
             .padding(.horizontal, Space.l)
         }

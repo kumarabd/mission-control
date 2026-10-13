@@ -51,3 +51,7 @@ One list, headed **Tasks**, on Today. Every row has the same anatomy (`DayRowLay
 | Calendar event | `calendar` | `time · minutes` | none |
 
 Untimed tasks and routines come first, then timed rows in time order. Reminders on later days follow under **Later**. The ring's legend jumps to this list.
+
+## Task cards
+
+The Tasks stack is the theme's sage: the top card is solid `Tok.accent` with a soft gradient to a darker sage and `Tok.onAccent` text; the two cards behind are lighter tints of the same sage (`Tok.accent.mix(with: Tok.surface, by: 0.62` and `0.8`) with `Tok.text`. Text clears 4.5:1 in light and dark (title 6.1, secondary 5.5 on the card; 4.8 at the weakest on a card behind). A routine's ring on a sage card is drawn in the card's ink, because the accent would vanish against it.
