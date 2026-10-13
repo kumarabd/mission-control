@@ -7,7 +7,7 @@ struct TodayView: View {
     @State private var detail: ReminderRef?
     @State private var openRoutine: RoutineRef?
 
-    enum Sheet: Identifiable { case add, reminder, replan, close
+    enum Sheet: Identifiable { case add, reminder, replan, close, time
         var id: Self { self }
     }
 
@@ -45,6 +45,7 @@ struct TodayView: View {
                     Menu {
                         Button("Add to today", systemImage: "checklist") { sheet = .add }
                         Button("Add a reminder", systemImage: "bell") { sheet = .reminder }
+                        Button("I have a few minutes", systemImage: "clock") { sheet = .time }
                         Button("My day changed", systemImage: "arrow.triangle.2.circlepath") { sheet = .replan }
                         Button("Close the day", systemImage: "moon.stars") { sheet = .close }
                     } label: { Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44) }
@@ -57,6 +58,7 @@ struct TodayView: View {
                 case .reminder: AddReminderSheet()
                 case .replan: ReplanSheet()
                 case .close: CloseDaySheet()
+                case .time: TimeSheet()
                 }
             }
             .sheet(item: $detail) { ReminderDetailSheet(id: $0.id) }
@@ -405,5 +407,47 @@ struct DayRing: View {
         .frame(width: size, height: size)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Your day: \(done) of \(total) done. " + segments.map { "\($0.kind.rawValue) \($0.done) of \($0.total)" }.joined(separator: ", "))
+    }
+}
+
+/// "I have 10 minutes": the one thing worth doing in the time you have, from the engine.
+struct TimeSheet: View {
+    @Environment(Life.self) private var life
+    @Environment(\.dismiss) private var dismiss
+    @State private var minutes: Int?
+    @State private var chosen: Wire.Suggestion?
+    @State private var choosing = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: Space.l) {
+                Text("How long do you have?").font(.mission(.title3, .medium))
+                HStack(spacing: Space.s) {
+                    ForEach([10, 20, 45], id: \.self) { m in Chip(title: "\(m) min", selected: minutes == m) { minutes = m } }
+                }
+                if choosing { ProgressView() }
+                else if let s = chosen {
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        Text(s.title).font(.mission(.headline, .medium))
+                        Text("\(s.minutes) min · \(s.reason)").font(.mission(.subheadline)).foregroundStyle(Tok.muted)
+                        Button("Mark done") { Task { await life.completeSuggestion(s); dismiss() } }
+                            .buttonStyle(SecondaryButtonStyle()).padding(.top, Space.xs)
+                    }
+                } else if let minutes {
+                    Text("Nothing planned fits \(minutes) minutes. Take the break, or capture something small.")
+                        .font(.mission(.subheadline)).foregroundStyle(Tok.muted)
+                }
+                Spacer()
+            }
+            .padding(Space.l).frame(maxWidth: .infinity, alignment: .leading)
+            .screenBackground()
+            .navigationTitle("A few minutes").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
+            .task(id: minutes) {
+                guard let minutes else { return }
+                choosing = true; chosen = await life.suggestion(minutes: minutes); choosing = false
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
