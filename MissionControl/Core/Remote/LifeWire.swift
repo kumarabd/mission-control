@@ -125,6 +125,8 @@ enum Wire {
         var id: String; var title: String; var why: String; var weeklyTarget: Int
         var archivedAt: Date?; var version: Int
         var steps: [Step]; var progress: Progress; var nextStep: Step?
+        /// Routines that serve this goal; tracked as routines, not as steps. Absent from an older engine.
+        var routineIds: [String]?
     }
 
     struct PlanItem: Codable, Equatable, Identifiable {

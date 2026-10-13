@@ -41,7 +41,9 @@ struct GoalRow: View {
             }
             if let n = goal.nextStep { Text("Next: \(n.title)").font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
             else if goal.progress.total > 0 { Text("All steps done").font(.mission(.subheadline)).foregroundStyle(Tok.accent) }
-            else { Text("No steps yet").font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
+            else if (goal.routineIds ?? []).isEmpty { Text("No steps yet").font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
+            let n = (goal.routineIds ?? []).count
+            if n > 0 { Label("\(n) \(n == 1 ? "routine" : "routines")", systemImage: "repeat").font(.mission(.caption)).foregroundStyle(Tok.muted) }
         }
         .padding(.vertical, Space.xs)
         .accessibilityElement(children: .combine)
@@ -55,6 +57,7 @@ struct GoalDetail: View {
     @State private var newStep = ""
     @State private var askAssistant: AssistantPrompt?
     @State private var confirmArchive = false
+    @State private var openRoutine: RoutineRef?
 
     struct AssistantPrompt: Identifiable { let id = UUID(); let text: String }
 
@@ -67,10 +70,18 @@ struct GoalDetail: View {
                     MarkdownView(text: Overview.goal(goal))
                     if goal.progress.total > 0 {
                         MissionProgressBar(fraction: Double(goal.progress.done) / Double(goal.progress.total),
-                                           label: "\(goal.progress.done) of \(goal.progress.total) steps · \(goal.weeklyTarget) a week")
+                                           label: "\(goal.progress.done) of \(goal.progress.total) one-off steps")
                     }
                 }
                 .listRowBackground(Tok.surface)
+                let routines = life.routines.filter { (goal.routineIds ?? []).contains($0.id) }
+                if !routines.isEmpty {
+                    Section {
+                        ForEach(routines) { r in RoutineRow(status: r) { openRoutine = RoutineRef(id: r.id) } }
+                    } header: { Text("Routines that serve it").font(.mission(.subheadline, .medium)) }
+                    footer: { Text("Tracked as routines: record them here or on their own screen.").font(.mission(.footnote)) }
+                    .listRowBackground(Tok.surface)
+                }
                 Section {
                     ForEach(goal.steps) { s in
                         Button { Task { await life.setStepDone(s, done: s.doneAt == nil) } } label: {
@@ -88,7 +99,8 @@ struct GoalDetail: View {
                         TextField("Add a step", text: $newStep).font(.mission(.body)).onSubmit(add)
                         Button("Add", action: add).disabled(newStep.trimmed.isEmpty)
                     }
-                } header: { Text("Steps").font(.mission(.subheadline, .medium)) }
+                } header: { Text("One-off steps").font(.mission(.subheadline, .medium)) }
+                footer: { Text("Tasks you do once. Anything you repeat is a routine.").font(.mission(.footnote)) }
                 .listRowBackground(Tok.surface)
                 Section {
                     Button { askAssistant = AssistantPrompt(text: "I keep putting off \u{201C}\(goal.title)\u{201D}. Help me make the next step smaller. ") } label: {
@@ -103,6 +115,7 @@ struct GoalDetail: View {
             }
             .scrollContentBackground(.hidden).screenBackground()
             .navigationTitle(goal.title).navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(item: $openRoutine) { RoutineDetailView(id: $0.id) }
             .sheet(item: $askAssistant) { CaptureSheet(draft: $0.text).environment(life) }
             .confirmationDialog("Archive this goal?", isPresented: $confirmArchive, titleVisibility: .visible) {
                 Button("Archive", role: .destructive) { Task { await life.archiveGoal(goal); dismiss() } }

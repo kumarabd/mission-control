@@ -44,6 +44,9 @@ struct LifeContractChecks {
         precondition(history.days.count == 14)
         precondition(history.days.last?.count == 1 && history.days.last?.target == 3 && history.last7.scheduled == 7 && history.bestStreak >= 0)
 
+        let linked = load(Wire.Goal.self, "goal_linked", in: dir)
+        precondition(linked.routineIds == ["77777777-7777-4777-8777-777777777777"], "a goal lists the routines that serve it")
+        precondition(load(Wire.Goal.self, "goal", in: dir).routineIds == [])
         let goal = load(Wire.Goal.self, "goal", in: dir)
         precondition(goal.steps.count == 2 && goal.steps[1].position == 2 && goal.nextStep?.title == "Pick a course" && goal.progress == .init(done: 0, total: 2) && goal.weeklyTarget == 4)
         precondition(load(Wire.Page<Wire.Goal>.self, "goals_page", in: dir).items.first?.progress.done == 1)

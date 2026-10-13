@@ -83,14 +83,23 @@ struct RoutinesList: View {
         .task { await life.loadRoutines() }
     }
 
-    private func row(_ s: Wire.RoutineStatus) -> some View {
+    private func row(_ s: Wire.RoutineStatus) -> some View { RoutineRow(status: s) { open = RoutineRef(id: s.id) } }
+}
+
+/// A routine as a row: the ring records one, the text opens the tracker. Used by the routines list and by a goal's routines.
+struct RoutineRow: View {
+    let status: Wire.RoutineStatus
+    let open: () -> Void
+
+    var body: some View {
         HStack(spacing: Space.m) {
-            LogRing(status: s)
-            Button { open = RoutineRef(id: s.id) } label: {
+            LogRing(status: status)
+            Button(action: open) {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(s.routine.title).font(.mission(.body)).foregroundStyle(Tok.text)
-                        Text(s.scheduled ? s.hint : (s.nextText.map { "Next: \($0)" } ?? "Not today")).font(.mission(.caption)).foregroundStyle(s.gap ? Tok.warn : Tok.muted).lineLimit(2).multilineTextAlignment(.leading)
+                        Text(status.routine.title).font(.mission(.body)).foregroundStyle(Tok.text)
+                        Text(status.scheduled ? status.hint : (status.nextText.map { "Next: \($0)" } ?? "Not today")).font(.mission(.caption))
+                            .foregroundStyle(status.gap ? Tok.warn : Tok.muted).lineLimit(2).multilineTextAlignment(.leading)
                     }
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right").font(.footnote).foregroundStyle(Tok.muted)
@@ -98,7 +107,7 @@ struct RoutinesList: View {
                 .frame(minHeight: 48).contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel("\(s.routine.title). Show details")
+            .accessibilityLabel("\(status.routine.title). Show details")
         }
     }
 }
