@@ -52,6 +52,6 @@ One list, headed **Tasks**, on Today. Every row has the same anatomy (`DayRowLay
 
 Untimed tasks and routines come first, then timed rows in time order. Reminders on later days follow under **Later**. The ring's legend jumps to this list.
 
-## Task cards
+## Tasks list
 
-Cards in the Tasks stack are the app's own surface (`Tok.surface`), like every other card. Sage is used only for meaning: the kind label, the ring, and a sage edge on the top card. Cards behind are a touch deeper (surface mixed 6% / 10% with sage). The swipe is the only control (right does it, left leaves it for later); the same two actions are VoiceOver actions. There are no buttons under the stack.
+Tasks are plain native list rows, not cards. The first row is set larger because it is what to do now. The ring (routines) or empty circle (tasks, milestones) on the left does the task; swipe right does it, swipe left leaves it for later (to the end of the list), both also VoiceOver actions. An icon-only undo row appears after the last action. Sage appears only in the ring and circle.

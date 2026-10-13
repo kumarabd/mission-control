@@ -48,31 +48,25 @@ extension Wire.RoutineStatus {
     }
 }
 
-/// The day's tasks as a stack of cards. The top card is what to do now.
+/// The day's tasks as plain list rows, the first one set larger because it is what to do now.
 ///
-/// Swipe right to do it (a routine records one more time), swipe left to leave it for later (it goes to the back of the stack). The card
-/// follows the finger, tilts a little, and reveals what the swipe will do. Every swipe has a visible button and a VoiceOver action,
-/// and the last action can be undone.
+/// The ring or circle on the left does the task (a routine records one more time). Swipe right does it too, swipe left leaves it for
+/// later (it goes to the end of the list). Both are VoiceOver actions as well, and the last one can be undone from the row at the end.
 struct TaskDeck: View {
     @Environment(Life.self) private var life
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let cards: [TaskCard]
     let doneToday: Int
     let open: (TaskCard) -> Void
 
     @State private var backOfLine: [String] = []     // cards left for later, in the order they were left
-    @State private var departing: Set<String> = []   // cards that have left the stack while their action is being saved
+    @State private var departing: Set<String> = []   // cards that have left the list while their action is being saved
     @State private var firstUp: String?              // a card an undo brought back to the top
-    @State private var draggedID: String?
-    @State private var drag: CGFloat = 0
     @State private var busy = false
-    @State private var crossed = false
     @State private var completions = 0
     @State private var undo: Undo?
 
-    private enum Direction { case left, right }
+    private enum Direction { case later, done }
     private enum Undo { case unlog(routine: String, card: String), uncomplete(task: String, card: String), unskip(card: String) }
-    private let threshold: CGFloat = 110
 
     private var deck: [TaskCard] {
         let live = cards.filter { !departing.contains($0.id) }
@@ -83,147 +77,80 @@ struct TaskDeck: View {
     }
 
     var body: some View {
-        VStack(spacing: Space.m) {
-            if let top = deck.first {
-                stack(top)
-            } else {
-                empty
-            }
+        Group {
+            if deck.isEmpty { empty }
+            ForEach(Array(deck.enumerated()), id: \.element.id) { index, card in row(card, first: index == 0) }
+            if !deck.isEmpty, undo != nil { undoRow }
         }
-        .sensoryFeedback(.selection, trigger: crossed)
         .sensoryFeedback(.success, trigger: completions)
     }
 
-    // MARK: The stack
-
-    private func stack(_ top: TaskCard) -> some View {
-        let progress = min(abs(drag) / threshold, 1)
-        return ZStack {
-            ForEach(Array(deck.prefix(3).enumerated()).reversed(), id: \.element.id) { depth, card in
-                face(card, depth: depth)
-                    .scaleEffect(depth == 0 ? 1 : 1 - 0.05 * CGFloat(depth) + (depth == 1 ? 0.05 * progress : 0))
-                    .offset(y: depth == 0 ? 0 : CGFloat(depth) * 12 - (depth == 1 ? 12 * progress : 0))
-                    .opacity(depth == 2 ? 0.75 : 1)
-                    .offset(x: card.id == draggedID ? drag : 0)
-                    .rotationEffect(.degrees(reduceMotion || card.id != draggedID ? 0 : Double(drag) / 20), anchor: .bottom)
-                    .overlay { if depth == 0 { hints(progress: progress) } }
-                    .zIndex(Double(3 - depth))
-                    .allowsHitTesting(depth == 0)
-                    .gesture(depth == 0 ? swipe(top) : nil)
-                    .onTapGesture { if depth == 0, !busy { open(card) } }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityHidden(depth != 0)
-                    .accessibilityHint("Swipe right to do it, left to leave it for later")
-                    .accessibilityAction(named: Text(top.doneActionName)) { commit(top, .right) }
-                    .accessibilityAction(named: Text("Leave for later")) { commit(top, .left) }
+    private func row(_ card: TaskCard, first: Bool) -> some View {
+        HStack(spacing: Space.m) {
+            Button { commit(card, .done) } label: { mark(card).frame(minWidth: 44, minHeight: 44) }
+                .buttonStyle(.borderless).disabled(busy)
+                .accessibilityLabel(card.doneActionName)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(card.title).font(.mission(first ? .title3 : .body, first ? .medium : .regular)).foregroundStyle(Tok.text)
+                Text(card.detail).font(.missionMono(.footnote)).foregroundStyle(Tok.muted).lineLimit(2)
             }
-        }
-        .frame(height: 176 + 24)
-        .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.42, dampingFraction: 0.82), value: deck.map(\.id))
-    }
-
-    /// Cards are the app's own surface, like every other card, with sage only where it means something: the kind label, the ring and a
-    /// sage edge on the top card. The cards behind sit slightly deeper so the stack reads as depth without a second palette.
-    private func face(_ card: TaskCard, depth: Int) -> some View {
-        let top = depth == 0
-        return VStack(alignment: .leading, spacing: Space.s) {
-            HStack {
-                Label(card.kind, systemImage: card.symbol).font(.missionMono(.caption, .medium)).foregroundStyle(Tok.accent)
-                Spacer()
-                if case .routine(let s) = card { LogRing(status: s, size: 52, interactive: false) }
-            }
-            Text(card.title).font(.mission(.title2, .medium)).foregroundStyle(Tok.text).lineLimit(3).multilineTextAlignment(.leading)
-            Text(card.detail).font(.missionMono(.subheadline)).foregroundStyle(Tok.muted).lineLimit(2).multilineTextAlignment(.leading)
             Spacer(minLength: 0)
         }
-        .padding(Space.l)
-        .frame(maxWidth: .infinity, minHeight: 176, maxHeight: 176, alignment: .topLeading)
-        .background(Tok.surface.mix(with: Tok.accent, by: top ? 0.0 : (depth == 1 ? 0.06 : 0.1)), in: MissionTheme.cardShape)
-        .overlay { MissionTheme.cardShape.strokeBorder(top ? Tok.accent.opacity(0.35) : Tok.hairline, lineWidth: top ? 1.5 : 1) }
-        .shadow(color: .black.opacity(top ? 0.12 : 0.05), radius: top ? 14 : 6, y: top ? 8 : 3)
-    }
-
-    /// What the swipe will do, shown on the edge it is heading for as the card moves.
-    private func hints(progress: CGFloat) -> some View {
-        ZStack {
-            MissionTheme.cardShape.fill((drag >= 0 ? Tok.accent : Tok.muted).opacity(0.16 * progress))
-            HStack {
-                hint("checkmark", color: Tok.accent, show: drag > 0, amount: progress)
-                Spacer()
-                hint("forward.end.fill", color: Tok.muted, show: drag < 0, amount: progress)
-            }
-            .padding(.horizontal, Space.l)
+        .contentShape(Rectangle()).onTapGesture { open(card) }
+        .padding(.vertical, first ? Space.s : 0)
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button { commit(card, .done) } label: { Label(card.doneActionName, systemImage: "checkmark") }.tint(Tok.accent)
         }
-        .allowsHitTesting(false)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button { commit(card, .later) } label: { Label("Leave for later", systemImage: "forward.end.fill") }.tint(.gray)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAction(named: Text(card.doneActionName)) { commit(card, .done) }
+        .accessibilityAction(named: Text("Leave for later")) { commit(card, .later) }
+        .transition(.asymmetric(insertion: .opacity, removal: .opacity.combined(with: .move(edge: .trailing))))
     }
 
-    private func hint(_ symbol: String, color: Color, show: Bool, amount: CGFloat) -> some View {
-        Image(systemName: symbol).font(.mission(.title2, .bold)).foregroundStyle(color)
-            .opacity(show ? amount : 0).scaleEffect(show ? 0.8 + 0.3 * amount : 0.8).accessibilityHidden(true)
+    /// A routine shows its progress for today; anything else is an empty circle that fills when done.
+    @ViewBuilder private func mark(_ card: TaskCard) -> some View {
+        if case .routine(let s) = card { LogRing(status: s, size: 32, interactive: false) }
+        else { Image(systemName: "circle").font(.system(size: 26, weight: .light)).foregroundStyle(Tok.accent) }
     }
 
-    private func swipe(_ top: TaskCard) -> some Gesture {
-        DragGesture(minimumDistance: 14)
-            .onChanged { v in
-                guard !busy else { return }
-                // A mostly vertical drag is the list scrolling, not a swipe.
-                if draggedID == nil, abs(v.translation.width) < abs(v.translation.height) * 1.3 { return }
-                draggedID = top.id
-                drag = v.translation.width
-                if (abs(drag) >= threshold) != crossed { crossed = abs(drag) >= threshold }
-            }
-            .onEnded { v in
-                guard !busy, draggedID != nil else { return }
-                let predicted = v.predictedEndTranslation.width
-                if drag > threshold || predicted > 260 { commit(top, .right) }
-                else if drag < -threshold || predicted < -260 { commit(top, .left) }
-                else { settle() }
-            }
-    }
-
-    private func settle() {
-        crossed = false
-        withAnimation(reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.35, dampingFraction: 0.7)) { drag = 0 }
-        draggedID = nil
+    private var undoRow: some View {
+        Button { Task { await performUndo() } } label: { Image(systemName: "arrow.uturn.backward").frame(maxWidth: .infinity, minHeight: 36) }
+            .buttonStyle(.borderless).foregroundStyle(Tok.muted).disabled(busy).accessibilityLabel("Undo")
     }
 
     private var empty: some View {
         VStack(spacing: Space.s) {
-            Image(systemName: doneToday > 0 ? "checkmark.seal.fill" : "tray").font(.system(size: 40)).foregroundStyle(Tok.accent)
+            Image(systemName: doneToday > 0 ? "checkmark.seal.fill" : "tray").font(.system(size: 36)).foregroundStyle(Tok.accent)
                 .symbolEffect(.bounce, value: doneToday).accessibilityHidden(true)
-            Text(doneToday > 0 ? "All clear for today" : "Nothing to do today").font(.mission(.title3, .medium))
+            Text(doneToday > 0 ? "All clear for today" : "Nothing to do today").font(.mission(.headline, .medium))
             if undo != nil {
                 Button { Task { await performUndo() } } label: { Image(systemName: "arrow.uturn.backward").frame(width: 44, height: 44) }
                     .buttonStyle(.bordered).tint(Tok.muted).accessibilityLabel("Undo")
             }
         }
-        .frame(maxWidth: .infinity).padding(.vertical, Space.l)
+        .frame(maxWidth: .infinity).padding(.vertical, Space.m)
         .accessibilityElement(children: .combine)
     }
 
     // MARK: Acting
 
-    /// Sends the top card away (the swipe finishes, or a button does it for you), then does what the direction means.
     private func commit(_ card: TaskCard, _ direction: Direction) {
         guard !busy else { return }
         busy = true
-        draggedID = card.id
-        withAnimation(reduceMotion ? .easeIn(duration: 0.1) : .easeIn(duration: 0.18)) { drag = direction == .right ? 640 : -640 }
+        if firstUp == card.id { firstUp = nil }
         Task {
-            try? await Task.sleep(for: .milliseconds(reduceMotion ? 100 : 180))
-            // The card has left the screen: take it out of the stack at once, so the next one rises while its action is saved.
-            withAnimation { departing.insert(card.id) }
-            var instant = Transaction(); instant.disablesAnimations = true
-            withTransaction(instant) { drag = 0; draggedID = nil; crossed = false }
-            if firstUp == card.id { firstUp = nil }
             switch direction {
-            case .left:
-                withAnimation { backOfLine.removeAll { $0 == card.id }; backOfLine.append(card.id); departing.remove(card.id) }
+            case .later:
+                withAnimation { backOfLine.removeAll { $0 == card.id }; backOfLine.append(card.id) }
                 undo = .unskip(card: card.id)
-            case .right:
+            case .done:
+                // Take it out of the list at once, then save; a failed save puts it back.
+                withAnimation { _ = departing.insert(card.id) }
                 let outcome = await complete(card)
                 withAnimation {
-                    // Finished: gone. Done once but more to go (a routine with a count): to the back of the stack. Not saved: back where it was.
                     if outcome == .progressed { backOfLine.removeAll { $0 == card.id }; backOfLine.append(card.id) }
                     departing.remove(card.id)
                 }

@@ -79,9 +79,6 @@ struct TodayView: View {
             TaskDeck(cards: dueCards, doneToday: doneItems) { card in
                 if case .routine(let s) = card { openRoutine = RoutineRef(id: s.id) }
             }
-            .listRowInsets(EdgeInsets(top: Space.s, leading: Space.l, bottom: Space.s, trailing: Space.l))
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
         } header: {
             HStack {
                 Text("Tasks")
