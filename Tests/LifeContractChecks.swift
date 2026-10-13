@@ -122,7 +122,7 @@ struct LifeContractChecks {
         _ = try! await service.ack(agenda.items[0])
         precondition(sent[5].path == "reminders_ack" && sent[5].body["id"] as? String == agenda.items[0].reminder.id && sent[5].body["at"] as? String != nil && sent[5].body["expected_version"] == nil)
         _ = try! await service.snooze(r, until: due)
-        precondition(sent[6].path == "reminders_snooze" && sent[4].body["until"] as? String == "2030-01-15T09:00:00Z")
+        precondition(sent[6].path == "reminders_snooze" && sent[6].body["until"] as? String == "2030-01-15T09:00:00Z")
         try! await service.delete(r)
         precondition(sent[7].path == "reminders_delete")
         precondition(Set(sent.dropFirst().map { $0.body["idempotency_key"] as? String ?? "" }).count == 7, "every intent has its own key")
