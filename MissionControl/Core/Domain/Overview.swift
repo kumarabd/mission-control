@@ -30,16 +30,19 @@ enum Overview {
         return lines.joined(separator: "\n\n")
     }
 
+    /// A goal is for review. Its progress is how well the routines that serve it were kept, and its one-off steps are shown as they stand.
     static func goal(_ g: Wire.Goal) -> String {
         var lines: [String] = []
         if !g.why.isEmpty { lines.append(g.why) }
-        if g.progress.total > 0 {
-            var p = "**\(g.progress.done) of \(g.progress.total) steps** done."
-            if let n = g.nextStep { p += " Next: \(n.title)." }
-            lines.append(p)
+        let routines = g.routineIds ?? []
+        if let c = g.consistency, c.last30.scheduled > 0 {
+            lines.append("**\(c.last30.done) of \(c.last30.scheduled) routine days** kept in the last 30 days, \(c.last7.done) of \(c.last7.scheduled) this week.")
+        } else if !routines.isEmpty {
+            lines.append("Its \(routines.count == 1 ? "routine has" : "routines have") only just started.")
         } else {
-            lines.append("No steps yet. Ask your assistant to break it down.")
+            lines.append("No routines serve it yet. Ask your assistant to set some up.")
         }
+        if g.progress.total > 0 { lines.append("**\(g.progress.done) of \(g.progress.total)** one-off steps done.") }
         return lines.joined(separator: "\n\n")
     }
 }

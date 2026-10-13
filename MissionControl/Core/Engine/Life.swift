@@ -28,8 +28,6 @@ final class Life {
 
     private(set) var goals: [Wire.Goal] = []
     private var goalService: GoalsService?
-    /// Steps with a change in flight.
-    private(set) var busySteps: Set<String> = []
     var goalsAvailable: Bool { goalService != nil }
 
     func attachGoals(_ service: GoalsService?) { goalService = service }
@@ -37,25 +35,6 @@ final class Life {
     func loadGoals() async {
         guard let service = goalService else { return }
         do { goals = try await service.list() } catch { self.error = Self.goalMessage(error) }
-    }
-
-    func setStepDone(_ step: Wire.Step, done: Bool) async {
-        guard let service = goalService, !busySteps.contains(step.id) else { return }
-        busySteps.insert(step.id); defer { busySteps.remove(step.id) }
-        do { _ = try await service.setStep(step, done: done); error = nil } catch { self.error = Self.goalMessage(error) }
-        await loadGoals()
-    }
-
-    func addGoalStep(goal: String, title: String, minutes: Int = 15) async {
-        guard let service = goalService else { return }
-        do { _ = try await service.addStep(goal: goal, title: title, minutes: minutes); error = nil } catch { self.error = Self.goalMessage(error) }
-        await loadGoals()
-    }
-
-    func archiveGoal(_ goal: Wire.Goal) async {
-        guard let service = goalService else { return }
-        do { try await service.archive(goal); error = nil } catch { self.error = Self.goalMessage(error) }
-        await loadGoals()
     }
 
     private static func goalMessage(_ e: Error) -> String {

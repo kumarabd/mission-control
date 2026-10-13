@@ -47,6 +47,8 @@ struct LifeContractChecks {
         let linked = load(Wire.Goal.self, "goal_linked", in: dir)
         precondition(linked.routineIds == ["77777777-7777-4777-8777-777777777777"], "a goal lists the routines that serve it")
         precondition(load(Wire.Goal.self, "goal", in: dir).routineIds == [])
+        let linkedKept = linked.consistency!
+        precondition(linkedKept.last30.scheduled >= linkedKept.last30.done && linkedKept.last7.scheduled <= linkedKept.last30.scheduled)
         let goal = load(Wire.Goal.self, "goal", in: dir)
         precondition(goal.steps.count == 2 && goal.steps[1].position == 2 && goal.nextStep?.title == "Pick a course" && goal.progress == .init(done: 0, total: 2) && goal.weeklyTarget == 4)
         precondition(load(Wire.Page<Wire.Goal>.self, "goals_page", in: dir).items.first?.progress.done == 1)
@@ -154,23 +156,16 @@ struct LifeContractChecks {
         precondition(made["weekdays"] as? [Int] == [1, 2] && made["minutes"] as? Int == 2 && made["short_minutes"] as? Int == 1)
         try! await routines.delete(counted)
         precondition(routineCalls[4].path == "routines_delete" && routineCalls[4].body["expected_version"] as? Int == counted.version)
-        // Goals: read the engine's, tick a step, add one, archive.
-        var goalCalls: [(path: String, body: [String: Any])] = []
+        // Goals are read, never written from the app: a goal is for review and changes through the assistant.
+        var goalCalls: [String] = []
         let goalsService = GoalsService(api: LifeAPI(baseURL: "https://router.example/life/api/v1", token: { "tok" }) { request in
-            let op = request.url!.lastPathComponent
-            goalCalls.append((op, try! JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]))
-            let file = ["goals_list": "goals_page", "steps_complete": "step_completed", "steps_add": "step_completed", "goals_archive": "goal"][op]!
-            return (fixtureData(file), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            goalCalls.append(request.url!.lastPathComponent)
+            return (fixtureData("goals_page"), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         })
         let goalsNow = try! await goalsService.list()
-        precondition(goalCalls[0].path == "goals_list" && !goalsNow.isEmpty && goalsNow[0].steps.count >= 0)
-        let step = goal.steps[0]
-        _ = try! await goalsService.setStep(step, done: true)
-        precondition(goalCalls[1].path == "steps_complete" && goalCalls[1].body["id"] as? String == step.id && goalCalls[1].body["done"] as? Bool == true && goalCalls[1].body["expected_version"] as? Int == step.version)
-        _ = try! await goalsService.addStep(goal: goal.id, title: "Book the course", minutes: 20)
-        precondition(goalCalls[2].path == "steps_add" && goalCalls[2].body["goal_id"] as? String == goal.id && goalCalls[2].body["minutes"] as? Int == 20)
-        try! await goalsService.archive(goal)
-        precondition(goalCalls[3].path == "goals_archive" && goalCalls[3].body["expected_version"] as? Int == goal.version)
+        precondition(goalCalls == ["goals_list"] && !goalsNow.isEmpty)
+        precondition(goalsNow[0].consistency != nil && goalsNow[0].routineIds != nil, "a goal carries the routines that serve it and how well they were kept")
+
         // Settings: the phone's time zone is sent only when it differs from the engine's.
         let settingsNow = load(Wire.Settings.self, "capabilities_ok", in: dir)
         var settingsCalls: [(path: String, body: [String: Any])] = []

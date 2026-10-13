@@ -33,30 +33,29 @@ struct GoalsList: View {
 
 struct GoalRow: View {
     let goal: Wire.Goal
+    private var routines: Int { (goal.routineIds ?? []).count }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             Text(goal.title).font(.mission(.headline, .medium))
-            if goal.progress.total > 0 {
-                MissionProgressBar(fraction: Double(goal.progress.done) / Double(goal.progress.total), label: "\(goal.progress.done) of \(goal.progress.total) steps")
+            if let c = goal.consistency, c.last30.scheduled > 0 {
+                MissionProgressBar(fraction: Double(c.last30.done) / Double(c.last30.scheduled), label: "\(c.last30.done) of \(c.last30.scheduled) routine days kept")
+            } else {
+                Text(routines == 0 ? "No routines yet" : "Just started").font(.mission(.subheadline)).foregroundStyle(Tok.muted)
             }
-            if let n = goal.nextStep { Text("Next: \(n.title)").font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
-            else if goal.progress.total > 0 { Text("All steps done").font(.mission(.subheadline)).foregroundStyle(Tok.accent) }
-            else if (goal.routineIds ?? []).isEmpty { Text("No steps yet").font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
-            let n = (goal.routineIds ?? []).count
-            if n > 0 { Label("\(n) \(n == 1 ? "routine" : "routines")", systemImage: "repeat").font(.mission(.caption)).foregroundStyle(Tok.muted) }
+            if routines > 0 { Label("\(routines) \(routines == 1 ? "routine" : "routines")", systemImage: "repeat").font(.mission(.caption)).foregroundStyle(Tok.muted) }
         }
         .padding(.vertical, Space.xs)
         .accessibilityElement(children: .combine)
     }
 }
 
+/// A goal is for review. Its progress is how well the routines that serve it are kept; nothing here records, ticks or changes anything.
+/// To change a goal, ask the assistant.
 struct GoalDetail: View {
     @Environment(Life.self) private var life
-    @Environment(\.dismiss) private var dismiss
     let goalID: String
-    @State private var newStep = ""
     @State private var askAssistant: AssistantPrompt?
-    @State private var confirmArchive = false
     @State private var openRoutine: RoutineRef?
 
     struct AssistantPrompt: Identifiable { let id = UUID(); let text: String }
@@ -68,67 +67,55 @@ struct GoalDetail: View {
             List {
                 Section {
                     MarkdownView(text: Overview.goal(goal))
-                    if goal.progress.total > 0 {
-                        MissionProgressBar(fraction: Double(goal.progress.done) / Double(goal.progress.total),
-                                           label: "\(goal.progress.done) of \(goal.progress.total) one-off steps")
+                    if let c = goal.consistency, c.last30.scheduled > 0 {
+                        MissionProgressBar(fraction: Double(c.last30.done) / Double(c.last30.scheduled), label: "Routines kept, last 30 days")
                     }
                 }
                 .listRowBackground(Tok.surface)
+
                 let routines = life.routines.filter { (goal.routineIds ?? []).contains($0.id) }
                 if !routines.isEmpty {
                     Section {
-                        ForEach(routines) { r in RoutineRow(status: r) { openRoutine = RoutineRef(id: r.id) } }
+                        ForEach(routines) { r in RoutineRow(status: r, interactive: false) { openRoutine = RoutineRef(id: r.id) } }
                     } header: { Text("Routines that serve it").font(.mission(.subheadline, .medium)) }
-                    footer: { Text("Tracked as routines: record them here or on their own screen.").font(.mission(.footnote)) }
+                    footer: { Text("Record them from their own screen or from Today.").font(.mission(.footnote)) }
                     .listRowBackground(Tok.surface)
                 }
-                Section {
-                    ForEach(goal.steps) { s in
-                        Button { Task { await life.setStepDone(s, done: s.doneAt == nil) } } label: {
+
+                if !goal.steps.isEmpty {
+                    Section {
+                        ForEach(goal.steps) { s in
                             HStack(spacing: Space.m) {
-                                Image(systemName: s.doneAt != nil ? "checkmark.circle.fill" : "circle").font(.mission(.title3)).foregroundStyle(s.doneAt != nil ? Tok.accent : Tok.muted)
-                                Text(s.title).font(.mission(.body)).foregroundStyle(s.doneAt != nil ? Tok.muted : Tok.text).strikethrough(s.doneAt != nil)
+                                Image(systemName: s.doneAt != nil ? "checkmark.circle.fill" : "circle").font(.mission(.title3))
+                                    .foregroundStyle(s.doneAt != nil ? Tok.accent : Tok.muted).accessibilityHidden(true)
+                                Text(s.title).font(.mission(.body)).foregroundStyle(s.doneAt != nil ? Tok.muted : Tok.text)
                                 Spacer()
                                 Text("\(s.minutes) min").font(.missionMono(.caption)).foregroundStyle(Tok.muted)
-                            }.frame(minHeight: 44)
+                            }
+                            .frame(minHeight: 44).accessibilityElement(children: .combine)
+                            .accessibilityLabel("\(s.title), \(s.minutes) minutes, \(s.doneAt != nil ? "done" : "not done")")
                         }
-                        .disabled(life.busySteps.contains(s.id))
-                        .accessibilityLabel("\(s.title), \(s.minutes) minutes, \(s.doneAt != nil ? "done" : "not done")")
-                    }
-                    HStack {
-                        TextField("Add a step", text: $newStep).font(.mission(.body)).onSubmit(add)
-                        Button("Add", action: add).disabled(newStep.trimmed.isEmpty)
-                    }
-                } header: { Text("One-off steps").font(.mission(.subheadline, .medium)) }
-                footer: { Text("Tasks you do once. Anything you repeat is a routine.").font(.mission(.footnote)) }
-                .listRowBackground(Tok.surface)
+                    } header: { Text("One-off steps").font(.mission(.subheadline, .medium)) }
+                    footer: { Text("Tasks done once. Tell your assistant when one is done.").font(.mission(.footnote)) }
+                    .listRowBackground(Tok.surface)
+                }
+
                 Section {
-                    Button { askAssistant = AssistantPrompt(text: "I keep putting off \u{201C}\(goal.title)\u{201D}. Help me make the next step smaller. ") } label: {
+                    Button { askAssistant = AssistantPrompt(text: "About my goal \u{201C}\(goal.title)\u{201D}: ") } label: {
+                        Label("Change this with your assistant", systemImage: "bubble.left")
+                    }.frame(minHeight: 44)
+                    Button { askAssistant = AssistantPrompt(text: "I keep putting off \u{201C}\(goal.title)\u{201D}. Help me make it smaller. ") } label: {
                         Label("I keep putting this off", systemImage: "hourglass")
                     }.frame(minHeight: 44)
-                    Button { askAssistant = AssistantPrompt(text: "About my goal \u{201C}\(goal.title)\u{201D}: ") } label: {
-                        Label("Talk to your assistant about this", systemImage: "bubble.left")
-                    }.frame(minHeight: 44)
-                } footer: { Text("The routines and reminders that serve it are set up by your assistant; ask it to change them.").font(.mission(.footnote)) }
+                } footer: { Text("Routines, steps and the goal itself are set up and changed by your assistant.").font(.mission(.footnote)) }
                 .listRowBackground(Tok.surface)
-                Section { Button("Archive goal", systemImage: "archivebox", role: .destructive) { confirmArchive = true } }.listRowBackground(Tok.surface)
             }
             .scrollContentBackground(.hidden).screenBackground()
             .navigationTitle(goal.title).navigationBarTitleDisplayMode(.inline)
             .navigationDestination(item: $openRoutine) { RoutineDetailView(id: $0.id) }
             .sheet(item: $askAssistant) { CaptureSheet(draft: $0.text).environment(life) }
-            .confirmationDialog("Archive this goal?", isPresented: $confirmArchive, titleVisibility: .visible) {
-                Button("Archive", role: .destructive) { Task { await life.archiveGoal(goal); dismiss() } }
-            } message: { Text("It can be restored later.") }
         } else {
             ContentUnavailableView("This goal is gone", systemImage: "flag", description: Text("It was archived or removed."))
         }
-    }
-
-    private func add() {
-        let t = newStep.trimmed
-        guard !t.isEmpty else { return }
-        newStep = ""
-        Task { await life.addGoalStep(goal: goalID, title: t) }
     }
 }

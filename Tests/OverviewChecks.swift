@@ -11,10 +11,11 @@ struct OverviewChecks {
                      timeZone: "UTC", version: 1, deletedAt: nil, createdAt: now, updatedAt: now)
     }
 
-    static func goal(why: String, steps: [(String, Bool)]) -> Wire.Goal {
+    static func goal(why: String, steps: [(String, Bool)], routines: [String] = [], consistency: Wire.GoalConsistency? = nil) -> Wire.Goal {
         let list = steps.enumerated().map { i, s in Wire.Step(id: "s\(i)", goalId: "g", title: s.0, minutes: 10, position: i + 1, doneAt: s.1 ? now : nil, version: 1) }
         return Wire.Goal(id: "g", title: "Lose 5 kg", why: why, weeklyTarget: 6, archivedAt: nil, version: 1, steps: list,
-                         progress: .init(done: steps.filter(\.1).count, total: steps.count), nextStep: list.first { $0.doneAt == nil })
+                         progress: .init(done: steps.filter(\.1).count, total: steps.count), nextStep: list.first { $0.doneAt == nil },
+                         routineIds: routines, consistency: consistency)
     }
 
     static func main() {
@@ -30,9 +31,13 @@ struct OverviewChecks {
         precondition(numbers.isSubset(of: ["3", "09", "00", "13", "17", "5", "7", "21", "30", "9"]), "\(numbers)")
         precondition(!text.contains("streak") && !text.lowercased().contains("great"))
 
-        let g = goal(why: "Feel lighter.", steps: [("Baseline weigh-in", true), ("Plan meals", false)])
-        precondition(Overview.goal(g) == "Feel lighter.\n\n**1 of 2 steps** done. Next: Plan meals.")
-        precondition(Overview.goal(goal(why: "", steps: [])) == "No steps yet. Ask your assistant to break it down.")
+        // A goal reads its progress from its routines; one-off steps are reported as they stand.
+        let kept = Wire.GoalConsistency(last7: .init(done: 9, scheduled: 14), last30: .init(done: 41, scheduled: 60))
+        let g = goal(why: "Feel lighter.", steps: [("Baseline weigh-in", true), ("Plan meals", false)], routines: ["a", "b"], consistency: kept)
+        precondition(Overview.goal(g) == "Feel lighter.\n\n**41 of 60 routine days** kept in the last 30 days, 9 of 14 this week.\n\n**1 of 2** one-off steps done.", Overview.goal(g))
+        let fresh = Wire.GoalConsistency(last7: .init(done: 0, scheduled: 0), last30: .init(done: 0, scheduled: 0))
+        precondition(Overview.goal(goal(why: "", steps: [], routines: ["a"], consistency: fresh)) == "Its routine has only just started.")
+        precondition(Overview.goal(goal(why: "", steps: [])) == "No routines serve it yet. Ask your assistant to set some up.")
         print("OverviewChecks passed")
     }
 }

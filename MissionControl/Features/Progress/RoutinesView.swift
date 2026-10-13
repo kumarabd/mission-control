@@ -10,19 +10,25 @@ struct LogRing: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let status: Wire.RoutineStatus
     var size: CGFloat = 48
+    /// False where the ring only shows how the routine is going (on a goal); recording happens in the routine's own screen.
+    var interactive = true
 
     private var lineWidth: CGFloat { size * 0.09 }
     private var segments: Int { min(status.target, 12) }
 
     var body: some View {
-        Button {
-            guard status.scheduled, !status.done, !life.busyRoutines.contains(status.id) else { return }
-            Task { await life.logRoutine(status.id) }
-        } label: { face }
-        .buttonStyle(.borderless)
-        .sensoryFeedback(.impact(weight: .medium), trigger: status.count)
-        .accessibilityLabel(label)
-        .accessibilityAddTraits(status.scheduled && !status.done ? .isButton : [])
+        if interactive {
+            Button {
+                guard status.scheduled, !status.done, !life.busyRoutines.contains(status.id) else { return }
+                Task { await life.logRoutine(status.id) }
+            } label: { face }
+            .buttonStyle(.borderless)
+            .sensoryFeedback(.impact(weight: .medium), trigger: status.count)
+            .accessibilityLabel(label)
+            .accessibilityAddTraits(status.scheduled && !status.done ? .isButton : [])
+        } else {
+            face.accessibilityElement().accessibilityLabel(label)
+        }
     }
 
     private var label: String {
@@ -89,11 +95,12 @@ struct RoutinesList: View {
 /// A routine as a row: the ring records one, the text opens the tracker. Used by the routines list and by a goal's routines.
 struct RoutineRow: View {
     let status: Wire.RoutineStatus
+    var interactive = true
     let open: () -> Void
 
     var body: some View {
         HStack(spacing: Space.m) {
-            LogRing(status: status)
+            LogRing(status: status, interactive: interactive)
             Button(action: open) {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {

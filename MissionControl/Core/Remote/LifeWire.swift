@@ -120,6 +120,8 @@ enum Wire {
         var doneAt: Date?; var version: Int
     }
 
+    struct GoalConsistency: Codable, Equatable { var last7: Consistency; var last30: Consistency }
+
     struct Goal: Codable, Equatable, Identifiable {
         struct Progress: Codable, Equatable { var done: Int; var total: Int }
         var id: String; var title: String; var why: String; var weeklyTarget: Int
@@ -127,6 +129,8 @@ enum Wire {
         var steps: [Step]; var progress: Progress; var nextStep: Step?
         /// Routines that serve this goal; tracked as routines, not as steps. Absent from an older engine.
         var routineIds: [String]?
+        /// How well those routines were kept, summed over them. Keeping up, not how far the outcome has moved. Absent from an older engine.
+        var consistency: GoalConsistency?
     }
 
     struct PlanItem: Codable, Equatable, Identifiable {
