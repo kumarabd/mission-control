@@ -14,13 +14,15 @@ Operate mode, native iOS. Source of truth is code: `MissionControl/UI/`.
 
 ## Icons and actions
 
-SF Symbols only, one meaning per icon. **There is no plus in the app**: it meant both "log one" and "create", and meant neither clearly. A control that does something carries a word as well as a glyph, and an icon-only control (toolbar, floating button) always has an accessibility label. Outline for an action, filled for a state.
+SF Symbols only, one meaning per icon. **There is no plus in the app**: it meant both "log one" and "create", and meant neither clearly. Controls are drawn, not captioned: an icon-only control always has an accessibility label (VoiceOver says what the picture means), and state is carried by the shape (segments, fill, a dashed outline) so colour is never the only signal. Outline for an action, filled for a state.
 
 | Meaning | Symbol | Where |
 |---|---|---|
-| I did it | `checkmark`, in a labelled capsule: **Done** (once a day) or **Log one** (daily count) | routine rows, Today, routine detail; shown only on a day the routine applies |
-| It is done | `checkmark.circle.fill` | a routine that has reached its count, "Done" beside it |
-| Take one back | `arrow.uturn.backward`, labelled | routine detail, deliberate, never in a list row |
+| I did it (record one) | the **ring is the control**: one segment per time it should be done today, `checkmark` inside; tap to fill the next segment | routine rows, Today, routine detail; tappable only on a day the routine applies |
+| It is done | the ring becomes a solid accent disc with a white `checkmark` | a routine that has reached its count |
+| Not today | dashed ring with `calendar`, not tappable, with "Next: Sunday" beside it | a routine that does not apply today |
+| Take one back | `arrow.uturn.backward`, icon only | routine detail, deliberate, never in a list row |
+| Easier version | `timer`, icon only | routine detail |
 | Got it (clear a cue that fired) | `checkmark.circle` | Coming up, reminder detail |
 | Write or create something | `square.and.pencil` | Progress, Memory, Journal toolbars |
 | Talk to the assistant | `bubble.left.fill` (floating button), `bubble.left` (inline) | capture, goal detail |
@@ -33,4 +35,3 @@ SF Symbols only, one meaning per icon. **There is no plus in the app**: it meant
 | Delete / archive | `trash` / `archivebox` | destructive actions, always confirmed or swipeable |
 | Do this next | `scope` | Today |
 
-A routine that does not apply today shows when it next does ("Next: Sunday"), not a control.

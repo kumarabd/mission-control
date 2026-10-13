@@ -52,22 +52,29 @@ struct RoutineDetailView: View {
     private func todaySection(_ s: Wire.RoutineStatus) -> some View {
         Section {
             HStack(spacing: Space.l) {
-                CountRing(count: s.count, target: s.target, size: 88)
+                LogRing(status: s, size: 92)
                 VStack(alignment: .leading, spacing: Space.s) {
-                    Text(s.scheduled ? s.hint : "Not scheduled today" + (s.nextText.map { ". Next: \($0)." } ?? ".")).font(.mission(.subheadline)).foregroundStyle(s.gap ? Tok.warn : Tok.muted)
-                    LogButton(status: s)
-                    if s.scheduled && s.count > 0 {
-                        Button { Task { await life.logRoutine(s.id, delta: -1) } } label: { Label("Take one back", systemImage: "arrow.uturn.backward") }
-                            .font(.mission(.subheadline)).buttonStyle(.borderless).foregroundStyle(Tok.muted).frame(minHeight: 44)
-                            .disabled(life.busyRoutines.contains(s.id))
+                    Text(s.scheduled ? s.hint : "Not scheduled today" + (s.nextText.map { ". Next: \($0)." } ?? "."))
+                        .font(.mission(.subheadline)).foregroundStyle(s.gap ? Tok.warn : Tok.muted)
+                    if s.scheduled {
+                        HStack(spacing: Space.s) {
+                            if s.count > 0 {
+                                Button { Task { await life.logRoutine(s.id, delta: -1) } } label: {
+                                    Image(systemName: "arrow.uturn.backward").font(.mission(.headline)).frame(width: 44, height: 44)
+                                }
+                                .buttonStyle(.bordered).tint(Tok.muted).disabled(life.busyRoutines.contains(s.id))
+                                .accessibilityLabel("Take one back")
+                            }
+                            if !s.done {
+                                Button { Task { await life.logRoutine(s.id, short: true) } } label: {
+                                    Image(systemName: "timer").font(.mission(.headline)).frame(width: 44, height: 44)
+                                }
+                                .buttonStyle(.bordered).tint(Tok.accent).disabled(life.busyRoutines.contains(s.id))
+                                .accessibilityLabel("Do the short version: \(s.routine.shortTitle), \(s.routine.shortMinutes) minutes")
+                            }
+                        }
                     }
                 }
-            }
-            if s.scheduled && !s.done {
-                Button { Task { await life.logRoutine(s.id, short: true) } } label: {
-                    Label("Short version: \(s.routine.shortTitle) (\(s.routine.shortMinutes) min)", systemImage: "timer")
-                }
-                .disabled(life.busyRoutines.contains(s.id))
             }
         } header: { Text("Today").font(.mission(.subheadline, .medium)) }
         .listRowBackground(Tok.surface)

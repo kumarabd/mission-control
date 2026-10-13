@@ -132,16 +132,14 @@ struct TodayView: View {
         Section {
             ForEach(todayRoutines) { s in
                 HStack(spacing: Space.m) {
-                    CountRing(count: s.count, target: s.target, size: 40)
+                    LogRing(status: s, size: 44)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(s.routine.title).font(.mission(.body)).foregroundStyle(s.done ? Tok.muted : Tok.text)
                         Text(s.done ? "Done today" : s.hint).font(.mission(.caption)).foregroundStyle(s.gap && !s.done ? Tok.warn : Tok.muted).lineLimit(2)
                     }
                     Spacer(minLength: 0)
-                    LogButton(status: s)
                 }
-                .frame(minHeight: 44)
-                .accessibilityElement(children: .contain)
+                .frame(minHeight: 48)
             }
         } header: { Text("Routines").font(.mission(.subheadline, .medium)).id(DayKind.routines) }
         .listRowBackground(Tok.surface)

@@ -2,29 +2,57 @@ import SwiftUI
 
 struct RoutineRef: Identifiable, Hashable { let id: String }
 
-/// A small ring that fills as a routine's count climbs toward its target, and turns into a tick when the day is done.
-/// The number inside means it never relies on the ring's colour alone.
-struct CountRing: View {
-    let count: Int
-    let target: Int
-    var size: CGFloat = 44
+/// The control for a routine: a ring with one segment for each time it should be done today. Tap it to record one; the next segment
+/// fills, and when the last does the ring becomes a solid check. A routine that does not apply today shows a dashed ring and a
+/// calendar, and is not tappable. The segments, the check and the calendar are the whole vocabulary, so nothing needs a word.
+struct LogRing: View {
+    @Environment(Life.self) private var life
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let status: Wire.RoutineStatus
+    var size: CGFloat = 48
 
-    private var fraction: Double { target > 0 ? min(Double(count) / Double(target), 1) : 0 }
+    private var lineWidth: CGFloat { size * 0.09 }
+    private var segments: Int { min(status.target, 12) }
 
     var body: some View {
+        Button {
+            guard status.scheduled, !status.done, !life.busyRoutines.contains(status.id) else { return }
+            Task { await life.logRoutine(status.id) }
+        } label: { face }
+        .buttonStyle(.borderless)
+        .sensoryFeedback(.impact(weight: .medium), trigger: status.count)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(status.scheduled && !status.done ? .isButton : [])
+    }
+
+    private var label: String {
+        if !status.scheduled { return "\(status.routine.title) is not scheduled today" }
+        if status.done { return "\(status.routine.title) is done for today" }
+        return status.target > 1 ? "Record \(status.routine.title) once. \(status.count) of \(status.target) today" : "Mark \(status.routine.title) done"
+    }
+
+    @ViewBuilder private var face: some View {
         ZStack {
-            Circle().stroke(Tok.hairline, lineWidth: size * 0.1)
-            Circle().trim(from: 0, to: fraction)
-                .stroke(Tok.accent, style: StrokeStyle(lineWidth: size * 0.1, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: fraction)
-            if count >= target { Image(systemName: "checkmark").font(.system(size: size * 0.36, weight: .bold)).foregroundStyle(Tok.accent) }
-            else { Text("\(count)/\(target)").font(.missionMono(.caption, .medium)).foregroundStyle(Tok.text).minimumScaleFactor(0.6) }
+            if !status.scheduled {
+                Circle().strokeBorder(Tok.hairline, style: StrokeStyle(lineWidth: lineWidth * 0.8, dash: [3, 4]))
+                Image(systemName: "calendar").font(.system(size: size * 0.34)).foregroundStyle(Tok.muted)
+            } else {
+                ForEach(0..<segments, id: \.self) { i in
+                    let gap = segments > 1 ? 0.02 : 0
+                    let start = Double(i) / Double(segments) + gap / 2, end = Double(i + 1) / Double(segments) - gap / 2
+                    Circle().trim(from: start, to: end).stroke(i < status.count ? Tok.accent : Tok.hairline, style: StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
+                        .rotationEffect(.degrees(-90))
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: status.count)
+                }
+                if status.done {
+                    Circle().fill(Tok.accent).padding(lineWidth * 1.4)
+                    Image(systemName: "checkmark").font(.system(size: size * 0.32, weight: .bold)).foregroundStyle(Tok.onAccent)
+                } else {
+                    Image(systemName: "checkmark").font(.system(size: size * 0.3, weight: .bold)).foregroundStyle(Tok.accent.opacity(0.4))
+                }
+            }
         }
-        .frame(width: size, height: size)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(count) of \(target) today")
+        .frame(width: size, height: size).contentShape(Circle())
     }
 }
 
@@ -56,44 +84,21 @@ struct RoutinesList: View {
     }
 
     private func row(_ s: Wire.RoutineStatus) -> some View {
-        HStack(spacing: Space.s) {
+        HStack(spacing: Space.m) {
+            LogRing(status: s)
             Button { open = RoutineRef(id: s.id) } label: {
-                HStack(spacing: Space.m) {
-                    CountRing(count: s.count, target: s.target)
+                HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(s.routine.title).font(.mission(.body)).foregroundStyle(Tok.text)
                         Text(s.scheduled ? s.hint : (s.nextText.map { "Next: \($0)" } ?? "Not today")).font(.mission(.caption)).foregroundStyle(s.gap ? Tok.warn : Tok.muted).lineLimit(2).multilineTextAlignment(.leading)
                     }
                     Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").font(.footnote).foregroundStyle(Tok.muted)
                 }
-                .frame(minHeight: 44).contentShape(Rectangle())
+                .frame(minHeight: 48).contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel("\(s.routine.title). \(s.count) of \(s.target) today. Show details")
-            LogButton(status: s)
-        }
-    }
-}
-
-/// Records that you did it: "Done" for a once-a-day routine, "Log one" for one with a daily count. It appears only on a day the routine
-/// applies, and while the previous tap is still being saved it is disabled, so a fast double-tap cannot collide with itself. Once the
-/// day is done it becomes a quiet "Done"; taking one back lives in the detail screen, where it is deliberate.
-struct LogButton: View {
-    @Environment(Life.self) private var life
-    let status: Wire.RoutineStatus
-
-    var body: some View {
-        if status.done {
-            Label("Done", systemImage: "checkmark.circle.fill").font(.mission(.subheadline, .medium)).foregroundStyle(Tok.accent)
-                .frame(minHeight: 44).accessibilityLabel("\(status.routine.title) is done for today")
-        } else if status.scheduled {
-            Button { Task { await life.logRoutine(status.id) } } label: {
-                Label(status.target > 1 ? "Log one" : "Done", systemImage: "checkmark")
-                    .font(.mission(.subheadline, .semibold)).foregroundStyle(Tok.onAccent)
-                    .padding(.horizontal, Space.l).frame(minHeight: 44).background(Tok.accent, in: Capsule())
-            }
-            .buttonStyle(.borderless).disabled(life.busyRoutines.contains(status.id))
-            .accessibilityLabel(status.target > 1 ? "Log \(status.routine.title) once" : "Mark \(status.routine.title) done")
+            .accessibilityLabel("\(s.routine.title). Show details")
         }
     }
 }
