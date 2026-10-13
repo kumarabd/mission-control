@@ -108,6 +108,9 @@ final class MobileGateway {
         return clientMessageID
     }
 
+    /// Stops whatever the assistant is doing for this session, so a question nobody will answer does not hold the turn open.
+    func cancelTurn() { enqueue(["type": "cancel"]) }
+
     func answer(requestID: String, optionID: String? = nil, freeText: String? = nil) {
         var frame: [String: Any] = ["type": "answer", "request_id": requestID]
         if let optionID { frame["selected_option_id"] = optionID }
