@@ -26,10 +26,10 @@ struct NewRoutineSheet: View {
                     ForEach(cues.indices, id: \.self) { i in
                         HStack {
                             DatePicker("Nudge \(i + 1)", selection: Binding(get: { cues[i] }, set: { cues[i] = $0; cuesEdited = true }), displayedComponents: .hourAndMinute)
-                            if cues.count > 1 { Button { cues.remove(at: i); cuesEdited = true } label: { Image(systemName: "minus.circle") }.buttonStyle(.borderless).accessibilityLabel("Remove nudge \(i + 1)") }
+                            if cues.count > 1 { Button { cues.remove(at: i); cuesEdited = true } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.borderless).accessibilityLabel("Remove nudge \(i + 1)") }
                         }
                     }
-                    if cues.count < 8 { Button("Add a nudge", systemImage: "plus") { cues.append(Self.time(12, 0)); cuesEdited = true } }
+                    if cues.count < 8 { Button("Add a nudge", systemImage: "bell.badge") { cues.append(Self.time(12, 0)); cuesEdited = true } }
                 } header: { Text("Nudge me at") } footer: { Text("A nudge only speaks up if you haven't reached your count yet.") }
                 Section("On these days") {
                     HStack {

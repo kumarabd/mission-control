@@ -31,7 +31,7 @@ struct TodayView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
-                        Button("Add to today", systemImage: "plus") { sheet = .add }
+                        Button("Add to today", systemImage: "checklist") { sheet = .add }
                         Button("Add a reminder", systemImage: "bell") { sheet = .reminder }
                         Button("My day changed", systemImage: "arrow.triangle.2.circlepath") { sheet = .replan }
                         Button("Close the day", systemImage: "moon.stars") { sheet = .close }
@@ -138,7 +138,7 @@ struct TodayView: View {
                         Text(s.done ? "Done today" : s.hint).font(.mission(.caption)).foregroundStyle(s.gap && !s.done ? Tok.warn : Tok.muted).lineLimit(2)
                     }
                     Spacer(minLength: 0)
-                    PlusButton(status: s)
+                    LogButton(status: s)
                 }
                 .frame(minHeight: 44)
                 .accessibilityElement(children: .contain)

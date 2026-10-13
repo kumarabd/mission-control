@@ -62,7 +62,7 @@ struct RoutinesList: View {
                     CountRing(count: s.count, target: s.target)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(s.routine.title).font(.mission(.body)).foregroundStyle(Tok.text)
-                        Text(s.scheduled ? s.hint : "Not today").font(.mission(.caption)).foregroundStyle(s.gap ? Tok.warn : Tok.muted).lineLimit(2).multilineTextAlignment(.leading)
+                        Text(s.scheduled ? s.hint : (s.nextText.map { "Next: \($0)" } ?? "Not today")).font(.mission(.caption)).foregroundStyle(s.gap ? Tok.warn : Tok.muted).lineLimit(2).multilineTextAlignment(.leading)
                     }
                     Spacer(minLength: 0)
                 }
@@ -70,22 +70,37 @@ struct RoutinesList: View {
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("\(s.routine.title). \(s.count) of \(s.target) today. Show details")
-            PlusButton(status: s)
+            LogButton(status: s)
         }
     }
 }
 
-/// Logs one more time. Disabled while the previous tap is still being saved, so a fast double-tap cannot collide with itself.
-struct PlusButton: View {
+/// Records that you did it: "Done" for a once-a-day routine, "Log one" for one with a daily count. It appears only on a day the routine
+/// applies, and while the previous tap is still being saved it is disabled, so a fast double-tap cannot collide with itself. Once the
+/// day is done it becomes a quiet "Done"; taking one back lives in the detail screen, where it is deliberate.
+struct LogButton: View {
     @Environment(Life.self) private var life
     let status: Wire.RoutineStatus
 
     var body: some View {
-        Button { Task { await life.logRoutine(status.id) } } label: {
-            Image(systemName: "plus").font(.mission(.headline, .semibold)).foregroundStyle(Tok.onAccent)
-                .frame(width: 44, height: 44).background(Tok.accent, in: Circle())
+        if status.done {
+            Label("Done", systemImage: "checkmark.circle.fill").font(.mission(.subheadline, .medium)).foregroundStyle(Tok.accent)
+                .frame(minHeight: 44).accessibilityLabel("\(status.routine.title) is done for today")
+        } else if status.scheduled {
+            Button { Task { await life.logRoutine(status.id) } } label: {
+                Label(status.target > 1 ? "Log one" : "Done", systemImage: "checkmark")
+                    .font(.mission(.subheadline, .semibold)).foregroundStyle(Tok.onAccent)
+                    .padding(.horizontal, Space.l).frame(minHeight: 44).background(Tok.accent, in: Capsule())
+            }
+            .buttonStyle(.borderless).disabled(life.busyRoutines.contains(status.id))
+            .accessibilityLabel(status.target > 1 ? "Log \(status.routine.title) once" : "Mark \(status.routine.title) done")
         }
-        .buttonStyle(.borderless).disabled(life.busyRoutines.contains(status.id))
-        .accessibilityLabel("Log \(status.routine.title) once more")
+    }
+}
+
+extension Wire.RoutineStatus {
+    /// For a routine that does not apply today: when it next does ("Tomorrow", "Sunday").
+    var nextText: String? {
+        RoutineSchedule.nextLabel(weekdays: routine.weekdays, today: RoutineSchedule.weekdayNow(in: routine.timeZone), names: Calendar.current.weekdaySymbols)
     }
 }

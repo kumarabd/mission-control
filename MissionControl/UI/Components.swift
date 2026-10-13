@@ -98,14 +98,14 @@ struct CaptureButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Image(systemName: "plus").font(.mission(.title2, .semibold))
+            Image(systemName: "bubble.left.fill").font(.mission(.title2, .semibold))
                 .foregroundStyle(Tok.onAccent)
                 .frame(width: 60, height: 60)
                 .background(Tok.accent, in: Circle())
                 .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
         }
         .buttonStyle(MissionPressStyle())
-        .accessibilityLabel("Capture")
-        .accessibilityHint("Add a task, reminder, note or memory by typing or speaking")
+        .accessibilityLabel("Talk to your assistant")
+        .accessibilityHint("Capture a task, reminder, routine or note by typing or speaking")
     }
 }

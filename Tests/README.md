@@ -85,3 +85,7 @@ Markdown blocks and the routine/goal overview text:
 
     xcrun swiftc -parse-as-library MissionControl/Core/Domain/Markdown.swift Tests/MarkdownChecks.swift -o /private/tmp/markdown-checks && /private/tmp/markdown-checks
     xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Domain/Overview.swift Tests/OverviewChecks.swift -o /private/tmp/overview-checks && /private/tmp/overview-checks
+
+When a routine next applies:
+
+    xcrun swiftc -parse-as-library MissionControl/Core/Domain/RoutineSchedule.swift Tests/RoutineScheduleChecks.swift -o /private/tmp/routine-schedule-checks && /private/tmp/routine-schedule-checks

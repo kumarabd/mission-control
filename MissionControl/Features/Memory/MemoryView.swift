@@ -44,7 +44,7 @@ struct MemoryView: View {
             .searchable(text: $query, prompt: "Search what you've saved")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button { adding = true } label: { Image(systemName: "plus").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Save a memory")
+                    Button { adding = true } label: { Image(systemName: "square.and.pencil").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Save a memory")
                 }
             }
             .sheet(isPresented: $showReview) { WeeklyReviewSheet() }

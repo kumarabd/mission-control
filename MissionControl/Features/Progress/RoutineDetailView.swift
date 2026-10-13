@@ -54,24 +54,18 @@ struct RoutineDetailView: View {
             HStack(spacing: Space.l) {
                 CountRing(count: s.count, target: s.target, size: 88)
                 VStack(alignment: .leading, spacing: Space.s) {
-                    Text(s.scheduled ? s.hint : "Not scheduled today, but you can still log it.").font(.mission(.subheadline)).foregroundStyle(s.gap ? Tok.warn : Tok.muted)
-                    do {
-                        HStack(spacing: Space.s) {
-                            if s.count > 0 {
-                                Button { Task { await life.logRoutine(s.id, delta: -1) } } label: {
-                                    Image(systemName: "minus").frame(width: 44, height: 44)
-                                }
-                                .buttonStyle(.bordered).tint(Tok.muted).disabled(life.busyRoutines.contains(s.id))
-                                .accessibilityLabel("Take one back")
-                            }
-                            PlusButton(status: s)
-                        }
+                    Text(s.scheduled ? s.hint : "Not scheduled today" + (s.nextText.map { ". Next: \($0)." } ?? ".")).font(.mission(.subheadline)).foregroundStyle(s.gap ? Tok.warn : Tok.muted)
+                    LogButton(status: s)
+                    if s.scheduled && s.count > 0 {
+                        Button { Task { await life.logRoutine(s.id, delta: -1) } } label: { Label("Take one back", systemImage: "arrow.uturn.backward") }
+                            .font(.mission(.subheadline)).buttonStyle(.borderless).foregroundStyle(Tok.muted).frame(minHeight: 44)
+                            .disabled(life.busyRoutines.contains(s.id))
                     }
                 }
             }
-            if !s.done {
+            if s.scheduled && !s.done {
                 Button { Task { await life.logRoutine(s.id, short: true) } } label: {
-                    Label("Short version: \(s.routine.shortTitle) (\(s.routine.shortMinutes) min)", systemImage: "leaf")
+                    Label("Short version: \(s.routine.shortTitle) (\(s.routine.shortMinutes) min)", systemImage: "timer")
                 }
                 .disabled(life.busyRoutines.contains(s.id))
             }

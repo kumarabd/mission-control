@@ -26,7 +26,7 @@ struct ProgressTab: View {
             .navigationDestination(for: GoalRef.self) { GoalDetail(goalID: $0.id) }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button { sheet = segment == .routines ? .routine : .goal } label: { Image(systemName: "plus").frame(minWidth: 44, minHeight: 44) }
+                    Button { sheet = segment == .routines ? .routine : .goal } label: { Image(systemName: "square.and.pencil").frame(minWidth: 44, minHeight: 44) }
                         .accessibilityLabel(segment == .routines ? "New routine" : "New goal")
                 }
             }

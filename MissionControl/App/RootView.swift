@@ -61,7 +61,7 @@ struct MainTabs: View {
             if let life {
                 TabView(selection: $tab) {
                     TodayView().tabItem { Label("Today", systemImage: "sun.max") }.tag(Tab.today)
-                    ProgressTab().tabItem { Label("Progress", systemImage: "chart.bar") }.tag(Tab.goals)
+                    ProgressTab().tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }.tag(Tab.goals)
                     JournalView().tabItem { Label("Journal", systemImage: "book") }.tag(Tab.journal)
                     MemoryView().tabItem { Label("Memory", systemImage: "brain.head.profile") }.tag(Tab.memory)
                     DashboardView().tabItem { Label("Classic", systemImage: "square.grid.2x2") }.tag(Tab.classic)

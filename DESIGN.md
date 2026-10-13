@@ -7,7 +7,30 @@ Operate mode, native iOS. Source of truth is code: `MissionControl/UI/`.
 - **Type:** Hanken Grotesk via `Font.mission(_:_:)` for text, IBM Plex Mono via `Font.missionMono` for small labels and numbers. Both follow Dynamic Type. No fixed point sizes.
 - **Space:** 4-pt grid, `Space.xs/s/m/l/xl` = 4/8/12/16/24. Screen gutter 16.
 - **Shape:** cards 16pt continuous radius, compact 12pt, hairline stroke, no shadows.
-- **Navigation:** system TabView (Today, Goals, Journal, Memory, Classic), NavigationStack with large titles, sheets for capture and check-ins. Capture is a floating button, not a tab.
+- **Navigation:** system TabView (Today, Progress, Journal, Memory, Classic), NavigationStack with large titles, sheets for capture and check-ins. Capture is a floating button, not a tab.
 - **Components:** `MissionCard`, `SectionHeading`, `MissionStatusLabel`, `MissionIconBadge`, `PrimaryButtonStyle`, `SecondaryButtonStyle`, `Chip`, `EmptyState`, `MissionProgressBar`, `CaptureButton`.
 - **Motion:** system transitions; `MissionPressStyle` for press feedback; everything honours Reduce Motion.
 - **Voice:** plain, second person, never scolding. Controls name their action ("Plan my day", "Close the day").
+
+## Icons and actions
+
+SF Symbols only, one meaning per icon. **There is no plus in the app**: it meant both "log one" and "create", and meant neither clearly. A control that does something carries a word as well as a glyph, and an icon-only control (toolbar, floating button) always has an accessibility label. Outline for an action, filled for a state.
+
+| Meaning | Symbol | Where |
+|---|---|---|
+| I did it | `checkmark`, in a labelled capsule: **Done** (once a day) or **Log one** (daily count) | routine rows, Today, routine detail; shown only on a day the routine applies |
+| It is done | `checkmark.circle.fill` | a routine that has reached its count, "Done" beside it |
+| Take one back | `arrow.uturn.backward`, labelled | routine detail, deliberate, never in a list row |
+| Got it (clear a cue that fired) | `checkmark.circle` | Coming up, reminder detail |
+| Write or create something | `square.and.pencil` | Progress, Memory, Journal toolbars |
+| Talk to the assistant | `bubble.left.fill` (floating button), `bubble.left` (inline) | capture, goal detail |
+| Voice | `mic.fill` to start, `stop.circle.fill` to end, `arrow.up` to send | capture sheet |
+| Add a task to today | `checklist` | Today menu |
+| A nudge | `bell`, `bell.badge` to add one, `xmark.circle.fill` to remove one | reminders, new routine |
+| Repeats | `repeat` | cues, routines |
+| Easier version | `timer` | routine detail |
+| Snooze / close the day | `moon.zzz` / `moon.stars` | cues, Today menu |
+| Delete / archive | `trash` / `archivebox` | destructive actions, always confirmed or swipeable |
+| Do this next | `scope` | Today |
+
+A routine that does not apply today shows when it next does ("Next: Sunday"), not a control.
