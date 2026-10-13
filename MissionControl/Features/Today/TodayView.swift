@@ -8,6 +8,7 @@ struct TodayView: View {
     @State private var choosing = false
     @State private var sheet: Sheet?
     @State private var detail: ReminderRef?
+    @State private var openRoutine: RoutineRef?
 
     enum Sheet: Identifiable { case add, reminder, replan, close
         var id: Self { self }
@@ -22,7 +23,6 @@ struct TodayView: View {
                     if dayTotal > 0 { ringSection(proxy) }
                     nextSection
                     timeSection
-                    if !todayRoutines.isEmpty { routinesSection }
                     daySection
                     if !later.isEmpty { laterSection }
                 }
@@ -49,6 +49,7 @@ struct TodayView: View {
                 }
             }
             .sheet(item: $detail) { ReminderDetailSheet(id: $0.id) }
+            .navigationDestination(item: $openRoutine) { RoutineDetailView(id: $0.id) }
             .task { events = await DayEvents.today(); await life.loadPlan() }
             .alert("Something went wrong", isPresented: Binding(get: { life.error != nil }, set: { if !$0 { life.error = nil } })) {
                 Button("OK") { life.error = nil }
@@ -118,8 +119,9 @@ struct TodayView: View {
         Section {
             let untimed = tasksToday.filter { $0.startAt == nil }
             let timed = timeline
-            if untimed.isEmpty && timed.isEmpty { Text("Your day is open.").font(.mission(.body)).foregroundStyle(Tok.muted) }
+            if untimed.isEmpty && timed.isEmpty && todayRoutines.isEmpty { Text("Your day is open.").font(.mission(.body)).foregroundStyle(Tok.muted) }
             ForEach(untimed) { PlanRow(item: $0) }
+            ForEach(todayRoutines) { routineRow($0) }
             ForEach(timed) { row in
                 switch row {
                 case .event(let e): eventRow(e)
@@ -127,28 +129,11 @@ struct TodayView: View {
                 case .cue(let c): cueRow(Cue(id: c.id, reminder: c.reminder, at: c.at, item: c))
                 }
             }
-        } header: { Text("Today").font(.mission(.subheadline, .medium)).id(DayKind.tasks) }
+        } header: { Text("Tasks").font(.mission(.subheadline, .medium)).id(DayKind.tasks) }
         .listRowBackground(Tok.surface)
     }
 
     private var todayRoutines: [Wire.RoutineStatus] { life.routines.filter(\.scheduled) }
-
-    private var routinesSection: some View {
-        Section {
-            ForEach(todayRoutines) { s in
-                HStack(spacing: Space.m) {
-                    LogRing(status: s, size: 44)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(s.routine.title).font(.mission(.body)).foregroundStyle(s.done ? Tok.muted : Tok.text)
-                        Text(s.done ? "Done today" : Self.nudgeText(s) ?? s.hint).font(.mission(.caption)).foregroundStyle(s.gap && !s.done ? Tok.warn : Tok.muted).lineLimit(2)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .frame(minHeight: 48)
-            }
-        } header: { Text("Routines").font(.mission(.subheadline, .medium)).id(DayKind.routines) }
-        .listRowBackground(Tok.surface)
-    }
 
     // MARK: Reminders. A reminder is a cue: you are told, and you can clear one that has fired. It sits in the day at the time it fires.
 
@@ -178,22 +163,17 @@ struct TodayView: View {
         .listRowBackground(Tok.surface)
     }
 
-    /// The time it fires, a bell for its state (to come, waiting for you, cleared), the title, and a check that clears one that has fired.
+    /// A reminder in the same shape as everything else in the day: a bell for its state (to come, waiting for you, cleared), the title, the
+    /// time it fires, and a check that clears one that has fired.
     private func cueRow(_ cue: Cue) -> some View {
-        HStack(spacing: Space.s) {
+        DayRowLayout(title: cue.reminder.title, detail: Self.cueTime(cue.at) + (cue.reminder.recurrence != nil ? " · repeats" : ""), dimmed: cue.cleared, warn: cue.due) {
             Button { detail = ReminderRef(id: cue.reminder.id) } label: {
-                HStack(spacing: Space.m) {
-                    Text(Self.cueTime(cue.at)).font(.missionMono(.caption, .medium)).foregroundStyle(cue.due ? Tok.warn : Tok.muted).frame(width: 64, alignment: .leading)
-                    Image(systemName: cue.cleared ? "bell.slash" : cue.due ? "bell.badge.fill" : "bell")
-                        .font(.mission(.subheadline)).foregroundStyle(cue.due ? Tok.warn : MissionTone.reminder.color).accessibilityHidden(true)
-                    Text(cue.reminder.title).font(.mission(.body)).foregroundStyle(cue.cleared ? Tok.muted : Tok.text).multilineTextAlignment(.leading)
-                    if cue.reminder.recurrence != nil { Image(systemName: "repeat").font(.caption).foregroundStyle(Tok.muted).accessibilityLabel("repeats") }
-                    Spacer(minLength: 0)
-                }
-                .frame(minHeight: 44).contentShape(Rectangle())
+                Image(systemName: cue.cleared ? "bell.slash" : cue.due ? "bell.badge.fill" : "bell").font(.mission(.title3))
+                    .foregroundStyle(cue.due ? Tok.warn : MissionTone.reminder.color).frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel("\(cue.reminder.title), \(Self.cueTime(cue.at)), reminder. Show details")
+            .accessibilityLabel("\(cue.reminder.title), reminder at \(Self.cueTime(cue.at)). Show details")
+        } trailing: {
             if cue.due, let item = cue.item {
                 Button { Task { await life.ackCue(item) } } label: {
                     Image(systemName: "checkmark.circle").font(.mission(.title2)).foregroundStyle(Tok.accent).frame(width: 44, height: 44)
@@ -205,6 +185,17 @@ struct TodayView: View {
         .swipeActions(edge: .trailing) { Button("Delete", role: .destructive) { Task { await life.deleteReminder(cue.reminder) } } }
         .swipeActions(edge: .leading) {
             Button("Snooze 1 hr", systemImage: "moon.zzz") { Task { await life.snoozeReminder(cue.reminder, until: Date().addingTimeInterval(3600)) } }.tint(MissionTone.reminder.color)
+        }
+    }
+
+    /// A routine due today is one more thing to do today: the same row, with its ring as the control.
+    private func routineRow(_ s: Wire.RoutineStatus) -> some View {
+        let detail = s.done ? "Done today" : [s.count > 0 ? "\(s.count) of \(s.target)" : (s.target > 1 ? "\(s.target) times" : nil), Self.nudgeText(s)].compactMap { $0 }.joined(separator: " · ")
+        return DayRowLayout(title: s.routine.title, detail: detail.isEmpty ? s.hint : detail, dimmed: s.done, warn: s.gap && !s.done) {
+            LogRing(status: s, size: 44)
+        } trailing: {
+            Button { openRoutine = RoutineRef(id: s.id) } label: { Image(systemName: "chevron.right").font(.footnote).foregroundStyle(Tok.muted).frame(width: 32, height: 44) }
+                .buttonStyle(.borderless).accessibilityLabel("Show \(s.routine.title) details")
         }
     }
 
@@ -234,7 +225,7 @@ struct TodayView: View {
                 DayRing(segments: segments)
                 VStack(alignment: .leading, spacing: Space.xs) {
                     ForEach(segments) { seg in
-                        Button { withAnimation { proxy.scrollTo(seg.kind == .cues ? DayKind.tasks : seg.kind, anchor: .top) } } label: {
+                        Button { withAnimation { proxy.scrollTo(DayKind.tasks, anchor: .top) } } label: {
                             HStack(spacing: Space.s) {
                                 RoundedRectangle(cornerRadius: 3, style: .continuous).fill(seg.kind.color).frame(width: 12, height: 12).accessibilityHidden(true)
                                 Text(seg.kind.rawValue).font(.mission(.subheadline)).foregroundStyle(Tok.text)
@@ -253,14 +244,9 @@ struct TodayView: View {
     }
 
     private func eventRow(_ e: DayEvent) -> some View {
-        HStack(spacing: Space.m) {
-            MissionIconBadge(symbol: MissionTone.scheduled.symbol, color: MissionTone.scheduled.color, padding: 8)
-            VStack(alignment: .leading) {
-                Text(e.title).font(.mission(.body))
-                Text("\(e.start.formatted(date: .omitted, time: .shortened)) · \(e.minutes) min").font(.missionMono(.caption)).foregroundStyle(Tok.muted)
-            }
-        }
-        .frame(minHeight: 44)
+        DayRowLayout(title: e.title, detail: "\(e.start.formatted(date: .omitted, time: .shortened)) · \(e.minutes) min") {
+            Image(systemName: "calendar").font(.mission(.title3)).foregroundStyle(MissionTone.scheduled.color).accessibilityLabel("Calendar event")
+        } trailing: { EmptyView() }
         .accessibilityElement(children: .combine)
     }
 
@@ -276,29 +262,49 @@ struct TodayView: View {
     }
 }
 
+/// Every row in the day has the same anatomy: a 44pt slot with the thing's icon or control, the title, and a line of detail that
+/// starts with the time when it has one. Only the icon and the action differ, so a task, a routine, a reminder and a calendar event
+/// read as parts of one list.
+struct DayRowLayout<Leading: View, Trailing: View>: View {
+    let title: String
+    var detail: String?
+    var dimmed = false
+    var strike = false
+    var warn = false
+    @ViewBuilder let leading: Leading
+    @ViewBuilder let trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: Space.m) {
+            leading.frame(width: 44, height: 44)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.mission(.body)).foregroundStyle(dimmed ? Tok.muted : Tok.text).strikethrough(strike).multilineTextAlignment(.leading)
+                if let detail, !detail.isEmpty {
+                    Text(detail).font(.missionMono(.caption)).foregroundStyle(warn ? Tok.warn : Tok.muted).lineLimit(2).multilineTextAlignment(.leading)
+                }
+            }
+            Spacer(minLength: 0)
+            trailing
+        }
+        .frame(minHeight: 52).contentShape(Rectangle())
+    }
+}
+
 struct PlanRow: View {
     @Environment(Life.self) private var life
     let item: Wire.PlanItem
     private var done: Bool { item.doneAt != nil }
 
     var body: some View {
-        HStack(spacing: Space.m) {
+        DayRowLayout(title: item.title, detail: detail, dimmed: done, strike: done) {
             Button { Task { await life.completeTask(item, done: !done) } } label: {
-                Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                    .font(.mission(.title2)).foregroundStyle(done ? Tok.accent : Tok.muted)
-                    .frame(width: 44, height: 44)
+                Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.mission(.title2)).foregroundStyle(done ? Tok.accent : Tok.muted)
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
             }
             .buttonStyle(.plain).disabled(life.busyTasks.contains(item.id))
             .accessibilityLabel(done ? "Mark \(item.title) not done" : "Mark \(item.title) done")
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title).font(.mission(.body)).strikethrough(done).foregroundStyle(done ? Tok.muted : Tok.text)
-                HStack(spacing: Space.s) {
-                    if let start = item.startAt { Text(start.formatted(date: .omitted, time: .shortened)) }
-                    if item.isPriority { Label("Priority", systemImage: "star.fill").foregroundStyle(MissionTone.attention.color) }
-                    Text("\(item.minutes) min")
-                }
-                .font(.missionMono(.caption)).foregroundStyle(Tok.muted)
-            }
+        } trailing: {
+            if item.isPriority { Image(systemName: "star.fill").foregroundStyle(MissionTone.attention.color).accessibilityLabel("Priority") }
         }
         .swipeActions(edge: .trailing) {
             Button("Delete", role: .destructive) { Task { await life.deleteTask(item) } }
@@ -306,6 +312,10 @@ struct PlanRow: View {
         .swipeActions(edge: .leading) {
             Button(item.isPriority ? "Unstar" : "Priority", systemImage: "star") { Task { await life.setTaskPriority(item, !item.isPriority) } }.tint(MissionTone.attention.color)
         }
+    }
+
+    private var detail: String {
+        [item.startAt.map { $0.formatted(date: .omitted, time: .shortened) }, "\(item.minutes) min"].compactMap { $0 }.joined(separator: " · ")
     }
 }
 

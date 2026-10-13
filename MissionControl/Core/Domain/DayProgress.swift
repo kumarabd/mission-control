@@ -2,7 +2,7 @@ import Foundation
 
 /// What a day is made of. The ring on Today has a segment for each kind that has something in it.
 enum DayKind: String, CaseIterable, Identifiable {
-    case routines = "Routines", tasks = "Tasks", cues = "Cues"
+    case routines = "Routines", tasks = "Tasks", cues = "Reminders"
     var id: Self { self }
 }
 

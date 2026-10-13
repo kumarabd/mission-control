@@ -23,6 +23,7 @@ SF Symbols only, one meaning per icon. **There is no plus in the app**: it meant
 | Not today | dashed ring with `calendar`, not tappable, with "Next: Sunday" beside it | a routine that does not apply today |
 | Take one back | `arrow.uturn.backward`, icon only | routine detail, deliberate, never in a list row |
 | Easier version | `timer`, icon only | routine detail |
+| A calendar event in the day | `calendar` | Today, same row shape as everything else |
 | A reminder in the day | `bell` (to come), `bell.badge.fill` (fired, waiting for you), `bell.slash` (cleared), with the time it fires | Today, in time order with tasks and events |
 | Got it (clear a cue that fired) | `checkmark.circle`, icon only | Today, reminder detail |
 | A goal's one-off step | `flag` (to do), `flag.checkered` (done): a milestone, deliberately not a checkbox, because a goal cannot be ticked | goal detail |
@@ -37,3 +38,16 @@ SF Symbols only, one meaning per icon. **There is no plus in the app**: it meant
 | Delete / archive | `trash` / `archivebox` | destructive actions, always confirmed or swipeable |
 | Do this next | `scope` | Today; the only place a goal's one-off step is finished |
 
+
+## The day list
+
+One list, headed **Tasks**, on Today. Every row has the same anatomy (`DayRowLayout`): a 44pt slot with the thing's icon or control, the title, and a mono detail line that starts with its time when it has one. Only the icon and the action differ:
+
+| Row | Slot | Detail line | Trailing |
+|---|---|---|---|
+| Task | checkbox (`circle` / `checkmark.circle.fill`) | `time · minutes` | star if a priority |
+| Routine due today | its ring (the control) | `1 of 3 · Next nudge 1:00 PM` | chevron to the tracker |
+| Reminder | bell (`bell`, `bell.badge.fill`, `bell.slash`) | `time · repeats` | check that clears one that fired |
+| Calendar event | `calendar` | `time · minutes` | none |
+
+Untimed tasks and routines come first, then timed rows in time order. Reminders on later days follow under **Later**. The ring's legend jumps to this list.
