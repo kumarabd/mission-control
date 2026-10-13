@@ -3,9 +3,6 @@ import SwiftUI
 struct TodayView: View {
     @Environment(Life.self) private var life
     @State private var events: [DayEvent] = []
-    @State private var minutes: Int?
-    @State private var chosen: Wire.Suggestion?
-    @State private var choosing = false
     @State private var sheet: Sheet?
     @State private var detail: ReminderRef?
     @State private var openRoutine: RoutineRef?
@@ -38,7 +35,6 @@ struct TodayView: View {
                 List {
                     if dayTotal > 0 { ringSection(proxy) }
                     tasksSection
-                    timeSection
                     ScheduleSection(events: events) { detail = ReminderRef(id: $0) }
                 }
             }
@@ -89,36 +85,6 @@ struct TodayView: View {
         }
     }
 
-    // MARK: I have a little time
-
-    private var timeSection: some View {
-        Section {
-            HStack(spacing: Space.s) {
-                ForEach([10, 20, 45], id: \.self) { m in
-                    Chip(title: "\(m) min", selected: minutes == m) { minutes = minutes == m ? nil : m }
-                }
-            }
-            if minutes != nil {
-                if choosing { ProgressView() }
-                else if let s = chosen {
-                    VStack(alignment: .leading, spacing: Space.xs) {
-                        Text(s.title).font(.mission(.headline, .medium))
-                        Text("\(s.minutes) min · \(s.reason)").font(.mission(.subheadline)).foregroundStyle(Tok.muted)
-                        Button("Mark done") { Task { await life.completeSuggestion(s); minutes = nil } }
-                            .buttonStyle(SecondaryButtonStyle()).padding(.top, Space.xs)
-                    }
-                } else if let minutes {
-                    Text("Nothing planned fits \(minutes) minutes. Take the break, or capture something small.")
-                        .font(.mission(.subheadline)).foregroundStyle(Tok.muted)
-                }
-            }
-        } header: { Text("I have\u{2026}").font(.mission(.subheadline, .medium)) }
-        .listRowBackground(Tok.surface)
-        .task(id: minutes) {
-            guard let minutes else { chosen = nil; return }
-            choosing = true; chosen = await life.suggestion(minutes: minutes); choosing = false
-        }
-    }
 
     /// Tasks without a time come first; then everything with a time in the order it happens: calendar events, timed tasks, and the reminders
     /// as they are due to fire.
