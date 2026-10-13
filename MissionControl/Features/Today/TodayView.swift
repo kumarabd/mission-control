@@ -24,7 +24,7 @@ struct TodayView: View {
                     timeSection
                     if !todayRoutines.isEmpty { routinesSection }
                     daySection
-                    if !comingUp.isEmpty { comingUpSection }
+                    if !later.isEmpty { laterSection }
                 }
             }
             .scrollContentBackground(.hidden).screenBackground()
@@ -112,19 +112,22 @@ struct TodayView: View {
         }
     }
 
+    /// Tasks without a time come first; then everything with a time in the order it happens: calendar events, timed tasks, and the reminders
+    /// as they are due to fire.
     private var daySection: some View {
         Section {
-            let rows = timeline
-            if rows.isEmpty {
-                Text("Your day is open.").font(.mission(.body)).foregroundStyle(Tok.muted)
-            }
-            ForEach(rows) { row in
+            let untimed = tasksToday.filter { $0.startAt == nil }
+            let timed = timeline
+            if untimed.isEmpty && timed.isEmpty { Text("Your day is open.").font(.mission(.body)).foregroundStyle(Tok.muted) }
+            ForEach(untimed) { PlanRow(item: $0) }
+            ForEach(timed) { row in
                 switch row {
                 case .event(let e): eventRow(e)
                 case .item(let i): PlanRow(item: i)
+                case .cue(let c): cueRow(Cue(id: c.id, reminder: c.reminder, at: c.at, item: c))
                 }
             }
-        } header: { Text("Tasks").font(.mission(.subheadline, .medium)).id(DayKind.tasks) }
+        } header: { Text("Today").font(.mission(.subheadline, .medium)).id(DayKind.tasks) }
         .listRowBackground(Tok.surface)
     }
 
@@ -137,7 +140,7 @@ struct TodayView: View {
                     LogRing(status: s, size: 44)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(s.routine.title).font(.mission(.body)).foregroundStyle(s.done ? Tok.muted : Tok.text)
-                        Text(s.done ? "Done today" : s.hint).font(.mission(.caption)).foregroundStyle(s.gap && !s.done ? Tok.warn : Tok.muted).lineLimit(2)
+                        Text(s.done ? "Done today" : Self.nudgeText(s) ?? s.hint).font(.mission(.caption)).foregroundStyle(s.gap && !s.done ? Tok.warn : Tok.muted).lineLimit(2)
                     }
                     Spacer(minLength: 0)
                 }
@@ -147,7 +150,7 @@ struct TodayView: View {
         .listRowBackground(Tok.surface)
     }
 
-    // MARK: Coming up. Reminders are cues: you are told, and you can clear one that has fired. Nothing here is ticked off.
+    // MARK: Reminders. A reminder is a cue: you are told, and you can clear one that has fired. It sits in the day at the time it fires.
 
     private struct Cue: Identifiable {
         let id: String
@@ -155,49 +158,59 @@ struct TodayView: View {
         let at: Date
         let item: Wire.AgendaItem?   // nil for a cue on a later day
         var due: Bool { item?.state == "due" }
+        var cleared: Bool { item?.state == "acknowledged" }
     }
 
-    /// Today's cues that are still to come or fired and not cleared, then the next few on later days.
-    private var comingUp: [Cue] {
-        let today = life.agenda.filter { $0.state != "acknowledged" }.map { Cue(id: $0.id, reminder: $0.reminder, at: $0.at, item: $0) }
+    /// The next few reminders on later days.
+    private var later: [Cue] {
         let onToday = Set(life.agenda.map(\.reminder.id))
         let tomorrow = Calendar.current.startOfDay(for: Date()).addingTimeInterval(86_400)
-        let later = life.reminders.compactMap { r -> Cue? in
+        return Array(life.reminders.compactMap { r -> Cue? in
             guard !r.isDone, !onToday.contains(r.id), let at = r.snoozedUntil ?? r.dueAt, at >= tomorrow else { return nil }
             return Cue(id: r.id + "@later", reminder: r, at: at, item: nil)
-        }.sorted { $0.at < $1.at }.prefix(4)
-        return today + Array(later)
+        }.sorted { $0.at < $1.at }.prefix(4))
     }
 
-    private var comingUpSection: some View {
+    private var laterSection: some View {
         Section {
-            ForEach(comingUp) { cue in
-                HStack(spacing: Space.s) {
-                    Button { detail = ReminderRef(id: cue.reminder.id) } label: {
-                        HStack(spacing: Space.m) {
-                            Text(Self.cueTime(cue.at)).font(.missionMono(.caption, .medium)).foregroundStyle(cue.due ? Tok.warn : Tok.muted).frame(width: 64, alignment: .leading)
-                            Text(cue.reminder.title).font(.mission(.body)).foregroundStyle(Tok.text).multilineTextAlignment(.leading)
-                            if cue.reminder.recurrence != nil { Image(systemName: "repeat").font(.caption).foregroundStyle(Tok.muted).accessibilityLabel("repeats") }
-                            Spacer(minLength: 0)
-                        }
-                        .frame(minHeight: 44).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityLabel("\(cue.reminder.title), \(Self.cueTime(cue.at)). Show details")
-                    if cue.due, let item = cue.item {
-                        Button("Got it") { Task { await life.ackCue(item) } }
-                            .font(.mission(.subheadline, .medium)).buttonStyle(.bordered).tint(Tok.accent)
-                            .disabled(life.busyReminders.contains(cue.reminder.id))
-                            .accessibilityLabel("Got it: \(cue.reminder.title)")
-                    }
-                }
-                .swipeActions(edge: .trailing) { Button("Delete", role: .destructive) { Task { await life.deleteReminder(cue.reminder) } } }
-                .swipeActions(edge: .leading) {
-                    Button("Snooze 1 hr", systemImage: "moon.zzz") { Task { await life.snoozeReminder(cue.reminder, until: Date().addingTimeInterval(3600)) } }.tint(MissionTone.reminder.color)
-                }
-            }
-        } header: { Text("Coming up").font(.mission(.subheadline, .medium)).id(DayKind.cues) }
+            ForEach(later) { cueRow($0) }
+        } header: { Text("Later").font(.mission(.subheadline, .medium)) }
         .listRowBackground(Tok.surface)
+    }
+
+    /// The time it fires, a bell for its state (to come, waiting for you, cleared), the title, and a check that clears one that has fired.
+    private func cueRow(_ cue: Cue) -> some View {
+        HStack(spacing: Space.s) {
+            Button { detail = ReminderRef(id: cue.reminder.id) } label: {
+                HStack(spacing: Space.m) {
+                    Text(Self.cueTime(cue.at)).font(.missionMono(.caption, .medium)).foregroundStyle(cue.due ? Tok.warn : Tok.muted).frame(width: 64, alignment: .leading)
+                    Image(systemName: cue.cleared ? "bell.slash" : cue.due ? "bell.badge.fill" : "bell")
+                        .font(.mission(.subheadline)).foregroundStyle(cue.due ? Tok.warn : MissionTone.reminder.color).accessibilityHidden(true)
+                    Text(cue.reminder.title).font(.mission(.body)).foregroundStyle(cue.cleared ? Tok.muted : Tok.text).multilineTextAlignment(.leading)
+                    if cue.reminder.recurrence != nil { Image(systemName: "repeat").font(.caption).foregroundStyle(Tok.muted).accessibilityLabel("repeats") }
+                    Spacer(minLength: 0)
+                }
+                .frame(minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("\(cue.reminder.title), \(Self.cueTime(cue.at)), reminder. Show details")
+            if cue.due, let item = cue.item {
+                Button { Task { await life.ackCue(item) } } label: {
+                    Image(systemName: "checkmark.circle").font(.mission(.title2)).foregroundStyle(Tok.accent).frame(width: 44, height: 44)
+                }
+                .buttonStyle(.borderless).disabled(life.busyReminders.contains(cue.reminder.id))
+                .accessibilityLabel("Got it: \(cue.reminder.title)")
+            }
+        }
+        .swipeActions(edge: .trailing) { Button("Delete", role: .destructive) { Task { await life.deleteReminder(cue.reminder) } } }
+        .swipeActions(edge: .leading) {
+            Button("Snooze 1 hr", systemImage: "moon.zzz") { Task { await life.snoozeReminder(cue.reminder, until: Date().addingTimeInterval(3600)) } }.tint(MissionTone.reminder.color)
+        }
+    }
+
+    /// "Next nudge 1:00 PM", or nil when the routine has none left today.
+    static func nudgeText(_ s: Wire.RoutineStatus) -> String? {
+        RoutineSchedule.nextCue(cues: s.routine.cues, zone: s.routine.timeZone).map { "Next nudge \($0.formatted(date: .omitted, time: .shortened))" }
     }
 
     /// "5:00 PM" for today; "Thu 9:00 AM" for another day.
@@ -221,7 +234,7 @@ struct TodayView: View {
                 DayRing(segments: segments)
                 VStack(alignment: .leading, spacing: Space.xs) {
                     ForEach(segments) { seg in
-                        Button { withAnimation { proxy.scrollTo(seg.kind, anchor: .top) } } label: {
+                        Button { withAnimation { proxy.scrollTo(seg.kind == .cues ? DayKind.tasks : seg.kind, anchor: .top) } } label: {
                             HStack(spacing: Space.s) {
                                 RoundedRectangle(cornerRadius: 3, style: .continuous).fill(seg.kind.color).frame(width: 12, height: 12).accessibilityHidden(true)
                                 Text(seg.kind.rawValue).font(.mission(.subheadline)).foregroundStyle(Tok.text)
@@ -252,13 +265,13 @@ struct TodayView: View {
     }
 
     private enum Row: Identifiable {
-        case event(DayEvent), item(Wire.PlanItem)
-        var id: String { switch self { case .event(let e): e.id; case .item(let i): i.id } }
-        var start: Date? { switch self { case .event(let e): e.start; case .item(let i): i.startAt } }
+        case event(DayEvent), item(Wire.PlanItem), cue(Wire.AgendaItem)
+        var id: String { switch self { case .event(let e): e.id; case .item(let i): i.id; case .cue(let c): "cue:" + c.id } }
+        var start: Date? { switch self { case .event(let e): e.start; case .item(let i): i.startAt; case .cue(let c): c.at } }
     }
 
     private var timeline: [Row] {
-        let rows = events.map(Row.event) + life.tasks.filter { $0.kind != "event" }.map(Row.item)
+        let rows = events.map(Row.event) + life.tasks.filter { $0.kind != "event" && $0.startAt != nil }.map(Row.item) + life.agenda.map(Row.cue)
         return rows.sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
     }
 }
@@ -280,6 +293,7 @@ struct PlanRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title).font(.mission(.body)).strikethrough(done).foregroundStyle(done ? Tok.muted : Tok.text)
                 HStack(spacing: Space.s) {
+                    if let start = item.startAt { Text(start.formatted(date: .omitted, time: .shortened)) }
                     if item.isPriority { Label("Priority", systemImage: "star.fill").foregroundStyle(MissionTone.attention.color) }
                     Text("\(item.minutes) min")
                 }

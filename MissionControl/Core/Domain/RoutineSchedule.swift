@@ -20,4 +20,16 @@ enum RoutineSchedule {
         calendar.timeZone = TimeZone(identifier: zone) ?? .current
         return calendar.component(.weekday, from: now) - 1
     }
+
+    /// The next nudge today, from "HH:mm" cues read in the routine's own zone, or nil when none is left. The date returned is an instant.
+    static func nextCue(cues: [String], zone: String, now: Date = Date()) -> Date? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: zone) ?? .current
+        let parts = calendar.dateComponents([.year, .month, .day], from: now)
+        return cues.compactMap { cue -> Date? in
+            let hm = cue.split(separator: ":").compactMap { Int($0) }
+            guard hm.count == 2 else { return nil }
+            return calendar.date(from: DateComponents(year: parts.year, month: parts.month, day: parts.day, hour: hm[0], minute: hm[1]))
+        }.filter { $0 > now }.min()
+    }
 }

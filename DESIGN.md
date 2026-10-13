@@ -23,7 +23,9 @@ SF Symbols only, one meaning per icon. **There is no plus in the app**: it meant
 | Not today | dashed ring with `calendar`, not tappable, with "Next: Sunday" beside it | a routine that does not apply today |
 | Take one back | `arrow.uturn.backward`, icon only | routine detail, deliberate, never in a list row |
 | Easier version | `timer`, icon only | routine detail |
-| Got it (clear a cue that fired) | `checkmark.circle` | Coming up, reminder detail |
+| A reminder in the day | `bell` (to come), `bell.badge.fill` (fired, waiting for you), `bell.slash` (cleared), with the time it fires | Today, in time order with tasks and events |
+| Got it (clear a cue that fired) | `checkmark.circle`, icon only | Today, reminder detail |
+| A goal's one-off step | `flag` (to do), `flag.checkered` (done): a milestone, deliberately not a checkbox, because a goal cannot be ticked | goal detail |
 | Write or create something | `square.and.pencil` | Progress, Memory, Journal toolbars |
 | Talk to the assistant | `bubble.left.fill` (floating button), `bubble.left` (inline) | capture, goal detail |
 | Voice | `mic.fill` to start, `stop.circle.fill` to end, `arrow.up` to send | capture sheet |
@@ -33,5 +35,5 @@ SF Symbols only, one meaning per icon. **There is no plus in the app**: it meant
 | Easier version | `timer` | routine detail |
 | Snooze / close the day | `moon.zzz` / `moon.stars` | cues, Today menu |
 | Delete / archive | `trash` / `archivebox` | destructive actions, always confirmed or swipeable |
-| Do this next | `scope` | Today |
+| Do this next | `scope` | Today; the only place a goal's one-off step is finished |
 

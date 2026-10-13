@@ -82,12 +82,22 @@ struct GoalDetail: View {
                     .listRowBackground(Tok.surface)
                 }
 
+                if routines.isEmpty {
+                    Section {
+                        Button { askAssistant = AssistantPrompt(text: "Link the routines I already have that serve \u{201C}\(goal.title)\u{201D}, add any that are missing, and replace repeating steps with routines.") } label: {
+                            Label("No routines serve this goal yet. Set them up with your assistant", systemImage: "repeat")
+                        }.frame(minHeight: 44)
+                    }
+                    .listRowBackground(Tok.surface)
+                }
+
                 if !goal.steps.isEmpty {
                     Section {
                         ForEach(goal.steps) { s in
                             HStack(spacing: Space.m) {
-                                Image(systemName: s.doneAt != nil ? "checkmark.circle.fill" : "circle").font(.mission(.title3))
-                                    .foregroundStyle(s.doneAt != nil ? Tok.accent : Tok.muted).accessibilityHidden(true)
+                                // A flag, not a checkbox: nothing here can be ticked.
+                                Image(systemName: s.doneAt != nil ? "flag.checkered" : "flag").font(.mission(.body))
+                                    .foregroundStyle(s.doneAt != nil ? Tok.accent : Tok.muted).frame(width: 24).accessibilityHidden(true)
                                 Text(s.title).font(.mission(.body)).foregroundStyle(s.doneAt != nil ? Tok.muted : Tok.text)
                                 Spacer()
                                 Text("\(s.minutes) min").font(.missionMono(.caption)).foregroundStyle(Tok.muted)
@@ -96,7 +106,7 @@ struct GoalDetail: View {
                             .accessibilityLabel("\(s.title), \(s.minutes) minutes, \(s.doneAt != nil ? "done" : "not done")")
                         }
                     } header: { Text("One-off steps").font(.mission(.subheadline, .medium)) }
-                    footer: { Text("Tasks done once. Tell your assistant when one is done.").font(.mission(.footnote)) }
+                    footer: { Text("Milestones done once. They come up under \u{201C}Do this next\u{201D} on Today.").font(.mission(.footnote)) }
                     .listRowBackground(Tok.surface)
                 }
 

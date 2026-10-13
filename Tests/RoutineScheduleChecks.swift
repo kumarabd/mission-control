@@ -22,6 +22,14 @@ struct RoutineScheduleChecks {
         let moment = Date(timeIntervalSince1970: 1_791_866_460)
         precondition(RoutineSchedule.weekdayNow(in: "America/Los_Angeles", now: moment) == 1)
         precondition(RoutineSchedule.weekdayNow(in: "UTC", now: moment) == 2)
+        // The next nudge today, in the routine's own zone: at 04:41 UTC (21:41 in Los Angeles) the 08:00 and 20:00 cues have gone and nothing is left;
+        // at 02:00 UTC (19:00 in Los Angeles) the 20:00 cue is next.
+        let late = Date(timeIntervalSince1970: 1_791_866_460)
+        precondition(RoutineSchedule.nextCue(cues: ["08:00", "20:00"], zone: "America/Los_Angeles", now: late) == nil)
+        let evening = Date(timeIntervalSince1970: 1_791_856_800)   // 2026-10-13 02:00 UTC = 2026-10-12 19:00 PDT
+        let next = RoutineSchedule.nextCue(cues: ["20:00", "08:00", "21:30"], zone: "America/Los_Angeles", now: evening)
+        precondition(next == Date(timeIntervalSince1970: 1_791_860_400), "\(String(describing: next))")   // 20:00 PDT = 03:00 UTC
+        precondition(RoutineSchedule.nextCue(cues: [], zone: "UTC", now: evening) == nil && RoutineSchedule.nextCue(cues: ["bad"], zone: "UTC", now: evening) == nil)
         print("RoutineScheduleChecks passed")
     }
 }
