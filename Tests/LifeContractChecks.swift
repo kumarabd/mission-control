@@ -82,8 +82,8 @@ struct LifeContractChecks {
                 ? Data(#"{"items":[],"total":0,"next_offset":null}"#.utf8) : reminderJSON
             return (body, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         })
-        _ = try! await service.pending()
-        precondition(sent[0].path == "reminders_list" && sent[0].body["status"] as? String == "pending")
+        _ = try! await service.list()
+        precondition(sent[0].path == "reminders_list" && sent[0].body["status"] as? String == "all")   // finished ones too: the app strikes them through for a day
 
         let due = ISO8601DateFormatter().date(from: "2030-01-15T09:00:00Z")!
         _ = try! await service.create(title: "Pay rent", due: due, recurrence: .init(freq: "daily", interval: nil, weekdays: nil), timeZone: "Europe/London", key: "k1")
