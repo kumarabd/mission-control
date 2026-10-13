@@ -71,8 +71,8 @@ struct MainTabs: View {
                     if tab != .classic { CaptureButton { capturing = true }.padding(.trailing, Space.l).padding(.bottom, 64) }
                 }
                 .sheet(isPresented: $capturing) { CaptureSheet().environment(life) }
-                .task { await life.syncTimeZone(); await life.load(); await life.loadReminders(); await life.loadRoutines(); await life.loadGoals() }
-                .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await life.syncTimeZone(); await life.loadReminders(); await life.loadRoutines(); await life.loadGoals() } } }
+                .task { await life.syncTimeZone(); await life.load(); await life.loadReminders(); await life.loadRoutines(); await life.loadGoals(); await life.loadPlan() }
+                .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await life.syncTimeZone(); await life.loadReminders(); await life.loadRoutines(); await life.loadGoals(); await life.loadPlan() } } }
                 .task { PushRegistrar.shared.attach(auth) }
                 .onChange(of: DeepLink.shared.pending) { _, target in
                     guard let target else { return }
@@ -91,6 +91,7 @@ struct MainTabs: View {
                 l.attachReminders(RemindersService(api: api))
                 l.attachRoutines(RoutinesService(api: api))
                 l.attachGoals(GoalsService(api: api))
+                l.attachPlan(PlanService(api: api))
                 l.attachSettings(SettingsService(api: api))
             }
             life = l

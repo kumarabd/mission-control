@@ -12,8 +12,92 @@ final class Life {
     init(engine: LifeEngine) { self.engine = engine }
 
     var today: Date { Planner.startOfDay(Date()) }
-    var todayItems: [PlanItem] {
-        store.plan.filter { $0.day == today }.sorted { ($0.start ?? .distantFuture, $0.title) < ($1.start ?? .distantFuture, $1.title) }
+
+    // MARK: Plan. Today's tasks are the Life Engine's, the same items the assistant adds, moves and completes.
+
+    private(set) var plan: Wire.PlanDay?
+    /// The one thing to do next: a task, or the next step of a goal.
+    private(set) var nextSuggestion: Wire.Suggestion?
+    private var planService: PlanService?
+    private(set) var busyTasks: Set<String> = []
+    var planAvailable: Bool { planService != nil }
+    /// Today's tasks and events in order.
+    var tasks: [Wire.PlanItem] { (plan?.items ?? []).filter { $0.deletedAt == nil } }
+
+    func attachPlan(_ service: PlanService?) { planService = service }
+
+    func loadPlan() async {
+        guard let service = planService else { return }
+        do {
+            plan = try await service.today()
+            nextSuggestion = try await service.nextAction(minutes: 480)
+        } catch { self.error = Self.planMessage(error) }
+    }
+
+    func completeTask(_ item: Wire.PlanItem, done: Bool) async {
+        await taskAction(item.id) { try await $0.complete(item, done: done) }
+    }
+    func setTaskPriority(_ item: Wire.PlanItem, _ on: Bool) async { await taskAction(item.id) { _ = try await $0.setPriority(item, on) } }
+    func deleteTask(_ item: Wire.PlanItem) async { await taskAction(item.id) { try await $0.delete(item) } }
+
+    @discardableResult
+    func addTask(title: String, minutes: Int, priority: Bool) async -> Bool {
+        guard let service = planService else { error = "Tasks need your workspace, and it isn't reachable right now."; return false }
+        do { _ = try await service.add(title: title, minutes: minutes, priority: priority); error = nil; await loadPlan(); return true }
+        catch { self.error = Self.planMessage(error); return false }
+    }
+
+    /// Finishes what a suggestion points at: the task, or the goal step. A step is only ever finished here, never on the goal.
+    func completeSuggestion(_ s: Wire.Suggestion) async {
+        if let id = s.planItemId, let item = tasks.first(where: { $0.id == id }) {
+            await completeTask(item, done: true)
+        } else if let goal = s.goalId, let stepId = s.stepId, let step = goals.first(where: { $0.id == goal })?.steps.first(where: { $0.id == stepId }),
+                  let service = goalService, !busySteps.contains(stepId) {
+            busySteps.insert(stepId); defer { busySteps.remove(stepId) }
+            do { try await service.completeStep(id: step.id, version: step.version); error = nil } catch { self.error = Self.goalMessage(error) }
+            await loadGoals(); await loadPlan()
+        }
+    }
+    private var busySteps: Set<String> = []
+
+    /// The one thing to do with this many minutes.
+    func suggestion(minutes: Int) async -> Wire.Suggestion? {
+        guard let service = planService else { return nil }
+        do { return try await service.nextAction(minutes: minutes) } catch { self.error = Self.planMessage(error); return nil }
+    }
+
+    func replanPreview(minutesLeft: Int) async -> Wire.Replan? {
+        guard let service = planService else { return nil }
+        do { return try await service.replan(minutesLeft: minutesLeft) } catch { self.error = Self.planMessage(error); return nil }
+    }
+
+    /// Moves what no longer fits to tomorrow.
+    func applyReplan(_ replan: Wire.Replan) async {
+        guard let service = planService, let tomorrow = PlanService.dayAfter(plan?.day) else { return }
+        do { for item in replan.moveToTomorrow { try await service.move(item, to: tomorrow) }; error = nil } catch { self.error = Self.planMessage(error) }
+        await loadPlan()
+    }
+
+    func closeDay(reflection: String?) async -> Wire.DayCloseResult? {
+        guard let service = planService else { return nil }
+        do { let r = try await service.closeDay(reflection: reflection); error = nil; await loadPlan(); return r } catch { self.error = Self.planMessage(error); return nil }
+    }
+
+    private func taskAction(_ id: String, _ body: (PlanService) async throws -> Void) async {
+        guard let service = planService, !busyTasks.contains(id) else { return }
+        busyTasks.insert(id); defer { busyTasks.remove(id) }
+        do { try await body(service); error = nil } catch { self.error = Self.planMessage(error) }
+        await loadPlan()
+    }
+
+    private static func planMessage(_ e: Error) -> String {
+        switch e as? LifeError {
+        case .unauthorized: "Please sign in again."
+        case .notProvisioned: "Your workspace isn't ready for tasks yet."
+        case .engine(let code, let message): code == "conflict" ? "That changed elsewhere. It has been refreshed." : message
+        case .retry: "You're offline, or the service is busy. Try again in a moment."
+        default: "Something went wrong with today's tasks."
+        }
     }
 
     // MARK: Settings. The phone says where the person is.
@@ -176,11 +260,6 @@ final class Life {
     func addStep(goal: UUID, title: String, minutes: Int) async { await run { try await self.engine.addStep(goal: goal, title: title, minutes: minutes) } }
     func setStep(goal: UUID, step: UUID, done: Bool) async { await run { try await self.engine.setStep(goal: goal, step: step, done: done) } }
     func shrink(goal: UUID, obstacle: Obstacle) async { await run { try await self.engine.shrink(goal: goal, obstacle: obstacle) } }
-    func addPlanItem(_ item: PlanItem) async { await run { try await self.engine.addPlanItem(item) } }
-    func setPlanItem(_ id: UUID, done: Bool) async { await run { try await self.engine.setPlanItem(id, done: done) } }
-    func setPriority(_ id: UUID, _ on: Bool) async { await run { try await self.engine.setPriority(id, on) } }
-    func deletePlanItem(_ id: UUID) async { await run { try await self.engine.deletePlanItem(id) } }
-    func apply(_ change: PlanChange) async { await run { try await self.engine.apply(change) } }
     func addRoutine(_ r: Routine) async { await run { try await self.engine.addRoutine(r) } }
     func setRoutine(_ id: UUID, done: Bool) async { await run { try await self.engine.setRoutine(id, day: self.today, done: done) } }
     func addJournal(text: String, goals: [UUID] = [], tomorrow: String? = nil) async { await run { try await self.engine.addJournal(text: text, goals: goals, tomorrow: tomorrow) } }
@@ -192,12 +271,6 @@ final class Life {
         do { let (o, s) = try await engine.capture(text); store = s; return o } catch { self.error = Self.message(error); return nil }
     }
 
-    func closeDay(reflection: String?) async -> DayClose? {
-        do { let (c, s) = try await engine.closeDay(today, reflection: reflection); store = s; return c } catch { self.error = Self.message(error); return nil }
-    }
-
-    func suggestion(minutes: Int) -> Suggestion? { Planner.suggestNext(minutes: minutes, store: store, today: Date()) }
-    func replan(minutesLeft: Int) -> PlanChange { Planner.replan(items: todayItems, minutesLeft: minutesLeft) }
     func weeklyReview() -> WeeklyReview { Planner.weeklyReview(store: store, now: Date()) }
 
     /// Past memories and journal entries matching every word typed, newest first.

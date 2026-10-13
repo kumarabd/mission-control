@@ -71,7 +71,7 @@ xcrun swiftc -parse-as-library MissionControl/Core/Push/PushLink.swift Tests/Pus
 ## Life Engine contract (real recorded responses, request shapes, error classification)
 
 ```sh
-xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/LifeAPI.swift MissionControl/Core/Remote/RemindersService.swift MissionControl/Core/Remote/RoutinesService.swift MissionControl/Core/Remote/GoalsService.swift MissionControl/Core/Remote/SettingsService.swift Tests/LifeContractChecks.swift -o /private/tmp/mission-life-contract-checks
+xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/LifeAPI.swift MissionControl/Core/Remote/RemindersService.swift MissionControl/Core/Remote/RoutinesService.swift MissionControl/Core/Remote/GoalsService.swift MissionControl/Core/Remote/SettingsService.swift MissionControl/Core/Remote/PlanService.swift Tests/LifeContractChecks.swift -o /private/tmp/mission-life-contract-checks
 /private/tmp/mission-life-contract-checks Tests/Fixtures/life
 ```
 

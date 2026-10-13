@@ -4,6 +4,8 @@ struct TodayView: View {
     @Environment(Life.self) private var life
     @State private var events: [DayEvent] = []
     @State private var minutes: Int?
+    @State private var chosen: Wire.Suggestion?
+    @State private var choosing = false
     @State private var sheet: Sheet?
     @State private var detail: ReminderRef?
 
@@ -11,8 +13,7 @@ struct TodayView: View {
         var id: Self { self }
     }
 
-    private var openItems: [PlanItem] { life.todayItems.filter { !$0.isDone && $0.kind != .event } }
-    private var next: PlanItem? { openItems.first(where: \.isPriority) ?? openItems.first }
+    private var tasksToday: [Wire.PlanItem] { life.tasks.filter { $0.kind != "event" } }
 
     var body: some View {
         NavigationStack {
@@ -48,7 +49,7 @@ struct TodayView: View {
                 }
             }
             .sheet(item: $detail) { ReminderDetailSheet(id: $0.id) }
-            .task { events = await DayEvents.today() }
+            .task { events = await DayEvents.today(); await life.loadPlan() }
             .alert("Something went wrong", isPresented: Binding(get: { life.error != nil }, set: { if !$0 { life.error = nil } })) {
                 Button("OK") { life.error = nil }
             } message: { Text(life.error ?? "") }
@@ -59,19 +60,20 @@ struct TodayView: View {
 
     private var nextSection: some View {
         Section {
-            if let next {
+            if let next = life.nextSuggestion {
                 VStack(alignment: .leading, spacing: Space.s) {
                     Label("Do this next", systemImage: "scope").font(.missionMono(.caption, .medium)).foregroundStyle(Tok.accent)
                     Text(next.title).font(.mission(.title2, .medium))
                     Text("\(next.minutes) min").font(.missionMono(.subheadline)).foregroundStyle(Tok.muted)
-                    Button("Mark done") { Task { await life.setPlanItem(next.id, done: true) } }
+                    if !next.reason.isEmpty { Text(next.reason).font(.mission(.footnote)).foregroundStyle(Tok.muted) }
+                    Button("Mark done") { Task { await life.completeSuggestion(next) } }
                         .buttonStyle(PrimaryButtonStyle()).padding(.top, Space.xs)
                 }
                 .padding(.vertical, Space.xs)
                 .accessibilityElement(children: .contain)
             } else {
                 VStack(alignment: .leading, spacing: Space.s) {
-                    Text(life.todayItems.isEmpty ? "Nothing planned yet" : "Everything on today's list is done").font(.mission(.title3, .medium))
+                    Text(tasksToday.isEmpty ? "Nothing planned yet" : "Everything on today's list is done").font(.mission(.title3, .medium))
                     Text("Add one thing that would make today a good day.").font(.mission(.body)).foregroundStyle(Tok.muted)
                     Button("Add to today") { sheet = .add }.buttonStyle(SecondaryButtonStyle())
                 }
@@ -88,26 +90,26 @@ struct TodayView: View {
                     Chip(title: "\(m) min", selected: minutes == m) { minutes = minutes == m ? nil : m }
                 }
             }
-            if let minutes {
-                if let s = life.suggestion(minutes: minutes) {
+            if minutes != nil {
+                if choosing { ProgressView() }
+                else if let s = chosen {
                     VStack(alignment: .leading, spacing: Space.xs) {
                         Text(s.title).font(.mission(.headline, .medium))
                         Text("\(s.minutes) min · \(s.reason)").font(.mission(.subheadline)).foregroundStyle(Tok.muted)
-                        if let id = s.planItemID {
-                            Button("Mark done") { Task { await life.setPlanItem(id, done: true); self.minutes = nil } }
-                                .buttonStyle(SecondaryButtonStyle()).padding(.top, Space.xs)
-                        } else if let g = s.goalID, let st = s.stepID {
-                            Button("Mark step done") { Task { await life.setStep(goal: g, step: st, done: true); self.minutes = nil } }
-                                .buttonStyle(SecondaryButtonStyle()).padding(.top, Space.xs)
-                        }
+                        Button("Mark done") { Task { await life.completeSuggestion(s); minutes = nil } }
+                            .buttonStyle(SecondaryButtonStyle()).padding(.top, Space.xs)
                     }
-                } else {
+                } else if let minutes {
                     Text("Nothing planned fits \(minutes) minutes. Take the break, or capture something small.")
                         .font(.mission(.subheadline)).foregroundStyle(Tok.muted)
                 }
             }
         } header: { Text("I have\u{2026}").font(.mission(.subheadline, .medium)) }
         .listRowBackground(Tok.surface)
+        .task(id: minutes) {
+            guard let minutes else { chosen = nil; return }
+            choosing = true; chosen = await life.suggestion(minutes: minutes); choosing = false
+        }
     }
 
     private var daySection: some View {
@@ -207,8 +209,8 @@ struct TodayView: View {
     // MARK: Your day. One ring for the whole day, a segment for each kind of thing in it.
 
     private var daySegments: [DaySegment] {
-        let tasks = life.todayItems.filter { $0.kind != .event }
-        return DayProgress.segments(routines: life.routines, tasksDone: tasks.filter(\.isDone).count, tasksTotal: tasks.count, cues: life.agenda)
+        let tasks = tasksToday
+        return DayProgress.segments(routines: life.routines, tasksDone: tasks.filter { $0.doneAt != nil }.count, tasksTotal: tasks.count, cues: life.agenda)
     }
     private var dayTotal: Int { daySegments.reduce(0) { $0 + $1.total } }
 
@@ -250,32 +252,33 @@ struct TodayView: View {
     }
 
     private enum Row: Identifiable {
-        case event(DayEvent), item(PlanItem)
-        var id: String { switch self { case .event(let e): e.id; case .item(let i): i.id.uuidString } }
-        var start: Date? { switch self { case .event(let e): e.start; case .item(let i): i.start } }
+        case event(DayEvent), item(Wire.PlanItem)
+        var id: String { switch self { case .event(let e): e.id; case .item(let i): i.id } }
+        var start: Date? { switch self { case .event(let e): e.start; case .item(let i): i.startAt } }
     }
 
     private var timeline: [Row] {
-        let rows = events.map(Row.event) + life.todayItems.map(Row.item)
+        let rows = events.map(Row.event) + life.tasks.filter { $0.kind != "event" }.map(Row.item)
         return rows.sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
     }
 }
 
 struct PlanRow: View {
     @Environment(Life.self) private var life
-    let item: PlanItem
+    let item: Wire.PlanItem
+    private var done: Bool { item.doneAt != nil }
 
     var body: some View {
         HStack(spacing: Space.m) {
-            Button { Task { await life.setPlanItem(item.id, done: !item.isDone) } } label: {
-                Image(systemName: item.isDone ? "checkmark.circle.fill" : "circle")
-                    .font(.mission(.title2)).foregroundStyle(item.isDone ? Tok.accent : Tok.muted)
+            Button { Task { await life.completeTask(item, done: !done) } } label: {
+                Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                    .font(.mission(.title2)).foregroundStyle(done ? Tok.accent : Tok.muted)
                     .frame(width: 44, height: 44)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(item.isDone ? "Mark \(item.title) not done" : "Mark \(item.title) done")
+            .buttonStyle(.plain).disabled(life.busyTasks.contains(item.id))
+            .accessibilityLabel(done ? "Mark \(item.title) not done" : "Mark \(item.title) done")
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.title).font(.mission(.body)).strikethrough(item.isDone).foregroundStyle(item.isDone ? Tok.muted : Tok.text)
+                Text(item.title).font(.mission(.body)).strikethrough(done).foregroundStyle(done ? Tok.muted : Tok.text)
                 HStack(spacing: Space.s) {
                     if item.isPriority { Label("Priority", systemImage: "star.fill").foregroundStyle(MissionTone.attention.color) }
                     Text("\(item.minutes) min")
@@ -284,10 +287,10 @@ struct PlanRow: View {
             }
         }
         .swipeActions(edge: .trailing) {
-            Button("Delete", role: .destructive) { Task { await life.deletePlanItem(item.id) } }
+            Button("Delete", role: .destructive) { Task { await life.deleteTask(item) } }
         }
         .swipeActions(edge: .leading) {
-            Button(item.isPriority ? "Unstar" : "Priority", systemImage: "star") { Task { await life.setPriority(item.id, !item.isPriority) } }.tint(MissionTone.attention.color)
+            Button(item.isPriority ? "Unstar" : "Priority", systemImage: "star") { Task { await life.setTaskPriority(item, !item.isPriority) } }.tint(MissionTone.attention.color)
         }
     }
 }
@@ -314,7 +317,7 @@ struct AddPlanItemSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
-                        Task { await life.addPlanItem(PlanItem(title: title.trimmed, minutes: minutes, day: life.today, isPriority: priority)); dismiss() }
+                        Task { if await life.addTask(title: title.trimmed, minutes: minutes, priority: priority) { dismiss() } }
                     }.disabled(title.trimmed.isEmpty)
                 }
             }
@@ -328,6 +331,7 @@ struct ReplanSheet: View {
     @Environment(Life.self) private var life
     @Environment(\.dismiss) private var dismiss
     @State private var minutesLeft: Int?
+    @State private var change: Wire.Replan?
 
     var body: some View {
         NavigationStack {
@@ -339,13 +343,13 @@ struct ReplanSheet: View {
                         }
                     }.listRowBackground(Color.clear)
                 }
-                if let minutesLeft {
-                    let change = life.replan(minutesLeft: minutesLeft)
-                    Section("Keep today") { list(change.keep.filter { !$0.isDone }, empty: "Nothing else fits. That's fine.") }
+                if minutesLeft != nil, let change {
+                    Section("Keep today") { list(change.keep.filter { $0.doneAt == nil }, empty: "Nothing else fits. That's fine.") }
+                        .listRowBackground(Tok.surface)
                     Section("Move to tomorrow") { list(change.moveToTomorrow, empty: "Nothing needs to move.") }
                         .listRowBackground(Tok.surface)
                     Section {
-                        Button("Apply this plan") { Task { await life.apply(change); dismiss() } }
+                        Button("Apply this plan") { Task { await life.applyReplan(change); dismiss() } }
                             .buttonStyle(PrimaryButtonStyle()).listRowBackground(Color.clear).listRowInsets(.init())
                     }
                 }
@@ -353,11 +357,15 @@ struct ReplanSheet: View {
             .scrollContentBackground(.hidden).screenBackground()
             .navigationTitle("My day changed").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .task(id: minutesLeft) {
+                guard let minutesLeft else { change = nil; return }
+                change = await life.replanPreview(minutesLeft: minutesLeft)
+            }
         }
         .presentationDetents([.large])
     }
 
-    @ViewBuilder private func list(_ items: [PlanItem], empty: String) -> some View {
+    @ViewBuilder private func list(_ items: [Wire.PlanItem], empty: String) -> some View {
         if items.isEmpty { Text(empty).font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
         ForEach(items) { i in
             HStack { Text(i.title).font(.mission(.body)); Spacer(); Text("\(i.minutes) min").font(.missionMono(.caption)).foregroundStyle(Tok.muted) }
@@ -371,7 +379,7 @@ struct CloseDaySheet: View {
     @Environment(Life.self) private var life
     @Environment(\.dismiss) private var dismiss
     @State private var reflection = ""
-    @State private var result: DayClose?
+    @State private var result: Wire.DayCloseResult?
 
     var body: some View {
         NavigationStack {
@@ -387,8 +395,8 @@ struct CloseDaySheet: View {
                     }
                 } else {
                     VStack(alignment: .leading, spacing: Space.l) {
-                        let items = life.todayItems
-                        Text("\(items.filter(\.isDone).count) of \(items.filter { $0.kind != .event }.count) done today").font(.mission(.title3, .medium))
+                        let items = life.tasks.filter { $0.kind != "event" }
+                        Text("\(items.filter { $0.doneAt != nil }.count) of \(items.count) done today").font(.mission(.title3, .medium))
                         Text("Anything unfinished moves to tomorrow. How was the day?").font(.mission(.body)).foregroundStyle(Tok.muted)
                         TextField("One line is enough (optional)", text: $reflection, axis: .vertical)
                             .font(.mission(.body)).lineLimit(2...6)

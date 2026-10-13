@@ -166,6 +166,36 @@ struct LifeContractChecks {
         precondition(goalCalls == ["goals_list"] && !goalsNow.isEmpty)
         precondition(goalsNow[0].consistency != nil && goalsNow[0].routineIds != nil, "a goal carries the routines that serve it and how well they were kept")
 
+        // Today's tasks: the engine's plan, completed and moved with the version just read.
+        var planCalls: [(path: String, body: [String: Any])] = []
+        let planService = PlanService(api: LifeAPI(baseURL: "https://router.example/life/api/v1", token: { "tok" }) { request in
+            let op = request.url!.lastPathComponent
+            planCalls.append((op, try! JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]))
+            let file = ["plan_get": "plan_day", "next_action": "next_action", "plan_replan_preview": "replan", "day_close": "day_close"][op] ?? "plan_item"
+            return (fixtureData(file), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        })
+        let day = try! await planService.today()
+        precondition(planCalls[0].path == "plan_get" && day.items.count == plan.items.count)
+        let item = day.items.first { $0.doneAt == nil } ?? day.items[0]
+        _ = try! await planService.complete(item, done: true)
+        precondition(planCalls[1].path == "plan_items_complete" && planCalls[1].body["id"] as? String == item.id && planCalls[1].body["done"] as? Bool == true && planCalls[1].body["expected_version"] as? Int == item.version)
+        _ = try! await planService.add(title: "Call the bank", minutes: 15, priority: true)
+        precondition(planCalls[2].path == "plan_items_create" && planCalls[2].body["title"] as? String == "Call the bank" && planCalls[2].body["is_priority"] as? Bool == true && planCalls[2].body["kind"] as? String == "task")
+        _ = try! await planService.setPriority(item, true)
+        precondition(planCalls[3].path == "plan_items_update" && planCalls[3].body["title"] as? String == item.title && planCalls[3].body["minutes"] as? Int == item.minutes && planCalls[3].body["is_priority"] as? Bool == true, "an update sends every field back")
+        try! await planService.move(item, to: "2030-01-16")
+        precondition(planCalls[4].path == "plan_items_move" && planCalls[4].body["day"] as? String == "2030-01-16")
+        let suggestion = try! await planService.nextAction(minutes: 20)
+        precondition(planCalls[5].path == "next_action" && planCalls[5].body["minutes"] as? Int == 20 && suggestion?.source == "goal_step")
+        let preview = try! await planService.replan(minutesLeft: 60)
+        precondition(planCalls[6].path == "plan_replan_preview" && planCalls[6].body["minutes_left"] as? Int == 60 && preview.moveToTomorrow.count == 1)
+        let closed = try! await planService.closeDay(reflection: "")
+        precondition(planCalls[7].path == "day_close" && planCalls[7].body["reflection"] == nil, "an empty reflection is not sent")
+        precondition(closed.summary.isEmpty == false && closed.nextDay > closed.day)
+        try! await planService.delete(item)
+        precondition(planCalls[8].path == "plan_items_delete" && planCalls[8].body["expected_version"] as? Int == item.version)
+        precondition(PlanService.dayAfter("2026-10-13") == "2026-10-14" && PlanService.dayAfter("2026-12-31") == "2027-01-01" && PlanService.dayAfter(nil) == nil)
+
         // Settings: the phone's time zone is sent only when it differs from the engine's.
         let settingsNow = load(Wire.Settings.self, "capabilities_ok", in: dir)
         var settingsCalls: [(path: String, body: [String: Any])] = []

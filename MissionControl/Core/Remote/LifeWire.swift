@@ -165,6 +165,12 @@ enum Wire {
     }
     struct NextAction: Codable, Equatable { var suggestion: Suggestion? }
 
+    struct DayCloseResult: Codable, Equatable {
+        var done: Int; var planned: Int; var carried: [PlanItem]
+        var summary: String; var tomorrowNote: String
+        var day: String; var nextDay: String
+    }
+
     struct Replan: Codable, Equatable {
         var keep: [PlanItem]; var moveToTomorrow: [PlanItem]; var minutesKept: Int
     }
