@@ -1,45 +1,54 @@
 import Foundation
 
-// When a reminder shows as done, and for how long. Compiled with LifeWire.swift:
-//   xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift Tests/ReminderStateChecks.swift -o /private/tmp/reminder-state-checks && /private/tmp/reminder-state-checks
+// How long a finished reminder stays listed, how a repeat is described, and how the day is counted for the ring. Compiled with
+// the wire types and DayProgress:
+//   xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Domain/DayProgress.swift Tests/ReminderStateChecks.swift -o /private/tmp/reminder-state-checks && /private/tmp/reminder-state-checks
 @main
 struct ReminderStateChecks {
     static let now = Date(timeIntervalSince1970: 1_791_900_000)
     static func hours(_ h: Double) -> Date { now.addingTimeInterval(h * 3600) }
 
-    static func reminder(state: String = "pending", due: Date? = nil, snoozed: Date? = nil, rule: Wire.Recurrence? = nil,
-                         completed: Date? = nil, lastCompleted: Date? = nil, updated: Date = now) -> Wire.Reminder {
-        Wire.Reminder(id: "r", title: "Drink water", notes: "", dueAt: due, snoozedUntil: snoozed, timeZone: "UTC", recurrence: rule, source: "user",
-                      sessionId: nil, turnSeq: nil, link: nil, state: state, completedAt: completed, lastCompletedAt: lastCompleted,
+    static func reminder(state: String = "pending", due: Date? = nil, rule: Wire.Recurrence? = nil, completed: Date? = nil, updated: Date = now) -> Wire.Reminder {
+        Wire.Reminder(id: "r", title: "Drink water", notes: "", dueAt: due, snoozedUntil: nil, timeZone: "UTC", recurrence: rule, source: "user",
+                      sessionId: nil, turnSeq: nil, link: nil, state: state, completedAt: completed, lastCompletedAt: nil,
                       version: 1, deletedAt: nil, createdAt: now, updatedAt: updated)
     }
 
+    static func routine(_ count: Int, of target: Int, scheduled: Bool = true) -> Wire.RoutineStatus {
+        let r = Wire.Routine(id: "x\(count)\(target)", title: "R", minutes: 5, shortTitle: "s", shortMinutes: 1, weekdays: [], targetPerDay: target, cues: [],
+                             timeZone: "UTC", version: 1, deletedAt: nil, createdAt: now, updatedAt: now)
+        return Wire.RoutineStatus(routine: r, scheduled: scheduled, target: target, count: count, done: count >= target, variant: nil, streak: 0, daysSinceLast: nil, gap: false, hint: "")
+    }
+
+    static func cue(_ state: String, _ id: String) -> Wire.AgendaItem {
+        Wire.AgendaItem(reminder: reminder(due: now).with(id: id), at: now, state: state, overdue: false)
+    }
+
     static func main() {
-        let daily = Wire.Recurrence(freq: "daily", interval: 1, weekdays: nil)
-
-        precondition(!reminder(due: hours(2)).doneForNow(now: now), "an open one-off is not done")
-        precondition(reminder(state: "done", due: hours(-2), completed: hours(-1)).doneForNow(now: now), "a finished one-off is done")
-
-        // Repeating: due tomorrow 09:00 (24h ahead of "now" = today 09:00). Ticked off after today's occurrence = done for now.
-        let tomorrow = hours(24)
-        precondition(reminder(due: tomorrow, rule: daily, lastCompleted: hours(0.1)).doneForNow(now: now), "ticked off since the last occurrence")
-        precondition(!reminder(due: tomorrow, rule: daily, lastCompleted: hours(-30)).doneForNow(now: now), "ticked off before the last occurrence")
-        precondition(!reminder(due: tomorrow, rule: daily).doneForNow(now: now), "never ticked off")
-        precondition(!reminder(snoozed: hours(1), rule: daily, lastCompleted: hours(0.1)).doneForNow(now: now), "a snoozed one is not done")
-
-        // Weekly on Mon, Wed, Fri: the gap between occurrences is two days, not a week.
-        let mwf = Wire.Recurrence(freq: "weekly", interval: 1, weekdays: [1, 3, 5])
-        precondition(mwf.approximatePeriod == 2 * 86_400, "shortest gap between Mon/Wed/Fri")
-        precondition(Wire.Recurrence(freq: "weekly", interval: 2, weekdays: nil).approximatePeriod == 14 * 86_400)
-
-        // How long a finished one stays on the list.
+        // A finished reminder stays on the list for a day; an open one always does.
         precondition(reminder(due: hours(-5)).isShown(now: now), "open ones always show")
         precondition(reminder(state: "done", completed: hours(-1)).isShown(now: now), "finished an hour ago")
         precondition(!reminder(state: "done", completed: hours(-30)).isShown(now: now), "finished yesterday")
 
-        precondition(reminder(rule: daily).repeatDescription == "Every day")
+        precondition(reminder(rule: Wire.Recurrence(freq: "daily", interval: 1, weekdays: nil)).repeatDescription == "Every day")
         precondition(reminder(rule: Wire.Recurrence(freq: "weekly", interval: 2, weekdays: nil)).repeatDescription == "Every 2 weeks")
         precondition(reminder().repeatDescription == nil)
+
+        // A cue counts once it has fired, whether or not it was cleared; one still to come does not.
+        precondition(cue("upcoming", "a").hasFired == false && cue("due", "a").hasFired && cue("acknowledged", "a").hasFired)
+        precondition(cue("due", "a").id != cue("due", "b").id, "each occurrence is its own item")
+
+        // The ring: routines in units of their target (capped), tasks one each, cues once fired; empty kinds drop out.
+        let segments = DayProgress.segments(routines: [routine(2, of: 3), routine(5, of: 1), routine(0, of: 2, scheduled: false)],
+                                            tasksDone: 1, tasksTotal: 3, cues: [cue("due", "a"), cue("upcoming", "b"), cue("acknowledged", "c")])
+        precondition(segments == [DaySegment(kind: .routines, done: 3, total: 4), DaySegment(kind: .tasks, done: 1, total: 3), DaySegment(kind: .cues, done: 2, total: 3)],
+                     "a routine over target counts only up to its target; one not scheduled today is left out")
+        precondition(DayProgress.segments(routines: [], tasksDone: 0, tasksTotal: 0, cues: []).isEmpty, "an empty day has no ring")
+        precondition(DayProgress.segments(routines: [], tasksDone: 0, tasksTotal: 2, cues: []).map(\.kind) == [.tasks], "only kinds with something in them")
         print("ReminderStateChecks passed")
     }
+}
+
+extension Wire.Reminder {
+    func with(id: String) -> Wire.Reminder { var r = self; r.id = id; return r }
 }

@@ -20,6 +20,20 @@ struct RemindersService {
         return page.items
     }
 
+    private struct AgendaIn: Encodable {}
+    private struct AckIn: Encodable { var idempotencyKey: String; var id: String; var at: Date }
+
+    /// Today's cues, one entry per occurrence.
+    func agenda() async throws -> [Wire.AgendaItem] {
+        let result: Wire.Agenda = try await api.call("reminders_agenda", AgendaIn())
+        return result.items
+    }
+
+    /// "Got it" for one occurrence. A one-off is finished by it; a repeating reminder carries on.
+    func ack(_ item: Wire.AgendaItem) async throws -> Wire.Reminder {
+        try await api.call("reminders_ack", AckIn(idempotencyKey: UUID().uuidString, id: item.reminder.id, at: item.at))
+    }
+
     /// `key` identifies this intent: resending the same one (a retry after a lost response) never makes a second reminder.
     func create(title: String, notes: String? = nil, due: Date?, recurrence: Wire.Recurrence? = nil,
                 timeZone: String = TimeZone.current.identifier, key: String = UUID().uuidString) async throws -> Wire.Reminder {

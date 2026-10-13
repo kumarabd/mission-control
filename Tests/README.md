@@ -79,4 +79,4 @@ xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift Mission
 
 Reminder state (when a reminder shows as done, and for how long):
 
-    xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift Tests/ReminderStateChecks.swift -o /private/tmp/reminder-state-checks && /private/tmp/reminder-state-checks
+    xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Domain/DayProgress.swift Tests/ReminderStateChecks.swift -o /private/tmp/reminder-state-checks && /private/tmp/reminder-state-checks

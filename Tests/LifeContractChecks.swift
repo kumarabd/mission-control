@@ -26,6 +26,11 @@ struct LifeContractChecks {
         let page = load(Wire.Page<Wire.Reminder>.self, "reminders_page", in: dir)
         precondition(page.total == page.items.count && page.nextOffset == nil && page.items.count >= 3)
 
+        // The day's cues: one entry per occurrence, with whether it has fired.
+        let agenda = load(Wire.Agenda.self, "reminders_agenda", in: dir)
+        precondition(!agenda.items.isEmpty && agenda.items[0].state == "due" && agenda.items[0].hasFired && !agenda.items[0].overdue)
+        precondition(load(Wire.Reminder.self, "reminder_acked", in: dir).isDone, "clearing a one-off finishes it")
+
         // Routines: a daily target, several cues, a count against the target, and a history for the tracker.
         let routine = load(Wire.Routine.self, "routine", in: dir)
         precondition(routine.title == "Morning run" && routine.targetPerDay == 1 && routine.cues == ["07:30"] && routine.weekdays == [1, 2, 3, 4, 5])
@@ -89,10 +94,12 @@ struct LifeContractChecks {
         // The reminders service sends exactly what the engine's operations take, and nothing the engine would refuse.
         var sent: [(path: String, body: [String: Any])] = []
         let reminderJSON = fixture
+        let agendaJSON = try! Data(contentsOf: URL(fileURLWithPath: dir).appendingPathComponent("reminders_agenda.json"))
         let service = RemindersService(api: LifeAPI(baseURL: "https://router.example/life/api/v1", token: { "tok" }) { request in
             sent.append((request.url!.lastPathComponent, try! JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]))
             let body = request.url!.lastPathComponent == "reminders_list"
-                ? Data(#"{"items":[],"total":0,"next_offset":null}"#.utf8) : reminderJSON
+                ? Data(#"{"items":[],"total":0,"next_offset":null}"#.utf8)
+                : request.url!.lastPathComponent == "reminders_agenda" ? agendaJSON : reminderJSON
             return (body, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         })
         _ = try! await service.list()
@@ -110,11 +117,15 @@ struct LifeContractChecks {
 
         _ = try! await service.complete(r)
         precondition(sent[3].path == "reminders_complete" && sent[3].body["id"] as? String == r.id && sent[3].body["expected_version"] as? Int == 1)
+        let cues = try! await service.agenda()
+        precondition(sent[4].path == "reminders_agenda" && cues.count == agenda.items.count)
+        _ = try! await service.ack(agenda.items[0])
+        precondition(sent[5].path == "reminders_ack" && sent[5].body["id"] as? String == agenda.items[0].reminder.id && sent[5].body["at"] as? String != nil && sent[5].body["expected_version"] == nil)
         _ = try! await service.snooze(r, until: due)
-        precondition(sent[4].path == "reminders_snooze" && sent[4].body["until"] as? String == "2030-01-15T09:00:00Z")
+        precondition(sent[6].path == "reminders_snooze" && sent[4].body["until"] as? String == "2030-01-15T09:00:00Z")
         try! await service.delete(r)
-        precondition(sent[5].path == "reminders_delete")
-        precondition(Set(sent.dropFirst().map { $0.body["idempotency_key"] as? String ?? "" }).count == 5, "every intent has its own key")
+        precondition(sent[7].path == "reminders_delete")
+        precondition(Set(sent.dropFirst().map { $0.body["idempotency_key"] as? String ?? "" }).count == 7, "every intent has its own key")
 
         // The routines service sends what the engine's operations take and reads what they return.
         func fixtureData(_ name: String) -> Data { try! Data(contentsOf: URL(fileURLWithPath: dir).appendingPathComponent(name + ".json")) }

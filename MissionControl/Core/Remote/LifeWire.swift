@@ -93,6 +93,22 @@ enum Wire {
         var bestStreak: Int
     }
 
+    /// One occurrence of a reminder on a day. A repeating reminder appears once for each time it falls.
+    struct AgendaItem: Codable, Equatable, Identifiable {
+        var reminder: Reminder
+        var at: Date
+        var state: String            // upcoming | due | acknowledged
+        var overdue: Bool
+        var id: String { reminder.id + "@" + String(Int(at.timeIntervalSince1970)) }
+        /// A cue counts toward the day once it has fired: the point of it is that you were told.
+        var hasFired: Bool { state != "upcoming" }
+    }
+
+    struct Agenda: Codable, Equatable {
+        var day: String
+        var items: [AgendaItem]
+    }
+
     struct Page<T: Codable & Equatable>: Codable, Equatable {
         var items: [T]
         var total: Int
@@ -192,14 +208,6 @@ enum Wire {
 
 
 extension Wire.Reminder {
-    /// Done, or a repeating reminder whose latest occurrence has been ticked off. It stays on screen, struck through, until
-    /// the next occurrence is due (a repeating reminder is never "finished", so the engine keeps it pending).
-    func doneForNow(now: Date = Date()) -> Bool {
-        if isDone { return true }
-        guard let rule = recurrence, let completed = lastCompletedAt, let due = snoozedUntil == nil ? dueAt : nil else { return false }
-        return completed > due.addingTimeInterval(-rule.approximatePeriod)
-    }
-
     /// Open reminders always; a finished one only for a day, so the list shows what you just did without keeping it forever.
     func isShown(now: Date = Date()) -> Bool {
         guard isDone else { return true }
@@ -217,21 +225,5 @@ extension Wire.Reminder {
             text += " on " + days.sorted().compactMap { names.indices.contains($0) ? names[$0] : nil }.joined(separator: ", ")
         }
         return text
-    }
-}
-
-extension Wire.Recurrence {
-    /// The shortest gap between two occurrences, for deciding whether the latest one has been completed.
-    var approximatePeriod: TimeInterval {
-        let n = TimeInterval(max(interval ?? 1, 1))
-        switch freq {
-        case "daily": return n * 86_400
-        case "monthly": return n * 28 * 86_400
-        default:
-            guard let days = weekdays, days.count > 1 else { return n * 7 * 86_400 }
-            let sorted = days.sorted()
-            let gaps = zip(sorted, sorted.dropFirst() + [sorted[0] + 7]).map { $1 - $0 }
-            return TimeInterval(gaps.min() ?? 7) * 86_400
-        }
     }
 }

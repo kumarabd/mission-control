@@ -76,6 +76,8 @@ final class Life {
     // MARK: Reminders. Always the Life Engine, through the same operations the agent calls; never a local invention.
 
     private(set) var reminders: [Wire.Reminder] = []
+    /// Today's cues, one per occurrence; what the Today screen shows and counts.
+    private(set) var agenda: [Wire.AgendaItem] = []
     private var reminderService: RemindersService?
     /// False when there is no workspace to talk to (developer mode, or no router configured).
     var remindersAvailable: Bool { reminderService != nil }
@@ -84,7 +86,11 @@ final class Life {
 
     func loadReminders() async {
         guard let service = reminderService else { return }
-        do { reminders = try await service.list().filter { $0.isShown() }; await Notifier.sync(reminders) } catch { self.error = Self.reminderMessage(error) }
+        do {
+            reminders = try await service.list().filter { $0.isShown() }
+            agenda = try await service.agenda()
+            await Notifier.sync(reminders)
+        } catch { self.error = Self.reminderMessage(error) }
     }
 
     @discardableResult
@@ -94,18 +100,12 @@ final class Life {
     /// Reminders with a change in flight. A second tap on the same one waits, so it cannot collide with its own first.
     private(set) var busyReminders: Set<String> = []
 
-    func completeReminder(_ r: Wire.Reminder) async {
-        guard !busyReminders.contains(r.id), !r.doneForNow() else { return }
-        busyReminders.insert(r.id); defer { busyReminders.remove(r.id) }
-        guard let service = reminderService else { error = "Reminders need your workspace, and it isn't reachable right now."; return }
-        do { _ = try await service.complete(r); error = nil; await loadReminders() }
-        catch LifeError.engine(let code, _) where code == "conflict" {
-            // It changed under us (the assistant edited it, or it already fired). Look again; only try once more if it is still open.
-            await loadReminders()
-            guard let fresh = reminders.first(where: { $0.id == r.id }), !fresh.doneForNow() else { return }
-            do { _ = try await service.complete(fresh); error = nil } catch { self.error = Self.reminderMessage(error) }
-            await loadReminders()
-        } catch { self.error = Self.reminderMessage(error); await loadReminders() }
+    /// "Got it" for one occurrence.
+    func ackCue(_ item: Wire.AgendaItem) async {
+        guard let service = reminderService, !busyReminders.contains(item.reminder.id) else { return }
+        busyReminders.insert(item.reminder.id); defer { busyReminders.remove(item.reminder.id) }
+        do { _ = try await service.ack(item); error = nil } catch { self.error = Self.reminderMessage(error) }
+        await loadReminders()
     }
     func snoozeReminder(_ r: Wire.Reminder, until: Date) async {
         guard !busyReminders.contains(r.id) else { return }

@@ -16,12 +16,15 @@ struct TodayView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                nextSection
-                timeSection
-                daySection
-                if !todayRoutines.isEmpty { routinesSection }
-                if !life.reminders.isEmpty { remindersSection }
+            ScrollViewReader { proxy in
+                List {
+                    if dayTotal > 0 { ringSection(proxy) }
+                    nextSection
+                    timeSection
+                    if !todayRoutines.isEmpty { routinesSection }
+                    daySection
+                    if !comingUp.isEmpty { comingUpSection }
+                }
             }
             .scrollContentBackground(.hidden).screenBackground()
             .navigationTitle(Date().formatted(.dateTime.weekday(.wide).day().month()))
@@ -119,7 +122,7 @@ struct TodayView: View {
                 case .item(let i): PlanRow(item: i)
                 }
             }
-        } header: { Text("Today").font(.mission(.subheadline, .medium)) }
+        } header: { Text("Tasks").font(.mission(.subheadline, .medium)).id(DayKind.tasks) }
         .listRowBackground(Tok.surface)
     }
 
@@ -140,56 +143,100 @@ struct TodayView: View {
                 .frame(minHeight: 44)
                 .accessibilityElement(children: .contain)
             }
-        } header: { Text("Routines").font(.mission(.subheadline, .medium)) }
+        } header: { Text("Routines").font(.mission(.subheadline, .medium)).id(DayKind.routines) }
         .listRowBackground(Tok.surface)
     }
 
-    private var remindersSection: some View {
+    // MARK: Coming up. Reminders are cues: you are told, and you can clear one that has fired. Nothing here is ticked off.
+
+    private struct Cue: Identifiable {
+        let id: String
+        let reminder: Wire.Reminder
+        let at: Date
+        let item: Wire.AgendaItem?   // nil for a cue on a later day
+        var due: Bool { item?.state == "due" }
+    }
+
+    /// Today's cues that are still to come or fired and not cleared, then the next few on later days.
+    private var comingUp: [Cue] {
+        let today = life.agenda.filter { $0.state != "acknowledged" }.map { Cue(id: $0.id, reminder: $0.reminder, at: $0.at, item: $0) }
+        let onToday = Set(life.agenda.map(\.reminder.id))
+        let tomorrow = Calendar.current.startOfDay(for: Date()).addingTimeInterval(86_400)
+        let later = life.reminders.compactMap { r -> Cue? in
+            guard !r.isDone, !onToday.contains(r.id), let at = r.snoozedUntil ?? r.dueAt, at >= tomorrow else { return nil }
+            return Cue(id: r.id + "@later", reminder: r, at: at, item: nil)
+        }.sorted { $0.at < $1.at }.prefix(4)
+        return today + Array(later)
+    }
+
+    private var comingUpSection: some View {
         Section {
-            ForEach(life.reminders) { r in
-                reminderRow(r)
-                    .swipeActions(edge: .trailing) {
-                        Button("Delete", role: .destructive) { Task { await life.deleteReminder(r) } }
-                    }
-                    .swipeActions(edge: .leading) {
-                        if !r.doneForNow() {
-                            Button("Snooze 1 hr", systemImage: "moon.zzz") { Task { await life.snoozeReminder(r, until: Date().addingTimeInterval(3600)) } }.tint(MissionTone.reminder.color)
+            ForEach(comingUp) { cue in
+                HStack(spacing: Space.s) {
+                    Button { detail = ReminderRef(id: cue.reminder.id) } label: {
+                        HStack(spacing: Space.m) {
+                            Text(Self.cueTime(cue.at)).font(.missionMono(.caption, .medium)).foregroundStyle(cue.due ? Tok.warn : Tok.muted).frame(width: 64, alignment: .leading)
+                            Text(cue.reminder.title).font(.mission(.body)).foregroundStyle(Tok.text).multilineTextAlignment(.leading)
+                            if cue.reminder.recurrence != nil { Image(systemName: "repeat").font(.caption).foregroundStyle(Tok.muted).accessibilityLabel("repeats") }
+                            Spacer(minLength: 0)
                         }
+                        .frame(minHeight: 44).contentShape(Rectangle())
                     }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("\(cue.reminder.title), \(Self.cueTime(cue.at)). Show details")
+                    if cue.due, let item = cue.item {
+                        Button("Got it") { Task { await life.ackCue(item) } }
+                            .font(.mission(.subheadline, .medium)).buttonStyle(.bordered).tint(Tok.accent)
+                            .disabled(life.busyReminders.contains(cue.reminder.id))
+                            .accessibilityLabel("Got it: \(cue.reminder.title)")
+                    }
+                }
+                .swipeActions(edge: .trailing) { Button("Delete", role: .destructive) { Task { await life.deleteReminder(cue.reminder) } } }
+                .swipeActions(edge: .leading) {
+                    Button("Snooze 1 hr", systemImage: "moon.zzz") { Task { await life.snoozeReminder(cue.reminder, until: Date().addingTimeInterval(3600)) } }.tint(MissionTone.reminder.color)
+                }
             }
-        } header: { Text("Reminders").font(.mission(.subheadline, .medium)) }
+        } header: { Text("Coming up").font(.mission(.subheadline, .medium)).id(DayKind.cues) }
         .listRowBackground(Tok.surface)
     }
 
-    /// The tick completes it; the rest of the row opens its details. A finished one stays, struck through.
-    private func reminderRow(_ r: Wire.Reminder) -> some View {
-        let done = r.doneForNow()
-        return HStack(spacing: Space.s) {
-            Button { Task { await life.completeReminder(r) } } label: {
-                Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.title2)
-                    .foregroundStyle(done ? Tok.accent : MissionTone.reminder.color)
-                    .frame(width: 44, height: 44).contentShape(Rectangle())
-            }
-            .buttonStyle(.borderless).disabled(done || life.busyReminders.contains(r.id))
-            .accessibilityLabel(done ? "\(r.title), done" : "Mark \(r.title) done")
+    /// "5:00 PM" for today; "Thu 9:00 AM" for another day.
+    static func cueTime(_ date: Date) -> String {
+        Calendar.current.isDateInToday(date) ? date.formatted(date: .omitted, time: .shortened)
+            : date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+    }
 
-            Button { detail = ReminderRef(id: r.id) } label: {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(r.title).font(.mission(.body)).foregroundStyle(done ? Tok.muted : Tok.text).strikethrough(done)
-                        if let when = r.snoozedUntil ?? r.dueAt {
-                            Label(when.formatted(date: .abbreviated, time: .shortened), systemImage: r.recurrence == nil ? "clock" : "repeat")
-                                .font(.missionMono(.caption)).foregroundStyle(!done && when < Date() ? Tok.warn : Tok.muted)
+    // MARK: Your day. One ring for the whole day, a segment for each kind of thing in it.
+
+    private var daySegments: [DaySegment] {
+        let tasks = life.todayItems.filter { $0.kind != .event }
+        return DayProgress.segments(routines: life.routines, tasksDone: tasks.filter(\.isDone).count, tasksTotal: tasks.count, cues: life.agenda)
+    }
+    private var dayTotal: Int { daySegments.reduce(0) { $0 + $1.total } }
+
+    private func ringSection(_ proxy: ScrollViewProxy) -> some View {
+        let segments = daySegments
+        return Section {
+            HStack(spacing: Space.l) {
+                DayRing(segments: segments)
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    ForEach(segments) { seg in
+                        Button { withAnimation { proxy.scrollTo(seg.kind, anchor: .top) } } label: {
+                            HStack(spacing: Space.s) {
+                                RoundedRectangle(cornerRadius: 3, style: .continuous).fill(seg.kind.color).frame(width: 12, height: 12).accessibilityHidden(true)
+                                Text(seg.kind.rawValue).font(.mission(.subheadline)).foregroundStyle(Tok.text)
+                                Spacer(minLength: Space.s)
+                                Text("\(seg.done)/\(seg.total)").font(.missionMono(.subheadline, .medium)).foregroundStyle(Tok.muted)
+                            }.frame(minHeight: 32).contentShape(Rectangle())
                         }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("\(seg.kind.rawValue): \(seg.done) of \(seg.total). Jump to it")
                     }
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.right").font(.footnote).foregroundStyle(Tok.muted)
                 }
-                .frame(minHeight: 44).contentShape(Rectangle())
             }
-            .buttonStyle(.borderless)
-            .accessibilityLabel("\(r.title). Show details")
-        }
+            .padding(.vertical, Space.xs)
+        } header: { Text("Your day").font(.mission(.subheadline, .medium)) }
+        .listRowBackground(Tok.surface)
     }
 
     private func eventRow(_ e: DayEvent) -> some View {
@@ -436,21 +483,21 @@ struct ReminderDetailSheet: View {
     }
 
     private func details(_ r: Wire.Reminder) -> some View {
-        let done = r.doneForNow()
+        let due = life.agenda.first { $0.reminder.id == r.id && $0.state == "due" }
         return List {
             Section {
-                Text(r.title).font(.mission(.title3)).strikethrough(done).foregroundStyle(done ? Tok.muted : Tok.text)
+                Text(r.title).font(.mission(.title3)).strikethrough(r.isDone).foregroundStyle(r.isDone ? Tok.muted : Tok.text)
                 if !r.notes.isEmpty { Text(r.notes).font(.mission(.body)).foregroundStyle(Tok.text) }
             }
             Section("When") {
-                row("Due", r.dueAt.map { $0.formatted(date: .complete, time: .shortened) } ?? "No time set")
+                row("Next", r.dueAt.map { $0.formatted(date: .complete, time: .shortened) } ?? "No time set")
                 if let until = r.snoozedUntil { row("Snoozed until", until.formatted(date: .abbreviated, time: .shortened)) }
                 if let rule = r.repeatDescription { row("Repeats", rule) }
                 if r.dueAt != nil { row("Time zone", r.timeZone) }
             }
             Section("Status") {
-                row("State", r.isDone ? "Done" : done ? "Done for now" : "Open")
-                if let when = r.completedAt ?? r.lastCompletedAt { row(r.isDone ? "Finished" : "Last done", when.formatted(date: .abbreviated, time: .shortened)) }
+                row("State", r.isDone ? "Done" : due != nil ? "Waiting for you" : "Set")
+                if let when = r.completedAt ?? r.lastCompletedAt { row(r.isDone ? "Finished" : "Last cleared", when.formatted(date: .abbreviated, time: .shortened)) }
             }
             Section("Origin") {
                 row("Set by", r.source == "agent" ? "Your assistant" : "You")
@@ -458,8 +505,8 @@ struct ReminderDetailSheet: View {
             }
             if !r.isDone {
                 Section {
-                    if !done { Button("Mark done", systemImage: "checkmark.circle") { Task { await life.completeReminder(r) } }.disabled(life.busyReminders.contains(r.id)) }
-                    if !done { Button("Snooze for an hour", systemImage: "moon.zzz") { Task { await life.snoozeReminder(r, until: Date().addingTimeInterval(3600)) } } }
+                    if let due { Button("Got it", systemImage: "checkmark.circle") { Task { await life.ackCue(due) } }.disabled(life.busyReminders.contains(r.id)) }
+                    Button("Snooze for an hour", systemImage: "moon.zzz") { Task { await life.snoozeReminder(r, until: Date().addingTimeInterval(3600)) } }
                     Button("Delete", systemImage: "trash", role: .destructive) { Task { await life.deleteReminder(r); dismiss() } }
                 }
             }
@@ -469,5 +516,62 @@ struct ReminderDetailSheet: View {
 
     private func row(_ label: String, _ value: String) -> some View {
         LabeledContent(label) { Text(value).foregroundStyle(Tok.muted).multilineTextAlignment(.trailing) }
+    }
+}
+
+// MARK: - The day ring
+
+extension DayKind {
+    /// Each kind has its own colour; the legend and the ring use the same one.
+    var color: Color {
+        switch self {
+        case .routines: MissionTone.focus.color
+        case .tasks: MissionTone.scheduled.color
+        case .cues: MissionTone.reminder.color
+        }
+    }
+}
+
+/// One ring for the whole day. A segment's length is how many things of that kind the day holds; the part filled in is how many are
+/// done. The number in the middle and the legend beside it say the same thing, so colour is never the only signal.
+struct DayRing: View {
+    let segments: [DaySegment]
+    var size: CGFloat = 112
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var total: Int { segments.reduce(0) { $0 + $1.total } }
+    private var done: Int { segments.reduce(0) { $0 + $1.done } }
+
+    /// Start and end of each segment as a fraction of the circle, with a small gap between neighbours.
+    private var layout: [(seg: DaySegment, start: Double, end: Double)] {
+        guard total > 0 else { return [] }
+        let gap = segments.count > 1 ? 0.012 : 0
+        var cursor = 0.0
+        return segments.map { seg in
+            let share = Double(seg.total) / Double(total)
+            defer { cursor += share }
+            return (seg, cursor + gap / 2, cursor + share - gap / 2)
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            ForEach(layout, id: \.seg.id) { item in
+                let fraction = item.seg.total > 0 ? Double(item.seg.done) / Double(item.seg.total) : 0
+                Circle().trim(from: item.start, to: item.end)
+                    .stroke(item.seg.kind.color.opacity(0.22), style: StrokeStyle(lineWidth: size * 0.12, lineCap: .butt))
+                Circle().trim(from: item.start, to: item.start + (item.end - item.start) * fraction)
+                    .stroke(item.seg.kind.color, style: StrokeStyle(lineWidth: size * 0.12, lineCap: .butt))
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: item.seg.done)
+            }
+            .rotationEffect(.degrees(-90))
+            VStack(spacing: 0) {
+                Text("\(done)").font(.mission(.title, .semibold)).foregroundStyle(Tok.text)
+                Text("of \(total)").font(.missionMono(.caption)).foregroundStyle(Tok.muted)
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Your day: \(done) of \(total) done. " + segments.map { "\($0.kind.rawValue) \($0.done) of \($0.total)" }.joined(separator: ", "))
     }
 }
