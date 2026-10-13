@@ -77,7 +77,8 @@ struct MainTabs: View {
                 .onChange(of: DeepLink.shared.pending) { _, target in
                     guard let target else { return }
                     tab = switch target.section { case .today: .today; case .goals: .goals; case .journal: .journal; case .memory: .memory }
-                    DeepLink.shared.pending = nil
+                    // A reminder, routine or goal is opened by its own screen, which clears the link; anything else stops at its tab.
+                    if !["reminder", "routine", "goal"].contains(target.entity) { DeepLink.shared.pending = nil }
                 }
             } else {
                 Tok.background.ignoresSafeArea()

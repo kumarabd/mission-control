@@ -5,12 +5,13 @@ struct ProgressTab: View {
     @Environment(Life.self) private var life
     @State private var segment = Segment.routines
     @State private var sheet: Sheet?
+    @State private var path = NavigationPath()
 
     enum Segment: String, CaseIterable, Identifiable { case routines = "Routines", goals = "Goals"; var id: Self { self } }
     enum Sheet: Identifiable { case routine, goal; var id: Self { self } }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             VStack(spacing: 0) {
                 Picker("Show", selection: $segment) {
                     ForEach(Segment.allCases) { Text($0.rawValue).tag($0) }
@@ -24,6 +25,8 @@ struct ProgressTab: View {
             .screenBackground()
             .navigationTitle("Progress")
             .navigationDestination(for: GoalRef.self) { GoalDetail(goalID: $0.id) }
+            .onAppear { openLink(DeepLink.shared.pending) }
+            .onChange(of: DeepLink.shared.pending) { _, target in openLink(target) }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { sheet = segment == .routines ? .routine : .goal } label: { Image(systemName: "square.and.pencil").frame(minWidth: 44, minHeight: 44) }
@@ -37,5 +40,13 @@ struct ProgressTab: View {
                 }
             }
         }
+    }
+
+    /// A tapped notification for a goal opens it.
+    private func openLink(_ target: PushLink.Target?) {
+        guard let target, target.entity == "goal" else { return }
+        segment = .goals
+        path = NavigationPath([GoalRef(id: target.id)])
+        DeepLink.shared.pending = nil
     }
 }

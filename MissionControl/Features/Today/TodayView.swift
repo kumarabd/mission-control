@@ -63,11 +63,24 @@ struct TodayView: View {
             }
             .sheet(item: $detail) { ReminderDetailSheet(id: $0.id) }
             .navigationDestination(item: $openRoutine) { RoutineDetailView(id: $0.id) }
+            .onAppear { openLink(DeepLink.shared.pending) }
+            .onChange(of: DeepLink.shared.pending) { _, target in openLink(target) }
             .task { events = await DayEvents.today(); await life.loadPlan() }
             .alert("Something went wrong", isPresented: Binding(get: { life.error != nil }, set: { if !$0 { life.error = nil } })) {
                 Button("OK") { life.error = nil }
             } message: { Text(life.error ?? "") }
         }
+    }
+
+    /// A tapped notification for a reminder or a routine opens that record here.
+    private func openLink(_ target: PushLink.Target?) {
+        guard let target else { return }
+        switch target.entity {
+        case "reminder": detail = ReminderRef(id: target.id)
+        case "routine": openRoutine = RoutineRef(id: target.id)
+        default: return
+        }
+        DeepLink.shared.pending = nil
     }
 
     // MARK: Tasks. What to do today, one card at a time.
