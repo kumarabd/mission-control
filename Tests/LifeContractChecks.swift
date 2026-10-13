@@ -168,6 +168,20 @@ struct LifeContractChecks {
         precondition(goalCalls[2].path == "steps_add" && goalCalls[2].body["goal_id"] as? String == goal.id && goalCalls[2].body["minutes"] as? Int == 20)
         try! await goalsService.archive(goal)
         precondition(goalCalls[3].path == "goals_archive" && goalCalls[3].body["expected_version"] as? Int == goal.version)
+        // Settings: the phone's time zone is sent only when it differs from the engine's.
+        let settingsNow = load(Wire.Settings.self, "capabilities_ok", in: dir)
+        var settingsCalls: [(path: String, body: [String: Any])] = []
+        let settingsService = SettingsService(api: LifeAPI(baseURL: "https://router.example/life/api/v1", token: { "tok" }) { request in
+            settingsCalls.append((request.url!.lastPathComponent, try! JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]))
+            return (fixtureData("capabilities_ok"), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        })
+        let changed = try! await settingsService.matchTimeZone(to: "Antarctica/Troll")
+        precondition(changed && settingsCalls.map(\.path) == ["settings_get", "settings_set"])
+        precondition(settingsCalls[1].body["time_zone"] as? String == "Antarctica/Troll" && settingsCalls[1].body["expected_version"] as? Int == settingsNow.version)
+        precondition(settingsCalls[1].body["work_start"] as? String == settingsNow.workStart && !(settingsCalls[1].body["idempotency_key"] as? String ?? "").isEmpty)
+        settingsCalls.removeAll()
+        let unchanged = try! await settingsService.matchTimeZone(to: settingsNow.timeZone)
+        precondition(!unchanged && settingsCalls.map(\.path) == ["settings_get"], "nothing is written when the zones already match")
         print("LifeContractChecks passed")
     }
 }

@@ -70,7 +70,7 @@ struct RoutinesList: View {
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("\(s.routine.title). \(s.count) of \(s.target) today. Show details")
-            if s.scheduled { PlusButton(status: s) }
+            PlusButton(status: s)
         }
     }
 }

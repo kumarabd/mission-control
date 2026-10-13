@@ -16,6 +16,14 @@ final class Life {
         store.plan.filter { $0.day == today }.sorted { ($0.start ?? .distantFuture, $0.title) < ($1.start ?? .distantFuture, $1.title) }
     }
 
+    // MARK: Settings. The phone says where the person is.
+
+    private var settingsService: SettingsService?
+    func attachSettings(_ service: SettingsService?) { settingsService = service }
+
+    /// Tell the engine the phone's time zone, so every "today" is today where you are. Quiet: a failure here must not block anything.
+    func syncTimeZone() async { _ = try? await settingsService?.matchTimeZone() }
+
     // MARK: Goals. The Life Engine's, so a goal the assistant creates is the goal the screen shows.
 
     private(set) var goals: [Wire.Goal] = []
