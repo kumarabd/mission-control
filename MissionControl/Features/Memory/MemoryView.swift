@@ -4,16 +4,14 @@ struct MemoryView: View {
     var onSettings: () -> Void = {}
     @Environment(Life.self) private var life
     @State private var query = ""
-    @State private var adding = false
 
     var body: some View {
         NavigationStack {
             let hits = life.search(query)
             Group {
                 if hits.isEmpty && query.isEmpty {
-                    EmptyState(symbol: "brain.head.profile", title: "Nothing saved yet",
-                               message: "Capture a decision and why you made it, or a moment worth keeping. Later, search for it in your own words.",
-                               actionTitle: "Save a memory") { adding = true }
+                    EmptyState(symbol: "brain.head.profile", title: "No saved memories on this device",
+                               message: "Use Capture to discuss what your assistant should remember.")
                 } else {
                     List {
                         Section {
@@ -27,6 +25,10 @@ struct MemoryView: View {
                                 }
                                 .padding(.vertical, Space.xs).accessibilityElement(children: .combine)
                             }
+                        } header: {
+                            Text("Saved on this device").font(.mission(.subheadline, .medium))
+                        } footer: {
+                            Text("Use Capture to discuss or correct memory with your assistant.").font(.mission(.footnote))
                         }
                         .listRowBackground(Tok.surface)
                     }
@@ -40,46 +42,7 @@ struct MemoryView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Settings", systemImage: "person.crop.circle", action: onSettings).frame(minWidth: 44, minHeight: 44)
                 }
-                ToolbarItem(placement: .primaryAction) {
-                    Button { adding = true } label: { Image(systemName: "square.and.pencil").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("Save a memory")
-                }
-            }
-            .sheet(isPresented: $adding) { NewMemorySheet() }
-        }
-    }
-}
-
-struct NewMemorySheet: View {
-    @Environment(Life.self) private var life
-    @Environment(\.dismiss) private var dismiss
-    @State private var text = ""
-    @State private var reason = ""
-    @State private var saving = false
-    @State private var kind: MemoryKind = .decision
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Picker("Type", selection: $kind) { ForEach(MemoryKind.allCases, id: \.self) { Text($0.label).tag($0) } }.pickerStyle(.segmented)
-                Section { TextField(kind == .decision ? "What did you decide?" : "What do you want to keep?", text: $text, axis: .vertical).lineLimit(2...6) }
-                if kind == .decision { Section("Why") { TextField("The reason, so you remember it later", text: $reason, axis: .vertical) } }
-                Section { Text("Saved on this device.").font(.mission(.footnote)).foregroundStyle(Tok.muted) }
-                if let error = life.error { Section { Text(error).foregroundStyle(Tok.critical) } }
-            }
-            .scrollContentBackground(.hidden).screenBackground()
-            .navigationTitle("Save a memory").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { saving = true
-                        Task {
-                            if await life.addMemory(Memory(text: text.trimmed, reason: reason.trimmed.isEmpty ? nil : reason.trimmed, kind: kind)) { dismiss() }
-                            saving = false
-                        } }
-                        .disabled(text.trimmed.isEmpty || saving)
-                }
             }
         }
-        .presentationDetents([.medium, .large])
     }
 }
