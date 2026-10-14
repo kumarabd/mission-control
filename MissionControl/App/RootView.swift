@@ -53,6 +53,7 @@ struct MainTabs: View {
     @State private var life: Life?
     @State private var tab = Tab.today
     @State private var capturing = false
+    @State private var memoryRefreshToken = 0
     @State private var settings = false
 
     enum Tab: Hashable { case today, goals, memory }
@@ -63,13 +64,13 @@ struct MainTabs: View {
                 TabView(selection: $tab) {
                     TodayView(onSettings: { settings = true }).tabItem { Label("Today", systemImage: "sun.max") }.tag(Tab.today)
                     ProgressTab(onSettings: { settings = true }).tabItem { Label("Goals", systemImage: "chart.line.uptrend.xyaxis") }.tag(Tab.goals)
-                    MemoryView(onSettings: { settings = true }).tabItem { Label("Memory", systemImage: "brain.head.profile") }.tag(Tab.memory)
+                    MemoryView(onSettings: { settings = true }, refreshToken: memoryRefreshToken).tabItem { Label("Memory", systemImage: "brain.head.profile") }.tag(Tab.memory)
                 }
                 .environment(life)
                 .overlay(alignment: .bottomTrailing) {
                     CaptureButton { capturing = true }.disabled(!life.workspaceLoaded).padding(.trailing, Space.l).padding(.bottom, 64)
                 }
-                .sheet(isPresented: $capturing) { CaptureSheet().environment(life) }
+                .sheet(isPresented: $capturing, onDismiss: { memoryRefreshToken += 1 }) { CaptureSheet().environment(life) }
                 .sheet(isPresented: $settings) { SettingsView() }
                 .task { await life.syncTimeZone(); await life.load() }
                 .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await life.syncTimeZone(); await life.refreshWorkspace() } } }

@@ -57,8 +57,10 @@ Today, Goals and Memory are peers. Goals opens with Goals selected; Routines rem
 
 Capture refreshes goals, plan, reminders and routines after typed or voice turns. Workspace updates are receipts from returned records, with View and Change actions. Change prefills a contextual assistant request; it does not parse prose or pretend the agent supports a structured plan preview.
 
-Journal and the local weekly-review screen are removed. Memory retains local saved memories and labels the local save boundary; agent-brain integration, reflection and generated routine/reminder views remain undecided. Goal trackers follow the accepted Life Engine catalog contract.
+Journal and the local weekly-review screen are removed. Memory preserves browsing/search of existing local records and removes direct save/edit controls. Capture handles requests to remember or correct information. The accepted remote direction opens on Reflections with About you one tap away, powered by agent-brain semantic views; generated routine/reminder views remain a separate discussion. Goal trackers follow the accepted Life Engine catalog contract.
 
 ## Goal trackers
 
 The agent selects approved modules and headings; the client owns the presentation. Use the existing continuous card shape, hairlines, semantic palette and scalable fonts. iPhone presents purpose, a pending proposal review and up to four modules in a stack before More; iPad uses two columns except at accessibility sizes. Charts show recorded outcomes and desired targets separately. Check-ins use labeled native forms and disclosure for recent observations; revisions show a reason and preview before acceptance. Legacy goals and unsupported presentations retain basic review. Canonical contract and decisions live in Project Hub: `projects/life-engine/specs/goal-trackers.md` and `projects/mission-control/adr/0008-agent-composed-native-goal-trackers.md`.
+
+Memory is a read surface. Reflections/About you are semantic projections of agent-brain; the harness retains ownership of memory reasoning and updates. Today, routine and tracker actions retain their existing native controls.
