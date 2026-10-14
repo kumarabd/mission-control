@@ -15,6 +15,11 @@ final class Life {
 
     // MARK: Plan. Today's tasks are the Life Engine's, the same items the assistant adds, moves and completes.
 
+    private(set) var workspaceLoaded = false
+    private(set) var planLoadError: String?
+    private(set) var remindersLoadError: String?
+    private(set) var goalsLoadError: String?
+    private(set) var routinesLoadError: String?
     private(set) var plan: Wire.PlanDay?
     /// The one thing to do next: a task, or the next step of a goal.
     private(set) var nextSuggestion: Wire.Suggestion?
@@ -24,18 +29,26 @@ final class Life {
     /// Today's tasks and events in order.
     var tasks: [Wire.PlanItem] { (plan?.items ?? []).filter { $0.deletedAt == nil } }
 
+    func refreshWorkspace() async {
+        error = nil
+        await loadReminders(); await loadRoutines(); await loadGoals(); await loadPlan()
+        workspaceLoaded = true
+    }
+
     func attachPlan(_ service: PlanService?) { planService = service }
 
     func loadPlan() async {
         guard let service = planService else { return }
         do {
             plan = try await service.today()
+            planLoadError = nil
             nextSuggestion = try await service.nextAction(minutes: 480)
-        } catch { self.error = Self.planMessage(error) }
+        } catch { planLoadError = Self.planMessage(error); self.error = planLoadError }
     }
 
     func completeTask(_ item: Wire.PlanItem, done: Bool) async {
-        await taskAction(item.id) { try await $0.complete(item, done: done) }
+        await taskAction(item.id) { _ = try await $0.complete(item, done: done) }
+        if item.goalId != nil { await loadGoals() }
     }
     func setTaskPriority(_ item: Wire.PlanItem, _ on: Bool) async { await taskAction(item.id) { _ = try await $0.setPriority(item, on) } }
     func deleteTask(_ item: Wire.PlanItem) async { await taskAction(item.id) { try await $0.delete(item) } }
@@ -47,7 +60,7 @@ final class Life {
         catch { self.error = Self.planMessage(error); return false }
     }
 
-    /// Finishes what a suggestion points at: the task, or the goal step. A step is only ever finished here, never on the goal.
+    /// Finishes what a suggestion points at: the task, or a one-off goal step.
     func completeSuggestion(_ s: Wire.Suggestion) async {
         if let id = s.planItemId, let item = tasks.first(where: { $0.id == id }) {
             await completeTask(item, done: true)
@@ -118,7 +131,36 @@ final class Life {
 
     func loadGoals() async {
         guard let service = goalService else { return }
-        do { goals = try await service.list() } catch { self.error = Self.goalMessage(error) }
+        do { goals = try await service.list(); goalsLoadError = nil } catch { goalsLoadError = Self.goalMessage(error); self.error = goalsLoadError }
+    }
+
+    func loadTracker(goalID: String, catalog: String) async throws -> Wire.TrackerState {
+        guard let service = goalService else { throw LifeError.notProvisioned }
+        return try await service.tracker(goalID: goalID, catalog: catalog)
+    }
+    func reviewTracker(_ proposal: Wire.TrackerProposal, accept: Bool, key: String) async throws {
+        guard let service = goalService else { throw LifeError.notProvisioned }
+        if accept { try await service.apply(proposal, key: key) } else { try await service.discard(proposal, key: key) }
+        await loadGoals()
+    }
+    func saveMeasurement(_ input: GoalsService.MeasurementIn) async throws {
+        guard let service = goalService else { throw LifeError.notProvisioned }
+        try await service.saveMeasurement(input)
+    }
+    func deleteMeasurement(_ measurement: Wire.GoalMeasurement, key: String) async throws {
+        guard let service = goalService else { throw LifeError.notProvisioned }
+        try await service.deleteMeasurement(measurement, key: key)
+    }
+    func completeTrackerStep(_ step: Wire.Step, key: String) async throws {
+        guard let service = goalService else { throw LifeError.notProvisioned }
+        try await service.completeStep(id: step.id, version: step.version, key: key)
+        await loadGoals(); await loadPlan()
+    }
+    static func trackerMessage(_ error: Error) -> String {
+        if case LifeError.engine(let code, _) = error, code == "conflict" {
+            return "This changed elsewhere. Review the latest tracker and ask for a refreshed proposal if needed."
+        }
+        return goalMessage(error)
     }
 
     private static func goalMessage(_ e: Error) -> String {
@@ -143,7 +185,7 @@ final class Life {
 
     func loadRoutines() async {
         guard let service = routineService else { return }
-        do { routines = try await service.status() } catch { self.error = Self.routineMessage(error) }
+        do { routines = try await service.status(); routinesLoadError = nil } catch { routinesLoadError = Self.routineMessage(error); self.error = routinesLoadError }
     }
 
     /// Adds one (or takes one back with `-1`) and shows the new count at once from the engine's answer.
@@ -154,6 +196,7 @@ final class Life {
             let updated = try await service.log(id, delta: delta, short: short)
             if let i = routines.firstIndex(where: { $0.id == id }) { routines[i] = updated }
             error = nil
+            if goals.contains(where: { ($0.routineIds ?? []).contains(id) }) { await loadGoals() }
         } catch { self.error = Self.routineMessage(error); await loadRoutines() }
     }
 
@@ -204,8 +247,9 @@ final class Life {
         do {
             reminders = try await service.list().filter { $0.isShown() }
             agenda = try await service.agenda()
+            remindersLoadError = nil
             await Notifier.sync(reminders)
-        } catch { self.error = Self.reminderMessage(error) }
+        } catch { remindersLoadError = Self.reminderMessage(error); self.error = remindersLoadError }
     }
 
     @discardableResult
@@ -222,15 +266,22 @@ final class Life {
         do { _ = try await service.ack(item); error = nil } catch { self.error = Self.reminderMessage(error) }
         await loadReminders()
     }
+    func completeReminder(_ r: Wire.Reminder) async {
+        guard !busyReminders.contains(r.id) else { return }
+        busyReminders.insert(r.id); defer { busyReminders.remove(r.id) }
+        _ = await reminderAction { _ = try await $0.complete(r) }
+    }
+
     func snoozeReminder(_ r: Wire.Reminder, until: Date) async {
         guard !busyReminders.contains(r.id) else { return }
         busyReminders.insert(r.id); defer { busyReminders.remove(r.id) }
         await reminderAction { try await $0.snooze(r, until: until) }
     }
-    func deleteReminder(_ r: Wire.Reminder) async {
-        guard !busyReminders.contains(r.id) else { return }
+    @discardableResult
+    func deleteReminder(_ r: Wire.Reminder) async -> Bool {
+        guard !busyReminders.contains(r.id) else { return false }
         busyReminders.insert(r.id); defer { busyReminders.remove(r.id) }
-        await reminderAction { try await $0.delete(r) }
+        return await reminderAction { try await $0.delete(r) }
     }
 
     /// Runs a change, then re-reads the list so the screen shows the server's truth (including a stale-version refusal).
@@ -263,7 +314,10 @@ final class Life {
     func addRoutine(_ r: Routine) async { await run { try await self.engine.addRoutine(r) } }
     func setRoutine(_ id: UUID, done: Bool) async { await run { try await self.engine.setRoutine(id, day: self.today, done: done) } }
     func addJournal(text: String, goals: [UUID] = [], tomorrow: String? = nil) async { await run { try await self.engine.addJournal(text: text, goals: goals, tomorrow: tomorrow) } }
-    func addMemory(_ m: Memory) async { await run { try await self.engine.addMemory(m) } }
+    func addMemory(_ m: Memory) async -> Bool {
+        do { store = try await engine.addMemory(m); error = nil; return true }
+        catch { self.error = Self.message(error); return false }
+    }
 
     func capture(_ text: String) async -> CaptureOutcome? {
         // Reminders never come through here: the capture sheet reviews them and saves them with addReminder, the Life Engine's
@@ -273,11 +327,10 @@ final class Life {
 
     func weeklyReview() -> WeeklyReview { Planner.weeklyReview(store: store, now: Date()) }
 
-    /// Past memories and journal entries matching every word typed, newest first.
+    /// Saved memories matching every word typed, newest first. Historical journal records are retained but not surfaced.
     func search(_ query: String) -> [SearchHit] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         let hits = store.memories.map { SearchHit(id: $0.id, date: $0.date, text: $0.text, reason: $0.reason, symbol: $0.kind.symbol, label: $0.kind.label) }
-            + store.journal.map { SearchHit(id: $0.id, date: $0.date, text: $0.text, reason: $0.tomorrow, symbol: "book", label: "Journal") }
         let sorted = hits.sorted { $0.date > $1.date }
         guard !q.isEmpty else { return sorted }
         let words = q.split(separator: " ").map(String.init)
@@ -289,4 +342,14 @@ final class Life {
     }
 
     private static func message(_ e: Error) -> String { "Couldn't save that. \(e.localizedDescription)" }
+}
+
+extension Life {
+    var workspaceUpdates: [WorkspaceUpdate] {
+        goals.map { WorkspaceUpdate(kind: .goal, entityID: $0.id, title: $0.title, detail: "Goal", version: $0.version) }
+        + routines.map { WorkspaceUpdate(kind: .routine, entityID: $0.id, title: $0.routine.title, detail: "Routine · \($0.count) of \($0.target) today", version: $0.routine.version) }
+        + reminders.map { WorkspaceUpdate(kind: .reminder, entityID: $0.id, title: $0.title,
+                                          detail: "Reminder · " + (($0.snoozedUntil ?? $0.dueAt).map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "No time set"), version: $0.version) }
+        + tasks.filter { $0.kind != "event" }.map { WorkspaceUpdate(kind: .task, entityID: $0.id, title: $0.title, detail: "Task · \($0.minutes) min", version: $0.version) }
+    }
 }

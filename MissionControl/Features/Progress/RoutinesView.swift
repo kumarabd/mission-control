@@ -75,6 +75,10 @@ struct RoutinesList: View {
         Group {
             if !life.routinesAvailable {
                 EmptyState(symbol: "icloud.slash", title: "Routines need your workspace", message: "They are kept with your assistant, which isn't reachable right now.")
+            } else if !life.workspaceLoaded {
+                ProgressView("Loading routines…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = life.routinesLoadError, life.routines.isEmpty {
+                EmptyState(symbol: "wifi.exclamationmark", title: "Couldn't load routines", message: error, actionTitle: "Try again") { Task { await life.loadRoutines() } }
             } else if life.routines.isEmpty {
                 EmptyState(symbol: "repeat", title: "Build a routine", message: "Something you want to keep doing, like drinking water three times a day. A missed day is fine; we track how consistent you are.",
                            actionTitle: "New routine", action: onNew)

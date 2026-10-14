@@ -17,8 +17,8 @@ final class AuthService {
     private var loadTimedOut = false
 
     init() {
-        if Config.devEngine { return }   // developer mode: no Clerk, a fixed local user
         ClerkConfiguration.configure()
+        if Config.devEngine { return }   // developer mode still needs the Clerk environment, but does not sign in
         Task {
             try? await Task.sleep(for: .seconds(8))
             loadTimedOut = true

@@ -44,7 +44,7 @@ struct WelcomeView: View {
     }
 }
 
-/// Signed-in shell: four productivity tabs plus the original dashboard as Classic. Owns the per-person model so it is
+/// Signed-in shell: Today, Goals and Memory; Classic is available from Settings. Owns the per-person model so it is
 /// rebuilt on sign-out. Capture floats over the productivity tabs.
 struct MainTabs: View {
     let userId: String
@@ -53,31 +53,32 @@ struct MainTabs: View {
     @State private var life: Life?
     @State private var tab = Tab.today
     @State private var capturing = false
+    @State private var settings = false
 
-    enum Tab: Hashable { case today, goals, journal, memory, classic }
+    enum Tab: Hashable { case today, goals, memory }
 
     var body: some View {
         Group {
             if let life {
                 TabView(selection: $tab) {
-                    TodayView().tabItem { Label("Today", systemImage: "sun.max") }.tag(Tab.today)
-                    ProgressTab().tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }.tag(Tab.goals)
-                    JournalView().tabItem { Label("Journal", systemImage: "book") }.tag(Tab.journal)
-                    MemoryView().tabItem { Label("Memory", systemImage: "brain.head.profile") }.tag(Tab.memory)
-                    DashboardView().tabItem { Label("Classic", systemImage: "square.grid.2x2") }.tag(Tab.classic)
+                    TodayView(onSettings: { settings = true }).tabItem { Label("Today", systemImage: "sun.max") }.tag(Tab.today)
+                    ProgressTab(onSettings: { settings = true }).tabItem { Label("Goals", systemImage: "chart.line.uptrend.xyaxis") }.tag(Tab.goals)
+                    MemoryView(onSettings: { settings = true }).tabItem { Label("Memory", systemImage: "brain.head.profile") }.tag(Tab.memory)
                 }
                 .environment(life)
                 .overlay(alignment: .bottomTrailing) {
-                    if tab != .classic { CaptureButton { capturing = true }.padding(.trailing, Space.l).padding(.bottom, 64) }
+                    CaptureButton { capturing = true }.disabled(!life.workspaceLoaded).padding(.trailing, Space.l).padding(.bottom, 64)
                 }
                 .sheet(isPresented: $capturing) { CaptureSheet().environment(life) }
-                .task { await life.syncTimeZone(); await life.load(); await life.loadReminders(); await life.loadRoutines(); await life.loadGoals(); await life.loadPlan() }
-                .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await life.syncTimeZone(); await life.loadReminders(); await life.loadRoutines(); await life.loadGoals(); await life.loadPlan() } } }
+                .sheet(isPresented: $settings) { SettingsView() }
+                .task { await life.syncTimeZone(); await life.load() }
+                .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await life.syncTimeZone(); await life.refreshWorkspace() } } }
                 .task { PushRegistrar.shared.attach(auth) }
                 .onChange(of: DeepLink.shared.pending) { _, target in
                     guard let target else { return }
-                    tab = switch target.section { case .today: .today; case .goals: .goals; case .journal: .journal; case .memory: .memory }
-                    DeepLink.shared.pending = nil
+                    tab = switch target.section { case .today: .today; case .goals: .goals; case .memory: .memory }
+                    // A reminder, routine or goal is opened by its own screen, which clears the link; anything else stops at its tab.
+                    if !["reminder", "routine", "goal", "plan_item"].contains(target.entity) { DeepLink.shared.pending = nil }
                 }
             } else {
                 Tok.background.ignoresSafeArea()

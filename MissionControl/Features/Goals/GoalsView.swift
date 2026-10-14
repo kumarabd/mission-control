@@ -12,6 +12,10 @@ struct GoalsList: View {
         Group {
             if !life.goalsAvailable {
                 EmptyState(symbol: "icloud.slash", title: "Goals need your workspace", message: "They are kept with your assistant, which isn't reachable right now.")
+            } else if !life.workspaceLoaded {
+                ProgressView("Loading goals…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = life.goalsLoadError, life.goals.isEmpty {
+                EmptyState(symbol: "wifi.exclamationmark", title: "Couldn't load goals", message: error, actionTitle: "Try again") { Task { await life.loadGoals() } }
             } else if life.goals.isEmpty {
                 EmptyState(symbol: "flag", title: "Start with one thing you care about",
                            message: "Tell your assistant what you want to achieve and it will turn it into small steps and routines.",
@@ -38,7 +42,12 @@ struct GoalRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             Text(goal.title).font(.mission(.headline, .medium))
-            if let c = goal.consistency, c.last30.scheduled > 0 {
+            if let metric = goal.tracker?.metrics?.first {
+                Text(metric.target.map { "\(metric.label) · Target \($0.formatted()) \(metric.unit)" } ?? "Track \(metric.label.lowercased())")
+                    .font(.mission(.subheadline)).foregroundStyle(Tok.muted)
+            } else if goal.tracker != nil, !goal.steps.isEmpty {
+                Text("\(goal.progress.done) of \(goal.progress.total) milestones completed").font(.mission(.subheadline)).foregroundStyle(Tok.muted)
+            } else if let c = goal.consistency, c.last30.scheduled > 0 {
                 MissionProgressBar(fraction: Double(c.last30.done) / Double(c.last30.scheduled), label: "\(c.last30.done) of \(c.last30.scheduled) routine days kept")
             } else {
                 Text(routines == 0 ? "No routines yet" : "Just started").font(.mission(.subheadline)).foregroundStyle(Tok.muted)
@@ -50,9 +59,8 @@ struct GoalRow: View {
     }
 }
 
-/// A goal is for review. Its progress is how well the routines that serve it are kept; nothing here records, ticks or changes anything.
-/// To change a goal, ask the assistant.
-struct GoalDetail: View {
+/// Existing goals and older servers retain their basic review until a tracker is accepted.
+struct GoalReview: View {
     @Environment(Life.self) private var life
     let goalID: String
     @State private var askAssistant: AssistantPrompt?

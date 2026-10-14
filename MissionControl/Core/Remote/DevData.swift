@@ -8,6 +8,7 @@ final class DevWorld: @unchecked Sendable {
     private var routines: [Wire.RoutineStatus]
     private var tasks: [Wire.PlanItem]
     private var agenda: [Wire.AgendaItem]
+    private var undated: Wire.Reminder
     private let goal: Wire.Goal
     private let now = Date()
 
@@ -38,6 +39,9 @@ final class DevWorld: @unchecked Sendable {
         agenda = [Wire.AgendaItem(reminder: reminder("c1", "Take vitamins", due: now.addingTimeInterval(-3 * 3600), repeats: true), at: now.addingTimeInterval(-3 * 3600), state: "acknowledged", overdue: false),
                   Wire.AgendaItem(reminder: reminder("c2", "Call the bank", due: now.addingTimeInterval(-600), repeats: false), at: now.addingTimeInterval(-600), state: "due", overdue: false),
                   Wire.AgendaItem(reminder: reminder("c3", "Water the plants", due: now.addingTimeInterval(2 * 3600), repeats: true), at: now.addingTimeInterval(2 * 3600), state: "upcoming", overdue: false)]
+        undated = Wire.Reminder(id: "u1", title: "Renew the library card", notes: "Bring ID", dueAt: nil, snoozedUntil: nil, timeZone: tz, recurrence: nil,
+                                source: "user", sessionId: nil, turnSeq: nil, link: nil, state: "pending", completedAt: nil, lastCompletedAt: nil,
+                                version: 1, deletedAt: nil, createdAt: now, updatedAt: now)
         let steps = [Wire.Step(id: "s1", goalId: "g1", title: "Weigh in and record a starting weight", minutes: 5, position: 1, doneAt: nil, version: 1)]
         goal = Wire.Goal(id: "g1", title: "Lose 5 kg", why: "Feel lighter and healthier.", weeklyTarget: 6, archivedAt: nil, version: 1, steps: steps,
                          progress: .init(done: 0, total: 1), nextStep: steps[0], routineIds: ["r1", "r2"],
@@ -72,7 +76,10 @@ final class DevWorld: @unchecked Sendable {
             return Data("{}".utf8)
         case "next_action": return json(Wire.NextAction(suggestion: .init(title: goal.steps[0].title, minutes: 5, reason: "Next step toward Lose 5 kg", source: "goal_step", planItemId: nil, goalId: "g1", stepId: "s1")))
         case "reminders_agenda": return json(Wire.Agenda(day: DevWorld.dayString(now), items: agenda))
-        case "reminders_list": return json(Wire.Page<Wire.Reminder>(items: agenda.map(\.reminder), total: agenda.count, nextOffset: nil))
+        case "reminders_list": return json(Wire.Page<Wire.Reminder>(items: agenda.map(\.reminder) + [undated], total: agenda.count + 1, nextOffset: nil))
+        case "reminders_complete":
+            if body["id"] as? String == undated.id { undated.state = "done"; undated.completedAt = Date(); undated.version += 1; return json(undated) }
+            return Data("{}".utf8)
         case "reminders_ack":
             if let id = body["id"] as? String, let i = agenda.firstIndex(where: { $0.reminder.id == id }) { agenda[i].state = "acknowledged"; return json(agenda[i].reminder) }
             return Data("{}".utf8)

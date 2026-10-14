@@ -30,7 +30,7 @@ enum Overview {
         return lines.joined(separator: "\n\n")
     }
 
-    /// A goal is for review. Its progress is how well the routines that serve it were kept, and its one-off steps are shown as they stand.
+    /// Basic review for legacy goals: linked routine consistency and existing one-off steps.
     static func goal(_ g: Wire.Goal) -> String {
         var lines: [String] = []
         if !g.why.isEmpty { lines.append(g.why) }

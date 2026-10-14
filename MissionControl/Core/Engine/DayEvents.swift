@@ -1,18 +1,13 @@
 import EventKit
 import Foundation
 
-struct DayEvent: Identifiable, Equatable {
-    var id: String
-    var title: String
-    var start: Date
-    var minutes: Int
-}
-
 /// Today's calendar appointments, read-only, so the plan sits next to what is already fixed.
 enum DayEvents {
-    static func today() async -> [DayEvent] {
+    static func today(requestAccess: Bool = false) async -> [DayEvent] {
         let store = EKEventStore()
-        guard (try? await store.requestFullAccessToEvents()) == true else { return [] }
+        if EKEventStore.authorizationStatus(for: .event) != .fullAccess {
+            guard requestAccess, (try? await store.requestFullAccessToEvents()) == true else { return [] }
+        }
         let start = Calendar.current.startOfDay(for: Date())
         let end = Calendar.current.date(byAdding: .day, value: 1, to: start) ?? start
         return store.events(matching: store.predicateForEvents(withStart: start, end: end, calendars: nil))

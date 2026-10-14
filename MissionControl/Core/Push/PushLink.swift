@@ -6,7 +6,7 @@ enum PushLink {
     static func hex(_ token: Data) -> String { token.map { String(format: "%02x", $0) }.joined() }
 
     /// The app section a record belongs to.
-    enum Section: Equatable { case today, goals, journal, memory }
+    enum Section: Equatable { case today, goals, memory }
 
     struct Target: Equatable { var entity: String; var id: String; var section: Section }
 
@@ -21,7 +21,7 @@ enum PushLink {
         switch entity {
         case "reminder", "plan_item", "schedule", "routine", "monitor": .today
         case "goal", "step": .goals
-        case "journal_entry": .journal
+        case "journal_entry": .memory
         case "note", "capture": .memory
         default: nil
         }
