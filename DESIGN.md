@@ -26,7 +26,7 @@ SF Symbols only, one meaning per icon. **There is no plus in the app**: it meant
 | A calendar event in the day | `calendar` | Today, same row shape as everything else |
 | A reminder in the day | `bell` (to come), `bell.badge.fill` (fired, waiting for you), `bell.slash` (cleared), with the time it fires | Today, in time order with tasks and events |
 | Got it (clear a cue that fired) | `checkmark.circle`, icon only | Today, reminder detail |
-| A goal's one-off step | `flag` (to do), `flag.checkered` (done): a milestone, deliberately not a checkbox, because a goal cannot be ticked | goal detail |
+| A goal's one-off step | `circle` / `checkmark.circle.fill` in an actionable tracker; `flag` / `flag.checkered` in legacy review | goal tracker / legacy goal review |
 | Write or create something | `square.and.pencil` | Goals and Memory toolbars |
 | Talk to the assistant | `bubble.left.fill` (floating button), `bubble.left` (inline) | capture, goal detail |
 | Voice | `mic.fill` to start, `stop.circle.fill` to end, `arrow.up` to send | capture sheet |
@@ -36,7 +36,7 @@ SF Symbols only, one meaning per icon. **There is no plus in the app**: it meant
 | Easier version | `timer` | routine detail |
 | Snooze / close the day | `moon.zzz` / `moon.stars` | cues, Today menu |
 | Delete / archive | `trash` / `archivebox` | destructive actions, always confirmed or swipeable |
-| Do this next | `scope` | Today; the only place a goal's one-off step is finished |
+| Do this next | `scope` | Today; approved goal trackers also finish one-off steps |
 
 
 ## Today
@@ -57,4 +57,8 @@ Today, Goals and Memory are peers. Goals opens with Goals selected; Routines rem
 
 Capture refreshes goals, plan, reminders and routines after typed or voice turns. Workspace updates are receipts from returned records, with View and Change actions. Change prefills a contextual assistant request; it does not parse prose or pretend the agent supports a structured plan preview.
 
-Journal and the local weekly-review screen are removed. Memory retains local saved memories and labels the local save boundary; agent-brain integration, reflection and generated trackers remain undecided.
+Journal and the local weekly-review screen are removed. Memory retains local saved memories and labels the local save boundary; agent-brain integration, reflection and generated routine/reminder views remain undecided. Goal trackers follow the accepted Life Engine catalog contract.
+
+## Goal trackers
+
+The agent selects approved modules and headings; the client owns the presentation. Use the existing continuous card shape, hairlines, semantic palette and scalable fonts. iPhone presents purpose, a pending proposal review and up to four modules in a stack before More; iPad uses two columns except at accessibility sizes. Charts show recorded outcomes and desired targets separately. Check-ins use labeled native forms and disclosure for recent observations; revisions show a reason and preview before acceptance. Legacy goals and unsupported presentations retain basic review. Canonical contract and decisions live in Project Hub: `projects/life-engine/specs/goal-trackers.md` and `projects/mission-control/adr/0008-agent-composed-native-goal-trackers.md`.

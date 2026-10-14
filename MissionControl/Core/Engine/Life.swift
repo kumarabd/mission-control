@@ -60,7 +60,7 @@ final class Life {
         catch { self.error = Self.planMessage(error); return false }
     }
 
-    /// Finishes what a suggestion points at: the task, or the goal step. A step is only ever finished here, never on the goal.
+    /// Finishes what a suggestion points at: the task, or a one-off goal step.
     func completeSuggestion(_ s: Wire.Suggestion) async {
         if let id = s.planItemId, let item = tasks.first(where: { $0.id == id }) {
             await completeTask(item, done: true)

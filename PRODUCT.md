@@ -16,13 +16,13 @@ First the owner, then the general public: a busy person managing work and life w
 A personal productivity companion that helps the user make progress on goals they care about, decide what deserves their time today, stop carrying commitments in their head, understand their day, stay consistent when life is messy, and remember what happened and what worked.
 
 ## Positioning
-It adapts the plan when life changes. One quick capture becomes a task, reminder or routine. Today separates timed commitments from untimed work. Agent-memory-backed reflection and generated goal trackers will be designed in a later discussion.
+It adapts the plan when life changes. One quick capture becomes a task, reminder or routine. Today separates timed commitments from untimed work. Goals have tailored native trackers composed through Life Engine catalogs. Agent-memory-backed reflection remains a later discussion.
 
 ## Operating Context
 Short sessions throughout the day, glanceable first, voice or one-line capture, notifications at user-chosen moments. Calendar events and tasks share one realistic day. Data lives server-side in the user's router workspace (Clerk sign-in, provisioning onboarding shared with Treasure and AutoTelemetry). Today, Goals and Memory are the main tabs. The original assistant dashboard is available from Settings.
 
 ## Capabilities and Constraints
-Goals, daily tasks, timed reminders and flexible routines use Life Engine. Memory remains local while its agent-brain integration and reflections are pending discussion. Journal and the local weekly review have been removed from the interface; existing stored records are retained.
+Goals, daily tasks, timed reminders and flexible routines use Life Engine. Goal trackers use recorded numeric outcomes, one-off milestones and linked routine consistency; revisions are reviewed before use. Memory remains local while its agent-brain integration and reflections are pending discussion. Journal and the local weekly review have been removed from the interface; existing stored records are retained.
 
 ## Brand Commitments
 Name "Mission Control". Existing sage-green palette (`MissionTheme`), Hanken Grotesk text, IBM Plex Mono for small labels.

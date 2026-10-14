@@ -95,7 +95,7 @@ struct GoalDetail: View {
     @ViewBuilder private func proposalButtons(_ state: Wire.TrackerState) -> some View {
         ForEach(state.proposals) { pending in
             Button { proposal = pending } label: {
-                Label("Review proposed tracker", systemImage: "rectangle.stack.badge.plus")
+                Label("Review proposed tracker", systemImage: "rectangle.stack")
                     .font(.mission(.body)).frame(maxWidth: .infinity, alignment: .leading).frame(minHeight: 44)
             }
         }
@@ -170,7 +170,8 @@ private struct TrackerModuleCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading).padding(Space.m)
-        .background(Tok.surface, in: RoundedRectangle(cornerRadius: 16))
+        .background(Tok.surface, in: MissionTheme.cardShape)
+        .overlay { MissionTheme.cardShape.strokeBorder(Tok.hairline) }
     }
     @ViewBuilder private func trend(_ metric: Wire.TrackerMetric) -> some View {
         let observations = tracker.observations(for: metric.id)
@@ -193,7 +194,7 @@ private struct TrackerModuleCard: View {
         if let target = metric.target { Text("Target: \(target.formatted()) \(metric.unit)").font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
     }
     @ViewBuilder private func checkIn(_ metric: Wire.TrackerMetric) -> some View {
-        Button { onCheckIn(metric, nil) } label: { Label("Record \(metric.label.lowercased())", systemImage: "plus") }
+        Button { onCheckIn(metric, nil) } label: { Label("Record \(metric.label.lowercased())", systemImage: "square.and.pencil") }
             .font(.mission(.body)).frame(minHeight: 44).disabled(!interactive)
         let observations = tracker.observations(for: metric.id)
         if !observations.isEmpty {
