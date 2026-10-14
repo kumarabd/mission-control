@@ -67,7 +67,7 @@ struct RoutineDetailView: View {
                             }
                             if !s.done {
                                 Button { Task { await life.logRoutine(s.id, short: true) } } label: {
-                                    Image(systemName: "timer").font(.mission(.headline)).frame(width: 44, height: 44)
+                                    Label("Short version", systemImage: "timer").font(.mission(.subheadline)).frame(minHeight: 44)
                                 }
                                 .buttonStyle(.bordered).tint(Tok.accent).disabled(life.busyRoutines.contains(s.id))
                                 .accessibilityLabel("Do the short version: \(s.routine.shortTitle), \(s.routine.shortMinutes) minutes")

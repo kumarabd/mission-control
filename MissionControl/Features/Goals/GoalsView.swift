@@ -12,6 +12,10 @@ struct GoalsList: View {
         Group {
             if !life.goalsAvailable {
                 EmptyState(symbol: "icloud.slash", title: "Goals need your workspace", message: "They are kept with your assistant, which isn't reachable right now.")
+            } else if !life.workspaceLoaded {
+                ProgressView("Loading goals…").frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = life.goalsLoadError, life.goals.isEmpty {
+                EmptyState(symbol: "wifi.exclamationmark", title: "Couldn't load goals", message: error, actionTitle: "Try again") { Task { await life.loadGoals() } }
             } else if life.goals.isEmpty {
                 EmptyState(symbol: "flag", title: "Start with one thing you care about",
                            message: "Tell your assistant what you want to achieve and it will turn it into small steps and routines.",

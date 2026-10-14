@@ -25,7 +25,7 @@ struct MissionControlApp: App {
                 .onOpenURL { url in
                     Task { try? await Clerk.shared.handle(url) }
                 }
-                // Cover the content while locked and in the app switcher, so the journal never shows in the snapshot.
+                // Cover the content while locked and in the app switcher, so private content never shows in the snapshot.
                 .overlay { if lock.locked || (lock.enabled && phase != .active) { LockCover { Task { await lock.unlock() } } } }
                 .animation(.easeOut(duration: 0.15), value: lock.locked)
                 .onChange(of: phase) { _, new in

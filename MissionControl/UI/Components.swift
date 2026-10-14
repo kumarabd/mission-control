@@ -98,11 +98,10 @@ struct CaptureButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Image(systemName: "bubble.left.fill").font(.mission(.title2, .semibold))
+            Label("Capture", systemImage: "bubble.left").font(.mission(.headline, .medium))
                 .foregroundStyle(Tok.onAccent)
-                .frame(width: 60, height: 60)
-                .background(Tok.accent, in: Circle())
-                .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+                .padding(.horizontal, Space.l).frame(minHeight: 48)
+                .background(Tok.accent, in: Capsule())
         }
         .buttonStyle(MissionPressStyle())
         .accessibilityLabel("Talk to your assistant")

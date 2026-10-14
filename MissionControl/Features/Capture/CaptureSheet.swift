@@ -17,6 +17,8 @@ struct CaptureSheet: View {
     @State private var draft = ""
     @State private var error: String?
     @State private var sending = false
+    @State private var updates: [WorkspaceUpdate] = []
+    @State private var selectedUpdate: WorkspaceUpdate?
     @State private var agent = AgentCapture()
     @FocusState private var focused: Bool
 
@@ -37,6 +39,14 @@ struct CaptureSheet: View {
             .screenBackground()
             .navigationTitle("Capture").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button(you.isEmpty && assistant.isEmpty ? "Cancel" : "Done") { leave() } } }
+            .sheet(item: $selectedUpdate) { item in
+                switch item.kind {
+                case .goal: NavigationStack { GoalDetail(goalID: item.entityID).toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selectedUpdate = nil } } } }
+                case .routine: NavigationStack { RoutineDetailView(id: item.entityID).toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selectedUpdate = nil } } } }
+                case .reminder: ReminderDetailSheet(id: item.entityID)
+                case .task: PlanItemDetailSheet(id: item.entityID)
+                }
+            }
             .onAppear { focused = true; voice.updateGatewayAppActivity(scenePhase == .active) }
             .onChange(of: scenePhase) { _, phase in if phase != .inactive { voice.updateGatewayAppActivity(phase == .active) } }
             .onChange(of: voice.state) { old, new in
@@ -64,6 +74,21 @@ struct CaptureSheet: View {
                     Text(voice.progressNarration).font(.mission(.footnote)).foregroundStyle(Tok.muted)
                 }
                 if !assistant.isEmpty { line("ASSISTANT", assistant, emphasised: true) }
+                if !updates.isEmpty {
+                    VStack(alignment: .leading, spacing: Space.s) {
+                        Text("Workspace updates").font(.mission(.headline, .medium))
+                        ForEach(updates) { item in
+                            VStack(alignment: .leading, spacing: Space.xs) {
+                                Text(item.title).font(.mission(.body))
+                                Text(item.detail).font(.mission(.caption)).foregroundStyle(Tok.muted)
+                                HStack {
+                                    Button("View") { selectedUpdate = item }
+                                    Button("Change") { draft = "Change my \(item.kind.rawValue) “\(item.title)”: "; focused = true }
+                                }.frame(minHeight: 44)
+                            }
+                        }
+                    }
+                }
                 if let question { askBlock(question) }
                 if voice.state == .unavailable, !voice.message.isEmpty { Text(voice.message).font(.mission(.callout)).foregroundStyle(Tok.critical) }
                 if let error { Text(error).font(.mission(.callout)).foregroundStyle(Tok.critical) }
@@ -157,7 +182,7 @@ struct CaptureSheet: View {
 
     /// One step with the assistant. Only this exchange is shown: what you said, then what came back (its answer, or a question).
     private func run(shown: String, _ step: @escaping () async throws -> AgentCapture.Outcome) {
-        request = shown; response = ""
+        request = shown; response = ""; updates = []
         sending = true; error = nil; question = nil
         Task {
             do {
@@ -175,9 +200,9 @@ struct CaptureSheet: View {
     }
 
     private func refresh() async {
-        async let reminders: Void = life.loadReminders()
-        async let routines: Void = life.loadRoutines()
-        _ = await (reminders, routines)
+        let before = life.workspaceUpdates
+        await life.refreshWorkspace()
+        updates = life.workspaceUpdates.filter { item in before.first(where: { $0.id == item.id }) != item }
     }
 
     /// Talking replaces typing: the text connection steps aside so the two never answer the same turn.
