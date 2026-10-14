@@ -1,7 +1,6 @@
 import Foundation
 
-/// Goals are the Life Engine's, the same records the assistant creates and edits. The app only reads them: a goal is for review, and it
-/// changes through the assistant.
+/// Shared goal data and the approved native tracker contract.
 struct GoalsService {
     var api: LifeAPI
 
@@ -14,8 +13,32 @@ struct GoalsService {
         return page.items
     }
 
-    /// Finishes a one-off step. It is done from Today (the next thing to do), never from the goal, which is only for review.
-    func completeStep(id: String, version: Int) async throws {
-        let _: Wire.Step = try await api.call("steps_complete", StepDoneIn(idempotencyKey: UUID().uuidString, id: id, expectedVersion: version, done: true))
+    /// Finishes a one-off milestone from Today or an approved tracker module.
+    func completeStep(id: String, version: Int, key: String = UUID().uuidString) async throws {
+        let _: Wire.Step = try await api.call("steps_complete", StepDoneIn(idempotencyKey: key, id: id, expectedVersion: version, done: true))
+    }
+
+    private struct TrackerIn: Encodable { var goalId: String; var catalogId: String }
+    private struct EditIn: Encodable { var idempotencyKey: String; var id: String; var expectedVersion: Int }
+    struct MeasurementIn: Encodable {
+        var idempotencyKey: String
+        var goalId: String?; var metricId: String?; var expectedTrackerRevision: Int?
+        var id: String?; var expectedVersion: Int?
+        var value: Double; var measuredAt: Date?; var notes: String
+    }
+    func tracker(goalID: String, catalog: String) async throws -> Wire.TrackerState {
+        try await api.call("goals_tracker_get", TrackerIn(goalId: goalID, catalogId: catalog))
+    }
+    func apply(_ proposal: Wire.TrackerProposal, key: String) async throws {
+        let _: Wire.Goal = try await api.call("goals_tracker_apply", EditIn(idempotencyKey: key, id: proposal.id, expectedVersion: proposal.version))
+    }
+    func discard(_ proposal: Wire.TrackerProposal, key: String) async throws {
+        let _: Wire.TrackerProposal = try await api.call("goals_tracker_discard", EditIn(idempotencyKey: key, id: proposal.id, expectedVersion: proposal.version))
+    }
+    func saveMeasurement(_ input: MeasurementIn) async throws {
+        let _: Wire.GoalMeasurement = try await api.call(input.id == nil ? "goal_measurements_record" : "goal_measurements_update", input)
+    }
+    func deleteMeasurement(_ measurement: Wire.GoalMeasurement, key: String) async throws {
+        let _: Wire.GoalMeasurement = try await api.call("goal_measurements_delete", EditIn(idempotencyKey: key, id: measurement.id, expectedVersion: measurement.version))
     }
 }

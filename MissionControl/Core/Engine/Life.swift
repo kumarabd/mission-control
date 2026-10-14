@@ -134,6 +134,35 @@ final class Life {
         do { goals = try await service.list(); goalsLoadError = nil } catch { goalsLoadError = Self.goalMessage(error); self.error = goalsLoadError }
     }
 
+    func loadTracker(goalID: String, catalog: String) async throws -> Wire.TrackerState {
+        guard let service = goalService else { throw LifeError.notProvisioned }
+        return try await service.tracker(goalID: goalID, catalog: catalog)
+    }
+    func reviewTracker(_ proposal: Wire.TrackerProposal, accept: Bool, key: String) async throws {
+        guard let service = goalService else { throw LifeError.notProvisioned }
+        if accept { try await service.apply(proposal, key: key) } else { try await service.discard(proposal, key: key) }
+        await loadGoals()
+    }
+    func saveMeasurement(_ input: GoalsService.MeasurementIn) async throws {
+        guard let service = goalService else { throw LifeError.notProvisioned }
+        try await service.saveMeasurement(input)
+    }
+    func deleteMeasurement(_ measurement: Wire.GoalMeasurement, key: String) async throws {
+        guard let service = goalService else { throw LifeError.notProvisioned }
+        try await service.deleteMeasurement(measurement, key: key)
+    }
+    func completeTrackerStep(_ step: Wire.Step, key: String) async throws {
+        guard let service = goalService else { throw LifeError.notProvisioned }
+        try await service.completeStep(id: step.id, version: step.version, key: key)
+        await loadGoals(); await loadPlan()
+    }
+    static func trackerMessage(_ error: Error) -> String {
+        if case LifeError.engine(let code, _) = error, code == "conflict" {
+            return "This changed elsewhere. Review the latest tracker and ask for a refreshed proposal if needed."
+        }
+        return goalMessage(error)
+    }
+
     private static func goalMessage(_ e: Error) -> String {
         switch e as? LifeError {
         case .unauthorized: "Please sign in again."

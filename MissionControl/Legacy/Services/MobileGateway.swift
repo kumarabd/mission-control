@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import UIKit
 
 /// Exchanges authenticated text turns with the remote intelligence gateway.
 /// Microphone capture, speech recognition, and speech synthesis stay on-device.
@@ -108,7 +109,7 @@ final class MobileGateway {
         enqueue([
             "type": "message",
             "client_msg_id": clientMessageID,
-            "text": text,
+            "text": TrackerClient.context(isPad: UIDevice.current.userInterfaceIdiom == .pad) + "\n" + text,
             "mode": mode,
             "device_id": deviceID,
         ])
