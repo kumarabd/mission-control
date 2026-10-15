@@ -23,6 +23,24 @@ enum SemanticMemory {
     }
 }
 
+/// A short, read-only drill-down from a reflection's "Related context" entity —
+/// GET /v1/explorer/memory/facts?entity_id=, one of the purpose-built memory-browse
+/// reads agent-brain added alongside /semantic. Deliberately narrow (just what's
+/// mentioned about this entity), not a general facts/graph browser — PRODUCT.md's
+/// own Memory scope stays a curated, read-only surface; this is the same idea
+/// (depth on one already-surfaced entity), not a new browsing paradigm.
+enum EntityMemory {
+    struct Item: Codable, Equatable, Identifiable {
+        var id: String; var text: String; var network: String; var mentionTime: Date
+        var label: String {
+            switch network { case "observation": "Observation"; case "experience": "Experience"; default: "Fact" }
+        }
+    }
+    struct Page: Codable, Equatable {
+        var bankAvailable: Bool; var items: [Item]; var hasMore: Bool; var limit: Int; var offset: Int
+    }
+}
+
 enum MemoryReadError: Error, Equatable {
     case signedOut, unavailable, upgradeNeeded, invalidResponse, network, sourceUnavailable
     var message: String {
@@ -51,6 +69,11 @@ struct MemoryService {
         do { page = try Wire.decoder.decode(SemanticMemory.Page.self, from: data) } catch { throw MemoryReadError.invalidResponse }
         guard page.schemaVersion == 1, page.section == section.rawValue, page.offset == offset, page.limit > 0 else { throw MemoryReadError.invalidResponse }
         return page
+    }
+    func entityFacts(entityID: String, limit: Int = 20) async throws -> EntityMemory.Page {
+        let data = try await read(path: "/v1/explorer/memory/facts", query: [URLQueryItem(name: "entity_id", value: entityID), URLQueryItem(name: "limit", value: String(limit))])
+        do { return try Wire.decoder.decode(EntityMemory.Page.self, from: data) }
+        catch { throw MemoryReadError.invalidResponse }
     }
     func source(parent: String, id: String) async throws -> SemanticMemory.Item {
         let data = try await read(path: "/v1/explorer/semantic-source", query: [URLQueryItem(name: "parent", value: parent), URLQueryItem(name: "source", value: id)])

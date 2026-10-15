@@ -108,7 +108,11 @@ private struct SemanticMemoryDetail: View {
                 if item.truncated { Text("This is a shortened view of this item.").font(.mission(.footnote)).foregroundStyle(Tok.muted) }
                 if !item.entities.isEmpty {
                     Text("Related context").font(.mission(.headline, .medium)).accessibilityAddTraits(.isHeader)
-                    ForEach(item.entities) { Text($0.name).font(.mission(.body)) }
+                    ForEach(item.entities) { entity in
+                        NavigationLink { EntityMemoryDetail(entity: entity, service: service) } label: {
+                            Text(entity.name).font(.mission(.body))
+                        }.frame(minHeight: 44)
+                    }
                 }
                 DisclosureGroup("About this insight") {
                     Text(item.sourceStatus == "not_recorded" ? "Source links weren't saved with this insight. Related context names describe associations, not supporting evidence." : "These memories informed the document. They aren't citations for individual claims.")
@@ -128,6 +132,50 @@ private struct SemanticMemoryDetail: View {
                 Text("Requests go to your assistant. This view updates when memory has actually refreshed.").font(.mission(.footnote)).foregroundStyle(Tok.muted)
             }.padding(Space.l).frame(maxWidth: 720).frame(maxWidth: .infinity, alignment: .leading)
         }.screenBackground().navigationTitle(item.title).navigationBarTitleDisplayMode(.inline)
+    }
+}
+private struct EntityMemoryDetail: View {
+    var entity: SemanticMemory.Entity
+    var service: MemoryService
+    @State private var page: EntityMemory.Page?
+    @State private var failure: String?
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.l) {
+                if let page {
+                    if page.items.isEmpty {
+                        VStack(alignment: .leading, spacing: Space.s) {
+                            Text("Nothing remembered yet").font(.mission(.headline, .medium))
+                            Text("Your assistant hasn't connected \(entity.name) to anything else yet.")
+                                .font(.mission(.body)).foregroundStyle(Tok.muted)
+                        }
+                    } else {
+                        ForEach(page.items) { item in
+                            VStack(alignment: .leading, spacing: Space.xs) {
+                                Text(item.label).font(.missionMono(.caption)).foregroundStyle(Tok.accent)
+                                Text(item.text).font(.mission(.body))
+                                Text(item.mentionTime.formatted(date: .abbreviated, time: .omitted))
+                                    .font(.mission(.caption)).foregroundStyle(Tok.muted)
+                            }.accessibilityElement(children: .combine)
+                        }
+                        if page.hasMore {
+                            Text("Showing the most recent memory connected to \(entity.name).")
+                                .font(.mission(.footnote)).foregroundStyle(Tok.muted)
+                        }
+                    }
+                } else if let failure {
+                    Text(failure).font(.mission(.body))
+                    Button("Try again") { Task { await load() } }.frame(minHeight: 44)
+                } else {
+                    ProgressView("Loading related memory…")
+                }
+            }.padding(Space.l).frame(maxWidth: 720).frame(maxWidth: .infinity, alignment: .leading)
+        }.screenBackground().navigationTitle(entity.name).navigationBarTitleDisplayMode(.inline).task { await load() }
+    }
+    private func load() async {
+        failure = nil
+        do { page = try await service.entityFacts(entityID: entity.id) }
+        catch { if !Task.isCancelled { failure = (error as? MemoryReadError)?.message ?? "Couldn't load related memory." } }
     }
 }
 private struct LocalMemoryRecords: View {
