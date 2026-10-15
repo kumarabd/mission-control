@@ -24,6 +24,7 @@ struct SettingsView: View {
                     if let error { Text(error).foregroundStyle(Tok.critical) }
                 }
                 Section {
+                    NavigationLink("Agents") { AgentsSettingsView() }
                     NavigationLink("Voice and appearance") { DashboardSettings(appearance: $appearance, ambientMotion: $ambientMotion) }
                     NavigationLink("Classic dashboard") { DashboardView().navigationTitle("Classic").navigationBarTitleDisplayMode(.inline) }
                 }

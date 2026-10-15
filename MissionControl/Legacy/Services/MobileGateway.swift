@@ -45,6 +45,9 @@ final class MobileGateway {
     // migration. This is deliberately scoped to gateway delivery state;
     // it does not reset sign-in, tasks, or any other on-device data.
     private let cursorKey = "gateway.ios.completedTurnCursor.v2"
+    /// Which agent (gateway/internal/agents registry) this device's conversation addresses. Set from
+    /// Settings > Agents; empty means the default agent (`core.DefaultAgentID`, resolved server-side).
+    private let selectedAgentKey = "gateway.ios.selectedAgentID"
     private var socket: URLSessionWebSocketTask?
     private var receiveTask: Task<Void, Never>?
     private var pingTask: Task<Void, Never>?
@@ -140,6 +143,7 @@ final class MobileGateway {
             socket = task; task.resume()
             var auth: [String: Any] = ["type": "auth", "token": token, "device_id": deviceID]
             if usesResumeCursor, let cursor = UserDefaults.standard.object(forKey: cursorKey) as? Int { auth["after_turn_seq"] = cursor }
+            if let agentID = UserDefaults.standard.string(forKey: selectedAgentKey), !agentID.isEmpty { auth["agent_id"] = agentID }
             try await send(auth, on: task)
             guard !Task.isCancelled, socket === task, transportGeneration == generation else { return }
             startPing(for: task)
