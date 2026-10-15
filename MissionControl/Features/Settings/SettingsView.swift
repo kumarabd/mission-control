@@ -25,6 +25,7 @@ struct SettingsView: View {
                 }
                 Section {
                     NavigationLink("Agents") { AgentsSettingsView() }
+                    NavigationLink("Connections") { ConnectionsSettingsView() }
                     NavigationLink("Voice and appearance") { DashboardSettings(appearance: $appearance, ambientMotion: $ambientMotion) }
                     NavigationLink("Classic dashboard") { DashboardView().navigationTitle("Classic").navigationBarTitleDisplayMode(.inline) }
                 }
