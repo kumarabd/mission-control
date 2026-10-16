@@ -52,12 +52,9 @@ extension Wire {
     }
 }
 
-/// One app/platform identity for both the agent's request context and native rendering.
+/// One app/platform identity for native rendering.
 enum TrackerClient {
     static func catalog(isPad: Bool) -> String { "mission-control.\(isPad ? "ipados" : "ios").goal-tracker.v1" }
-    static func context(isPad: Bool) -> String {
-        "[Client capabilities: app=mission-control; platform=\(isPad ? "ipados" : "ios"); tracker_catalog=\(catalog(isPad: isPad)). For a new goal, read tracker_catalog_get and include a tailored tracker in goals_create. For an existing goal, use goals_propose_tracker; the person reviews it in the client. Never invent observations.]"
-    }
     static func number(_ text: String, locale: Locale = .current) -> Double? {
         let scanner = Scanner(string: text.trimmingCharacters(in: .whitespacesAndNewlines))
         scanner.locale = locale

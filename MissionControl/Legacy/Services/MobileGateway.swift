@@ -109,10 +109,13 @@ final class MobileGateway {
 
     func sendMessage(_ text: String, mode: String = "voice") -> String {
         let clientMessageID = UUID().uuidString
+        // The message goes as typed: no clock stamp, no client-capabilities preamble. The agent's own context about
+        // the person and their device belongs on the engine/harness side, not glued to their words — it was showing
+        // up in the transcript, and it was being stored as part of what they said.
         enqueue([
             "type": "message",
             "client_msg_id": clientMessageID,
-            "text": TrackerClient.context(isPad: UIDevice.current.userInterfaceIdiom == .pad) + "\n" + text,
+            "text": text,
             "mode": mode,
             "device_id": deviceID,
         ])

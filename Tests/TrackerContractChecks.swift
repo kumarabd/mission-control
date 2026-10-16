@@ -26,7 +26,6 @@ import Foundation
         precondition(TrackerClient.number("2,5", locale: Locale(identifier: "fr_FR")) == 2.5)
         precondition(TrackerClient.number("2 kg") == nil && TrackerClient.number("NaN") == nil && TrackerClient.number("") == nil)
         precondition(state.metricDefinitions[0].accepts(0) && !state.metricDefinitions[0].accepts(-1))
-        precondition(TrackerClient.context(isPad: true).contains(TrackerClient.catalog(isPad: true)))
         let fixedTime = Date(timeIntervalSince1970: 1_800_000_000)
         let api = LifeAPI(baseURL: "https://test.invalid/life/api/v1", token: { "test" }, transport: { request in
             let path = request.url!.lastPathComponent

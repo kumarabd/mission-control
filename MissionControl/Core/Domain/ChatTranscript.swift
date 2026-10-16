@@ -119,11 +119,10 @@ struct ChatTranscript {
 
     private static func streamID(_ turn: Int) -> String { "s:\(turn)" }
 
-    /// What the person actually said. Every message this client sends carries two lines the harness needs and the
-    /// thread must not show — the clock stamp (`[Now: …]`, so "in 20 minutes" means something) and the client's
-    /// capabilities (`[Client capabilities: …]`, so a goal arrives with a tracker) — and a replayed message comes back
-    /// from the gateway with them still attached. Only these exact prefixes are dropped: a bracketed line the person
-    /// typed themselves survives.
+    /// What the person actually said. Messages stored by earlier builds carry two lines the harness wanted and the
+    /// thread must not show — the clock stamp (`[Now: …]`) and the client's capabilities (`[Client capabilities: …]`)
+    /// — and a replay comes back from the gateway with them still attached. New sends carry neither; only these exact
+    /// prefixes are dropped here, so a bracketed line the person typed themselves survives.
     static func spoken(_ content: String) -> String {
         var lines = content.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         while let first = lines.first, isInjected(first) { lines.removeFirst() }

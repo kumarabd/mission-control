@@ -61,7 +61,7 @@ final class ChatModel {
         guard !trimmed.isEmpty else { return }
         beginInteraction()
         question = nil
-        transcript.apply(.sent(clientID: gateway.sendMessage(Self.stamped(trimmed), mode: "text"), text: trimmed))
+        transcript.apply(.sent(clientID: gateway.sendMessage(trimmed, mode: "text"), text: trimmed))
     }
 
     func answer(_ question: Question, optionID: String? = nil, text: String? = nil) {
@@ -118,9 +118,4 @@ final class ChatModel {
         }
     }
 
-    /// Relative words ("in 20 minutes", "tomorrow") only mean something against the person's clock.
-    static func stamped(_ text: String) -> String {
-        let now = Date().formatted(date: .complete, time: .standard)
-        return "[Now: \(now), time zone \(TimeZone.current.identifier)]\n\(text)"
-    }
 }

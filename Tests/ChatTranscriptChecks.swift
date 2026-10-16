@@ -68,8 +68,8 @@ struct ChatTranscriptChecks {
         precondition(twice.items == once.items, "a reconnect must not double the thread")
         precondition(once.items.map(\.id) == ["u:9:1", "a:9:2"])
 
-        // A replayed message carries the lines this client prepends for the harness (the clock stamp and the client's
-        // capabilities); the thread shows what the person typed and nothing else.
+        // A message stored by an older build replays with the lines that build prepended for the harness (the clock
+        // stamp and the client's capabilities); the thread shows what the person typed and nothing else.
         var replayed = ChatTranscript()
         replayed.apply(.message(turn: 5, seq: 1, role: "user", content: """
         [Client capabilities: app=mission-control; platform=ios; tracker_catalog=mission-control.ios.goal-tracker.v1. For a new goal, read tracker_catalog_get.]
