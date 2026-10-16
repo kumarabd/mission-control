@@ -43,37 +43,3 @@ struct PlanItemDetailSheet: View {
         }.presentationDetents([.medium, .large])
     }
 }
-
-struct AllRemindersSheet: View {
-    @Environment(Life.self) private var life
-    @Environment(\.dismiss) private var dismiss
-    @State private var selected: ReminderRef?
-    var body: some View {
-        NavigationStack {
-            List {
-                if life.reminders.isEmpty {
-                    Text("No reminders yet.").foregroundStyle(Tok.muted)
-                }
-                ForEach(life.reminders) { r in
-                    Button { selected = ReminderRef(id: r.id) } label: {
-                        HStack(spacing: Space.m) {
-                            Image(systemName: r.isDone ? "checkmark.circle" : "bell").foregroundStyle(Tok.accent)
-                            VStack(alignment: .leading, spacing: Space.xs) {
-                                Text(r.title).foregroundStyle(Tok.text)
-                                Text(r.isDone ? "Done" : (r.snoozedUntil ?? r.dueAt).map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "No time set")
-                                    .font(.mission(.caption)).foregroundStyle(Tok.muted)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(Tok.muted)
-                        }.frame(minHeight: 44)
-                    }.buttonStyle(.borderless).listRowBackground(Tok.surface)
-                }
-            }
-            .scrollContentBackground(.hidden).screenBackground()
-            .navigationTitle("Reminders").navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .refreshable { await life.loadReminders() }
-            .sheet(item: $selected) { ReminderDetailSheet(id: $0.id) }
-        }
-    }
-}

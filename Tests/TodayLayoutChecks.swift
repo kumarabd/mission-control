@@ -13,11 +13,8 @@ struct TodayLayoutChecks {
         var event = task; event.id = "event"; event.kind = "event"
         var removed = task; removed.id = "removed"; removed.deletedAt = Date()
         precondition(TodayLayout.untimedTasks([task, checkin, event, removed]).map(\.id) == [task.id])
-        var reminder = try read("reminder_undated", as: Wire.Reminder.self)
-        reminder.dueAt = nil; reminder.snoozedUntil = nil
-        var timed = reminder; timed.id = "timed"; timed.dueAt = Date()
-        var snoozed = reminder; snoozed.id = "snoozed"; snoozed.snoozedUntil = Date()
-        precondition(TodayLayout.untimedReminders([reminder, timed, snoozed]).map(\.id) == [reminder.id])
+        // Reminders are not Today's business any more: they live in Goals ▸ Reminders (_ = fixture read kept for the decode).
+        _ = try read("reminder_undated", as: Wire.Reminder.self)
         var routine = try read("routine_status", as: Wire.RoutineStatus.self)
         routine.scheduled = true
         routine.routine.cues = ["09:00", "13:00", "17:00"]

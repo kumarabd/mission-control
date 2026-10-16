@@ -1,15 +1,17 @@
 import SwiftUI
 
-/// Timed items share one chronological rail; untimed work stays in Tasks. A routine is untimed work even when it has
-/// nudge times: a nudge is the assistant's cue, not a time the person is due at, so it stays off this rail.
+/// The day's timed items in one chronological rail, shown as a compact window a few rows tall with Now centred: the
+/// day scrolls inside the window instead of growing the page. Untimed work stays in Tasks — a routine is untimed work
+/// even when it has nudge times, because a nudge is the assistant's cue rather than a time the person is due at — and
+/// reminders live in Goals ▸ Reminders.
 struct ScheduleSection: View {
     @Environment(Life.self) private var life
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let events: [DayEvent]
-    let openReminder: (String) -> Void
     let openTask: (String) -> Void
 
-    private enum Kind { case event, task, reminder }
+    private enum Kind { case event, task }
     private struct Entry: Identifiable {
         let id: String
         let kind: Kind
@@ -17,14 +19,15 @@ struct ScheduleSection: View {
         let title: String
         let detail: String
         var task: Wire.PlanItem?
-        var cue: Wire.AgendaItem?
-        var cleared: Bool { task?.doneAt != nil || cue?.state == "acknowledged" }
-        var due: Bool { cue?.state == "due" }
+        var cleared: Bool { task?.doneAt != nil }
     }
-    private enum RailRow: Identifiable {
+    private enum Row: Identifiable {
         case entry(Entry), now
-        var id: String { switch self { case .entry(let e): e.id; case .now: "now" } }
+        var id: String { switch self { case .entry(let e): e.id; case .now: ScheduleWindow.nowID } }
     }
+
+    /// The scroller rests on the Now rule until the person moves it.
+    @State private var centered: String? = ScheduleWindow.nowID
 
     private var entries: [Entry] {
         var result = events.map { Entry(id: "e:" + $0.id, kind: .event, at: $0.start, title: $0.title, detail: "Calendar · \($0.minutes) min") }
@@ -34,41 +37,83 @@ struct ScheduleSection: View {
             let detail = [t.kind == "event" ? "Event" : t.kind == "checkin" ? "Check-in" : "\(t.minutes) min", goal, t.isPriority ? "Priority" : nil].compactMap { $0 }.joined(separator: " · ")
             return Entry(id: "t:" + t.id, kind: t.kind == "event" ? .event : .task, at: at, title: t.title, detail: detail, task: t)
         }
-        result += life.agenda.map { Entry(id: "c:" + $0.id, kind: .reminder, at: $0.at, title: $0.reminder.title,
-                                         detail: $0.state == "acknowledged" ? "Reminder · acknowledged" : $0.state == "due" ? "Reminder · waiting for you" : "Reminder", cue: $0) }
         return result.sorted { $0.at == $1.at ? $0.id < $1.id : $0.at < $1.at }
     }
-    private var rows: [RailRow] {
-        var result: [RailRow] = []
-        var placed = false
-        for e in entries {
-            if !placed, e.at > Date() { result.append(.now); placed = true }
-            result.append(.entry(e))
-        }
-        if !placed, !result.isEmpty { result.append(.now) }
-        return result
+
+    private var placements: [ScheduleWindow.Placement] {
+        ScheduleWindow.placements(items: entries.map { (id: $0.id, at: $0.at) }, now: Date())
     }
+
+    private var rows: [Row] {
+        let byID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+        return placements.compactMap { placement in
+            if placement.isNow { return .now }
+            return byID[placement.id].map(Row.entry)
+        }
+    }
+
+    private var away: Bool { ScheduleWindow.isAway(centered: centered) }
 
     var body: some View {
         Section {
             if rows.isEmpty {
-                Text("No timed items today.").font(.mission(.body)).foregroundStyle(Tok.muted).padding(.vertical, Space.s)
-            }
-            ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
-                switch row {
-                case .now: nowRow
-                case .entry(let e): entryRow(e, first: i == 0, last: i == rows.count - 1)
-                }
+                Text("No timed items today.").font(.mission(.body)).foregroundStyle(Tok.muted)
+                    .padding(.horizontal, Space.l).padding(.vertical, Space.s)
+            } else {
+                window
             }
         } header: { Text("Schedule").font(.mission(.subheadline, .medium)) }
-        .listRowBackground(Tok.surface).listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 0, leading: Space.l, bottom: 0, trailing: Space.l))
+        .listRowInsets(EdgeInsets())              // the window draws its own gutters
+        .listRowSeparator(.hidden)
+        .listRowBackground(Tok.surface)
+    }
+
+    private var window: some View {
+        ScrollView(.vertical) {
+            LazyVStack(spacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    Group {
+                        switch row {
+                        case .now: nowRow
+                        case .entry(let e): entryRow(e, first: index == 0, last: index == rows.count - 1)
+                        }
+                    }
+                    .id(row.id)
+                    // Rows crossing the window's edges soften, so it reads as a window over the day rather than a cut list.
+                    .scrollTransition(reduceMotion ? .identity : .animated(.easeOut(duration: 0.2))) { content, phase in
+                        content.opacity(phase.isIdentity ? 1 : 0.35)
+                            .scaleEffect(phase.isIdentity || reduceMotion ? 1 : 0.97)
+                    }
+                }
+            }
+            .scrollTargetLayout()
+            .padding(.horizontal, Space.l)
+        }
+        .frame(height: ScheduleWindow.height(rowCount: rows.count, isAccessibilitySize: typeSize.isAccessibilitySize))
+        .scrollPosition(id: $centered, anchor: .center)
+        .overlay(alignment: .bottomTrailing) {
+            if away {
+                Chip(title: "Back to now", symbol: "arrow.down") {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { centered = ScheduleWindow.nowID }
+                }
+                .padding(Space.s)
+                .transition(.opacity)
+                .accessibilityLabel("Back to now")
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: rows.map(\.id))
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: away)
+        // A minute passing moves the Now rule; keep the window on it unless the person has scrolled away themselves.
+        .onChange(of: rows.map(\.id)) { _, _ in
+            guard !away else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { centered = ScheduleWindow.nowID }
+        }
     }
 
     private func entryRow(_ e: Entry, first: Bool, last: Bool) -> some View {
         HStack(spacing: Space.s) {
             if !typeSize.isAccessibilitySize {
-                Text(time(e.at)).font(.missionMono(.caption)).foregroundStyle(e.due ? Tok.warn : Tok.muted)
+                Text(time(e.at)).font(.missionMono(.caption)).foregroundStyle(Tok.muted)
                     .frame(width: 62, alignment: .trailing).multilineTextAlignment(.trailing)
             }
             ZStack {
@@ -85,28 +130,16 @@ struct ScheduleSection: View {
             } else {
                 Button { open(e) } label: { content(e) }.buttonStyle(.borderless)
             }
-            if e.due, let cue = e.cue {
-                Button { Task { await life.ackCue(cue) } } label: {
-                    Image(systemName: "checkmark.circle").font(.mission(.title2)).frame(width: 44, height: 44)
-                }.buttonStyle(.borderless).disabled(life.busyReminders.contains(cue.reminder.id))
-                    .accessibilityLabel("Got it: \(e.title)")
-            }
         }
         .padding(.vertical, Space.s).frame(minHeight: 60).fixedSize(horizontal: false, vertical: true)
         .accessibilityElement(children: .contain)
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            if let cue = e.cue {
-                Button("Snooze 1 hr", systemImage: "moon.zzz") { Task { await life.snoozeReminder(cue.reminder, until: Date().addingTimeInterval(3600)) } }
-                    .tint(MissionTone.reminder.color)
-            }
-        }
     }
 
     private func content(_ e: Entry) -> some View {
         VStack(alignment: .leading, spacing: Space.xs) {
             if typeSize.isAccessibilitySize { Text(time(e.at)).font(.mission(.caption)).foregroundStyle(Tok.muted) }
             Text(e.title).font(.mission(.body)).foregroundStyle(e.cleared ? Tok.muted : Tok.text).multilineTextAlignment(.leading)
-            Text(e.detail).font(.mission(.caption)).foregroundStyle(e.due ? Tok.warn : Tok.muted).multilineTextAlignment(.leading)
+            Text(e.detail).font(.mission(.caption)).foregroundStyle(Tok.muted).multilineTextAlignment(.leading)
         }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
     }
 
@@ -118,19 +151,20 @@ struct ScheduleSection: View {
             }.buttonStyle(.borderless).disabled(life.busyTasks.contains(t.id))
                 .accessibilityLabel("Mark \(e.title) \(e.cleared ? "not done" : "done")")
         } else {
-            Image(systemName: e.kind == .event ? "calendar" : e.cleared ? "bell.slash" : e.due ? "bell.badge.fill" : "bell")
-                .font(.mission(.body)).foregroundStyle(e.kind == .event ? MissionTone.scheduled.color : MissionTone.reminder.color)
+            Image(systemName: "calendar")
+                .font(.mission(.body)).foregroundStyle(MissionTone.scheduled.color)
                 .frame(width: 44, height: 44).background(Tok.surface, in: Circle()).accessibilityHidden(true)
         }
     }
 
     private func open(_ e: Entry) {
-        if let r = e.cue { openReminder(r.reminder.id) }
-        else if let t = e.task { openTask(t.id) }
+        if let t = e.task { openTask(t.id) }
     }
+
     private func time(_ at: Date) -> String {
         Calendar.current.isDateInToday(at) ? at.formatted(date: .omitted, time: .shortened) : at.formatted(.dateTime.month(.abbreviated).day().hour().minute())
     }
+
     private var nowRow: some View {
         HStack(spacing: Space.s) {
             Text("Now · " + Date().formatted(date: .omitted, time: .shortened)).font(.mission(.caption, .medium))

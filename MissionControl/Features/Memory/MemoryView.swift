@@ -5,11 +5,11 @@ struct MemoryView: View {
     var refreshToken = 0
     @Environment(Life.self) private var life
     @Environment(AuthService.self) private var auth
+    @Environment(ChatModel.self) private var chat
     @Environment(\.scenePhase) private var scenePhase
     @State private var section: SemanticMemory.Section = .reflections
     @State private var query = ""
     @State private var model = MemoryModel()
-    @State private var conversation: MemoryConversation?
     @State private var localRecords = false
 
     private var service: MemoryService {
@@ -65,12 +65,15 @@ struct MemoryView: View {
                     Section { Button("Previously saved on this device") { localRecords = true }.frame(minHeight: 44) }.listRowBackground(Tok.surface)
                 }
             }
-            .scrollContentBackground(.hidden).screenBackground().safeAreaPadding(.bottom, 80)
+            .scrollContentBackground(.hidden).screenBackground()
             .navigationTitle("Memory")
             .searchable(text: $query, prompt: "Search \(section.title.lowercased())")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { Button("Settings", systemImage: "person.crop.circle", action: onSettings).frame(minWidth: 44, minHeight: 44) }
-                ToolbarItem(placement: .primaryAction) { Button("Discuss memory", systemImage: "bubble.left") { discuss() }.frame(minWidth: 44, minHeight: 44) }
+                ToolbarItem(placement: .topBarLeading) { AppMark() }
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Button("Discuss memory", systemImage: "bubble.left") { discuss() }.frame(minWidth: 44, minHeight: 44)
+                    Button("Settings", systemImage: "person.crop.circle", action: onSettings).frame(minWidth: 44, minHeight: 44)
+                }
             }
             .navigationDestination(isPresented: $localRecords) { LocalMemoryRecords() }
             .refreshable { await reload() }
@@ -79,7 +82,6 @@ struct MemoryView: View {
                 guard !Task.isCancelled else { return }; await reload()
             }
             .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await reload() } } }
-            .sheet(item: $conversation, onDismiss: { Task { await reload() } }) { CaptureSheet(draft: $0.text).environment(life) }
         }
     }
     private var emptyTitle: String {
@@ -88,12 +90,12 @@ struct MemoryView: View {
         return section == .reflections ? "Insights will take shape here" : "Your personal understanding is taking shape"
     }
     private func reload(more: Bool = false) async { await model.load(service: service, section: section, query: query, more: more) }
+    /// Asking about memory starts the conversation in Chat, with the item's context in the box.
     private func discuss(_ item: SemanticMemory.Item? = nil) {
         let context = item.map { "About memory item \($0.id), ‘\($0.title)’: " } ?? "About what you remember and understand about me: "
-        conversation = MemoryConversation(text: context)
+        chat.request(draft: context)
     }
 }
-private struct MemoryConversation: Identifiable { let id = UUID(); var text: String }
 private struct SemanticMemoryDetail: View {
     let item: SemanticMemory.Item
     var service: MemoryService

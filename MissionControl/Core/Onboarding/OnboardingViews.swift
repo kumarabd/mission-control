@@ -206,7 +206,7 @@ private struct Card<Content: View>: View {
     }
 }
 
-private struct SecretInput: View {
+struct SecretInput: View {
     let label: String
     @Binding var text: String
     var placeholder = ""
@@ -224,7 +224,7 @@ private struct SecretInput: View {
     }
 }
 
-private struct PlainInput: View {
+struct PlainInput: View {
     let label: String
     @Binding var text: String
     var placeholder = ""

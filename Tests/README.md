@@ -77,9 +77,11 @@ xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift Mission
 
 `Tests/Fixtures/life` is copied from the `life-engine` repository's `fixtures/`; regenerate there when the contract changes.
 
-Reminder state (when a reminder shows as done, and for how long):
+Reminder state (when a reminder shows as done, for how long, and which shelf of the
+Reminders list it lands on — overdue, coming, no time, done — with a snooze replacing
+the due time):
 
-    xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Domain/DayProgress.swift Tests/ReminderStateChecks.swift -o /private/tmp/reminder-state-checks && /private/tmp/reminder-state-checks
+    xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Domain/DayProgress.swift MissionControl/Core/Domain/ReminderSections.swift Tests/ReminderStateChecks.swift -o /private/tmp/reminder-state-checks && /private/tmp/reminder-state-checks
 
 Markdown blocks and the routine/goal overview text:
 
@@ -90,13 +92,36 @@ When a routine next applies:
 
     xcrun swiftc -parse-as-library MissionControl/Core/Domain/RoutineSchedule.swift Tests/RoutineScheduleChecks.swift -o /private/tmp/routine-schedule-checks && /private/tmp/routine-schedule-checks
 
-## Today grouping and capture refresh
+## Today grouping and workspace refresh
 
     xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Domain/TodayLayout.swift Tests/TodayLayoutChecks.swift -o /private/tmp/today-layout-checks
     /private/tmp/today-layout-checks Tests/Fixtures/life
 
-Covers timed check-ins, undated and snoozed reminders, a routine as untimed work
-(its nudge times never put it on the schedule) and routines that do not apply today.
+Covers timed check-ins, a routine as untimed work (its nudge times never put it on
+the schedule) and routines that do not apply today.
+
+The schedule window (where the Now rule falls, how tall the window is):
+
+    xcrun swiftc -parse-as-library MissionControl/Core/Domain/ScheduleWindow.swift Tests/ScheduleWindowChecks.swift -o /private/tmp/schedule-window-checks
+    /private/tmp/schedule-window-checks
+
+Covers chronological ordering with ties broken by id, the Now rule's place among
+past and future rows (including an empty day and an item due exactly now), the
+window's height at both text sizes (never taller than the rows that exist, never a
+hole), and when "back to now" should appear. It does not prove scrolling, animation
+or Reduce Motion — those are checked in the app.
+
+The chat transcript (replay and streaming, made idempotent):
+
+    xcrun swiftc -parse-as-library MissionControl/Core/Domain/ChatTranscript.swift Tests/ChatTranscriptChecks.swift -o /private/tmp/chat-transcript-checks
+    /private/tmp/chat-transcript-checks
+
+Covers a sent message being replaced by its own echo rather than doubled, streamed
+deltas appending and resetting, progress narration staying out of the answer, the
+durable message superseding the stream, a replayed delta for a finished turn being
+ignored, a stopped turn keeping what was already seen, an empty frame leaving no
+bubble, and a whole connect replayed twice changing nothing. It does not prove what
+the gateway replays (that is the mobile WebSocket contract) or how the thread looks.
 
     xcrun swiftc -parse-as-library MissionControl/Core/Domain/Models.swift MissionControl/Core/Domain/Planner.swift MissionControl/Core/Domain/WorkspaceUpdate.swift MissionControl/Core/Engine/LifeEngine.swift MissionControl/Core/Engine/Life.swift MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Remote/LifeAPI.swift MissionControl/Core/Remote/RemindersService.swift MissionControl/Core/Remote/RoutinesService.swift MissionControl/Core/Remote/GoalsService.swift MissionControl/Core/Remote/SettingsService.swift MissionControl/Core/Remote/PlanService.swift Tests/WorkspaceRefreshChecks.swift -o /private/tmp/workspace-refresh-checks
     /private/tmp/workspace-refresh-checks Tests/Fixtures/life
@@ -105,6 +130,20 @@ Uses recorded service responses to verify all four remote collections refresh,
 edited goals produce receipt data, load failures preserve previous records,
 failed memory writes report failure, and retained journal history is not surfaced.
 Notification delivery is stubbed; these checks do not contact a live workspace.
+
+## Gateway notification inbox
+
+    xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Remote/NotificationsAPI.swift MissionControl/Features/Notifications/NotificationsModel.swift Tests/NotificationsChecks.swift -o /private/tmp/mission-notifications-checks
+    /private/tmp/mission-notifications-checks
+
+Covers the inbox envelope (items, unread, next_before), microseconds surviving the
+decode, a malformed row link opening nothing while the rest of the page still loads,
+the `before` cursor going back byte for byte, an empty 204 from marking one read,
+`{"marked": n}` from marking all, the gateway's plain-text error body classifying as
+`.server` rather than Life's JSON envelope, a missing token failing before any
+network call, pagination appending without duplicates, a failed refresh keeping what
+is already shown, and an unattached inbox reading as unavailable rather than broken.
+It does not contact a live gateway.
 
 ## Goal trackers
 
@@ -136,3 +175,19 @@ Covers the `agent_id`/`avatar_url` request/response coding (explicit `CodingKeys
 matches an idiomatic `agentID`/`avatarURL` property name), a plain-text `http.Error` body classifying as
 `.server` rather than Life's JSON error envelope, and a missing token failing fast with `.unauthorized` before
 any network call. Does not contact a live gateway.
+
+## Model tiers (list, apply, redeploy progress, auth, error classification)
+
+```sh
+xcrun swiftc -parse-as-library MissionControl/Core/Remote/ModelsAPI.swift Tests/ModelsChecks.swift -o /private/tmp/mission-models-checks
+/private/tmp/mission-models-checks
+```
+
+Covers the `llm_tiers` envelope of camelCase tier objects (`baseURL`, `hasKey`, `custom`) read with a plain
+`JSONDecoder()` rather than `Wire`'s `.convertFromSnakeCase`, a deployment older than the platform/own split
+omitting `mode` and `custom` and still decoding (as `"custom"` and true), both PUT bodies (`{"llm_tiers": …}`
+and the `{"mode": "platform"}` revert) with the run id they answer with, the router's plain-string
+`{"error": "…"}` classifying as `.server` (a 409 conflict reads as its own sentence, a 400 as its validation
+message), `/llm/update`'s 404 reading as "nothing has run" rather than a failure, the run-id and latest-run
+query paths, and a missing token failing fast with `.unauthorized` before any network call. Does not contact a
+live router, so the Temporal redeploy the PUT starts is not exercised here.

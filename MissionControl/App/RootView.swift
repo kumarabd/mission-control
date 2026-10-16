@@ -51,12 +51,13 @@ struct MainTabs: View {
     @Environment(AuthService.self) private var auth
     @Environment(\.scenePhase) private var scenePhase
     @State private var life: Life?
+    @State private var notifications = NotificationsModel()
+    @State private var chat = ChatModel()
     @State private var tab = Tab.today
-    @State private var capturing = false
     @State private var memoryRefreshToken = 0
     @State private var settings = false
 
-    enum Tab: Hashable { case today, goals, memory }
+    enum Tab: Hashable { case today, goals, memory, chat }
 
     var body: some View {
         Group {
@@ -64,16 +65,17 @@ struct MainTabs: View {
                 TabView(selection: $tab) {
                     TodayView(onSettings: { settings = true }).tabItem { Label("Today", systemImage: "sun.max") }.tag(Tab.today)
                     ProgressTab(onSettings: { settings = true }).tabItem { Label("Goals", systemImage: "chart.line.uptrend.xyaxis") }.tag(Tab.goals)
+                    ChatView(onSettings: { settings = true }).tabItem { Label("Chat", systemImage: "bubble.left") }.tag(Tab.chat)
                     MemoryView(onSettings: { settings = true }, refreshToken: memoryRefreshToken).tabItem { Label("Memory", systemImage: "brain.head.profile") }.tag(Tab.memory)
                 }
                 .environment(life)
-                .overlay(alignment: .bottomTrailing) {
-                    CaptureButton { capturing = true }.disabled(!life.workspaceLoaded).padding(.trailing, Space.l).padding(.bottom, 64)
-                }
-                .sheet(isPresented: $capturing, onDismiss: { memoryRefreshToken += 1 }) { CaptureSheet().environment(life) }
+                .environment(notifications)
+                .environment(chat)
                 .sheet(isPresented: $settings) { SettingsView() }
-                .task { await life.syncTimeZone(); await life.load() }
-                .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await life.syncTimeZone(); await life.refreshWorkspace() } } }
+                .task { await life.syncTimeZone(); await life.load(); await notifications.refresh() }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active { Task { await life.syncTimeZone(); await life.refreshWorkspace(); await notifications.refresh() } }
+                }
                 .task { PushRegistrar.shared.attach(auth) }
                 .onChange(of: DeepLink.shared.pending) { _, target in
                     guard let target else { return }
@@ -81,6 +83,10 @@ struct MainTabs: View {
                     // A reminder, routine or goal is opened by its own screen, which clears the link; anything else stops at its tab.
                     if !["reminder", "routine", "goal", "plan_item"].contains(target.entity) { DeepLink.shared.pending = nil }
                 }
+                // A finished turn may have changed the workspace, and Memory is the one tab that does not re-read on its own.
+                .onChange(of: chat.completedTurns) { _, _ in memoryRefreshToken += 1 }
+                // Another screen (a new goal, a memory to correct) starts the conversation: show it, with the draft in place.
+                .onChange(of: chat.draftToken) { _, _ in tab = .chat }
             } else {
                 Tok.background.ignoresSafeArea()
             }
@@ -95,6 +101,8 @@ struct MainTabs: View {
                 l.attachGoals(GoalsService(api: api))
                 l.attachPlan(PlanService(api: api))
                 l.attachSettings(SettingsService(api: api))
+                // The notification inbox is the gateway's, not the Life Engine's: it holds what the assistant sent.
+                notifications.attach(NotificationsAPI(baseURL: Config.routerBaseURL + "/gateway", token: { [auth] in await auth.token() }))
             }
             #if DEBUG
             if Config.devEngine {

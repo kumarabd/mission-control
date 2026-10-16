@@ -5,11 +5,9 @@ enum TaskCard: Identifiable, Equatable {
     case routine(Wire.RoutineStatus)
     case task(Wire.PlanItem)
     case step(Wire.Suggestion)
-    case reminder(Wire.Reminder)
 
     var id: String {
         switch self {
-        case .reminder(let r): "m:" + r.id
         case .routine(let s): "r:" + s.id
         case .task(let t): "t:" + t.id
         case .step(let s): "s:" + (s.stepId ?? s.title)
@@ -18,7 +16,6 @@ enum TaskCard: Identifiable, Equatable {
 
     var title: String {
         switch self {
-        case .reminder(let r): r.title
         case .routine(let s): s.routine.title
         case .task(let t): t.title
         case .step(let s): s.title
@@ -26,16 +23,15 @@ enum TaskCard: Identifiable, Equatable {
     }
 
     var kind: String {
-        switch self { case .reminder: "Reminder"; case .routine: "Routine"; case .task: "Task"; case .step: "Milestone" }
+        switch self { case .routine: "Routine"; case .task: "Task"; case .step: "Milestone" }
     }
 
     var symbol: String {
-        switch self { case .reminder: "bell"; case .routine: "repeat"; case .task: "checklist"; case .step: "flag" }
+        switch self { case .routine: "repeat"; case .task: "checklist"; case .step: "flag" }
     }
 
     var detail: String {
         switch self {
-        case .reminder: return "Reminder · No time set"
         case .routine(let s):
             let progress = s.count > 0 ? "\(s.count) of \(s.target) today" : (s.target > 1 ? "\(s.target) times today" : "Once today")
             return [progress, s.nextNudgeText].compactMap { $0 }.joined(separator: " · ")
@@ -187,11 +183,6 @@ struct TaskDeck: View {
             guard let after = life.routines.first(where: { $0.id == s.id }), after.count > s.count else { return .failed }
             undo = .unlog(routine: s.id, card: card.id); completions += 1
             return after.done ? .finished : .progressed
-        case .reminder(let r):
-            await life.completeReminder(r)
-            guard life.reminders.first(where: { $0.id == r.id })?.isDone == true else { return .failed }
-            undo = nil; completions += 1
-            return .finished
         case .task(let t):
             await life.completeTask(t, done: true)
             guard life.tasks.first(where: { $0.id == t.id })?.doneAt != nil else { return .failed }
@@ -228,7 +219,7 @@ extension TaskCard {
     var doneActionName: String {
         switch self {
         case .routine(let s): s.target > 1 ? "Record one" : "Mark done"
-        case .task, .step, .reminder: "Mark done"
+        case .task, .step: "Mark done"
         }
     }
 }

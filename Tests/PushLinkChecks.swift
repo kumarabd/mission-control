@@ -7,7 +7,8 @@ struct PushLinkChecks {
         precondition(PushLink.hex(Data()) == "")
 
         let reminder: [AnyHashable: Any] = ["aps": ["alert": "x"], "link": ["entity": "reminder", "id": "r1"]]
-        precondition(PushLink.target(from: reminder) == .init(entity: "reminder", id: "r1", section: .today))
+        // A reminder opens Goals ▸ Reminders now, not Today.
+        precondition(PushLink.target(from: reminder) == .init(entity: "reminder", id: "r1", section: .goals))
         for (entity, section) in [("plan_item", PushLink.Section.today), ("schedule", .today), ("routine", .today), ("monitor", .today), ("goal", .goals), ("step", .goals),
                                   ("journal_entry", .memory), ("note", .memory), ("capture", .memory)] {
             precondition(PushLink.target(from: ["link": ["entity": entity, "id": "x"]])?.section == section, entity)

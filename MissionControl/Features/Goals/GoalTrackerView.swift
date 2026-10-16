@@ -4,11 +4,11 @@ import Charts
 /// The engine chooses modules; this client owns their presentation and supported actions.
 struct GoalDetail: View {
     @Environment(Life.self) private var life
+    @Environment(ChatModel.self) private var chat
     let goalID: String
     @State private var tracker: Wire.TrackerState?
     @State private var loading = true
     @State private var failure: String?
-    @State private var prompt: GoalReview.AssistantPrompt?
     @State private var edit: MeasurementSelection?
     @State private var proposal: Wire.TrackerProposal?
     @State private var expanded = false
@@ -61,7 +61,6 @@ struct GoalDetail: View {
         .screenBackground()
         .navigationTitle(goal?.title ?? "Goal").navigationBarTitleDisplayMode(.inline)
         .task(id: goal?.version) { await refresh() }
-        .sheet(item: $prompt, onDismiss: { Task { await refresh() } }) { CaptureSheet(draft: $0.text).environment(life) }
         .sheet(item: $edit, onDismiss: { Task { await refresh() } }) { selection in
             if let tracker {
                 MeasurementSheet(goalID: goalID, revision: tracker.trackerRevision, metric: selection.metric, measurement: selection.measurement)
@@ -73,7 +72,7 @@ struct GoalDetail: View {
                 accept: { await review(proposed, accept: true) }, discard: { await review(proposed, accept: false) },
                 ask: {
                     proposal = nil
-                    prompt = GoalReview.AssistantPrompt(text: "Revise tracker proposal \(proposed.id) for goal \(goalID). Preserve recorded metrics and other client presentations. My changes: ")
+                    chat.request(draft: "Revise tracker proposal \(proposed.id) for goal \(goalID). Preserve recorded metrics and other client presentations. My changes: ")
                 }).environment(life)
         }
     }
@@ -101,7 +100,7 @@ struct GoalDetail: View {
         }
     }
     private func ask(_ goal: Wire.Goal) {
-        prompt = GoalReview.AssistantPrompt(text: "Compose a tailored tracker for goal \(goal.id), “\(goal.title)”. Read this client's tracker catalog and the existing goal first. Propose the change for my review, preserve existing measurements and other client views. ")
+        chat.request(draft: "Compose a tailored tracker for goal \(goal.id), “\(goal.title)”. Read this client's tracker catalog and the existing goal first. Propose the change for my review, preserve existing measurements and other client views. ")
     }
     private func refresh() async {
         defer { loading = false }

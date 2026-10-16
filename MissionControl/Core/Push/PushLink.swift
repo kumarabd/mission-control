@@ -19,7 +19,8 @@ enum PushLink {
 
     static func section(for entity: String) -> Section? {
         switch entity {
-        case "reminder", "plan_item", "schedule", "routine", "monitor": .today
+        case "reminder": .goals                    // a reminder lives in Goals ▸ Reminders, not on Today
+        case "plan_item", "schedule", "routine", "monitor": .today
         case "goal", "step": .goals
         case "journal_entry": .memory
         case "note", "capture": .memory

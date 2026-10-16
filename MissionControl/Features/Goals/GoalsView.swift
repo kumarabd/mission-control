@@ -62,11 +62,9 @@ struct GoalRow: View {
 /// Existing goals and older servers retain their basic review until a tracker is accepted.
 struct GoalReview: View {
     @Environment(Life.self) private var life
+    @Environment(ChatModel.self) private var chat
     let goalID: String
-    @State private var askAssistant: AssistantPrompt?
     @State private var openRoutine: RoutineRef?
-
-    struct AssistantPrompt: Identifiable { let id = UUID(); let text: String }
 
     private var goal: Wire.Goal? { life.goals.first { $0.id == goalID } }
 
@@ -92,7 +90,7 @@ struct GoalReview: View {
 
                 if routines.isEmpty {
                     Section {
-                        Button { askAssistant = AssistantPrompt(text: "Link the routines I already have that serve \u{201C}\(goal.title)\u{201D}, add any that are missing, and replace repeating steps with routines.") } label: {
+                        Button { chat.request(draft: "Link the routines I already have that serve \u{201C}\(goal.title)\u{201D}, add any that are missing, and replace repeating steps with routines.") } label: {
                             Label("No routines serve this goal yet. Set them up with your assistant", systemImage: "repeat")
                         }.frame(minHeight: 44)
                     }
@@ -119,19 +117,18 @@ struct GoalReview: View {
                 }
 
                 Section {
-                    Button { askAssistant = AssistantPrompt(text: "About my goal \u{201C}\(goal.title)\u{201D}: ") } label: {
+                    Button { chat.request(draft: "About my goal \u{201C}\(goal.title)\u{201D}: ") } label: {
                         Label("Change this with your assistant", systemImage: "bubble.left")
                     }.frame(minHeight: 44)
-                    Button { askAssistant = AssistantPrompt(text: "I keep putting off \u{201C}\(goal.title)\u{201D}. Help me make it smaller. ") } label: {
+                    Button { chat.request(draft: "I keep putting off \u{201C}\(goal.title)\u{201D}. Help me make it smaller. ") } label: {
                         Label("I keep putting this off", systemImage: "hourglass")
                     }.frame(minHeight: 44)
-                } footer: { Text("Routines, steps and the goal itself are set up and changed by your assistant.").font(.mission(.footnote)) }
+                } footer: { Text("Routines, steps and the goal itself are set up and changed by your assistant, in Chat.").font(.mission(.footnote)) }
                 .listRowBackground(Tok.surface)
             }
             .scrollContentBackground(.hidden).screenBackground()
             .navigationTitle(goal.title).navigationBarTitleDisplayMode(.inline)
             .navigationDestination(item: $openRoutine) { RoutineDetailView(id: $0.id) }
-            .sheet(item: $askAssistant) { CaptureSheet(draft: $0.text).environment(life) }
         } else {
             ContentUnavailableView("This goal is gone", systemImage: "flag", description: Text("It was archived or removed."))
         }

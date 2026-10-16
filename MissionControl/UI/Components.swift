@@ -93,18 +93,3 @@ struct MissionProgressBar: View {
     }
 }
 
-/// The one persistent action: capture by typing or voice. Sits above the tab bar, bottom trailing.
-struct CaptureButton: View {
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            Label("Capture", systemImage: "bubble.left").font(.mission(.headline, .medium))
-                .foregroundStyle(Tok.onAccent)
-                .padding(.horizontal, Space.l).frame(minHeight: 48)
-                .background(Tok.accent, in: Capsule())
-        }
-        .buttonStyle(MissionPressStyle())
-        .accessibilityLabel("Talk to your assistant")
-        .accessibilityHint("Capture a task, reminder, routine or note by typing or speaking")
-    }
-}

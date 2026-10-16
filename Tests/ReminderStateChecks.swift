@@ -45,6 +45,23 @@ struct ReminderStateChecks {
                      "a routine over target counts only up to its target; one not scheduled today is left out")
         precondition(DayProgress.segments(routines: [], tasksDone: 0, tasksTotal: 0, cues: []).isEmpty, "an empty day has no ring")
         precondition(DayProgress.segments(routines: [], tasksDone: 0, tasksTotal: 2, cues: []).map(\.kind) == [.tasks], "only kinds with something in them")
+
+        // The Reminders list's shelves: what is overdue, what is coming, what has no time, what is finished last.
+        // A snooze replaces the due time, and a finished record older than a day drops off the list entirely.
+        var snoozed = reminder(due: hours(-2)); snoozed.snoozedUntil = hours(1)
+        var older = reminder(due: hours(-6)); older = older.with(id: "older")
+        let shelves = ReminderSections.sections(
+            [reminder(due: hours(2)), reminder(state: "done", completed: hours(-1)), reminder(),
+             reminder(due: hours(-3)), snoozed, older, reminder(state: "done", completed: hours(-30))],
+            now: now)
+        precondition(shelves.map(\.group) == [.due, .upcoming, .undated, .done],
+                     "empty shelves are left out and finished ones come last: \(shelves.map(\.group))")
+        precondition(shelves[0].items.map(\.id) == ["older", "r"], "most overdue first")
+        precondition(shelves[1].items.map(\.id) == ["r", "r"], "a snooze moves it to when it will actually be heard")
+        precondition(shelves[1].items.first?.snoozedUntil == hours(1))
+        precondition(shelves[2].items.count == 1 && ReminderSections.effectiveDate(shelves[2].items[0]) == nil, "no date at all")
+        precondition(shelves[3].items.count == 1, "the one finished yesterday is gone")
+        precondition(ReminderSections.group(reminder(due: now), now: now) == .due, "due exactly now counts as due")
         print("ReminderStateChecks passed")
     }
 }
