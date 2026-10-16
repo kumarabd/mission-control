@@ -95,8 +95,8 @@ When a routine next applies:
     xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Domain/TodayLayout.swift Tests/TodayLayoutChecks.swift -o /private/tmp/today-layout-checks
     /private/tmp/today-layout-checks Tests/Fixtures/life
 
-Covers timed check-ins, undated and snoozed reminders, routine nudge ordering,
-shared daily counts, duplicate/invalid times, unscheduled weekdays and both DST changes.
+Covers timed check-ins, undated and snoozed reminders, a routine as untimed work
+(its nudge times never put it on the schedule) and routines that do not apply today.
 
     xcrun swiftc -parse-as-library MissionControl/Core/Domain/Models.swift MissionControl/Core/Domain/Planner.swift MissionControl/Core/Domain/WorkspaceUpdate.swift MissionControl/Core/Engine/LifeEngine.swift MissionControl/Core/Engine/Life.swift MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Remote/LifeAPI.swift MissionControl/Core/Remote/RemindersService.swift MissionControl/Core/Remote/RoutinesService.swift MissionControl/Core/Remote/GoalsService.swift MissionControl/Core/Remote/SettingsService.swift MissionControl/Core/Remote/PlanService.swift Tests/WorkspaceRefreshChecks.swift -o /private/tmp/workspace-refresh-checks
     /private/tmp/workspace-refresh-checks Tests/Fixtures/life

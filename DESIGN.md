@@ -31,7 +31,7 @@ SF Symbols only, one meaning per icon. **There is no plus in the app**: it meant
 | Talk to the assistant | `bubble.left.fill` (floating button), `bubble.left` (inline) | capture, goal detail |
 | Voice | `mic.fill` to start, `stop.circle.fill` to end, `arrow.up` to send | capture sheet |
 | Add a task to today | `checklist` | Today menu |
-| A nudge | `bell`, `bell.badge` to add one, `xmark.circle.fill` to remove one | reminders, new routine |
+| A nudge | `bell.badge` to add one, `xmark.circle.fill` to remove one | routine detail, new routine |
 | Repeats | `repeat` | cues, routines |
 | Easier version | `timer` | routine detail |
 | Snooze / close the day | `moon.zzz` / `moon.stars` | cues, Today menu |
@@ -43,9 +43,9 @@ SF Symbols only, one meaning per icon. **There is no plus in the app**: it meant
 
 Use a native list with a compact date, **Schedule**, then **Tasks**. There is no aggregate day ring or planning/reflection ellipsis menu.
 
-- Schedule contains calendar events, any plan item with `startAt` (including check-ins), reminder occurrences and each routine nudge time. Times are chronological, with a live Now marker. At accessibility text sizes, time moves above the title rather than taking a fixed column.
-- Routine nudges show the shared daily count. The engine does not attribute a log to a particular nudge, so the UI must not imply per-instance completion.
-- Tasks contains untimed plan items, untimed routines, undated reminders and an unscheduled next goal step. A step already represented by a plan item is not duplicated. Goal context appears in linked task rows.
+- Schedule contains calendar events, any plan item with `startAt` (including check-ins) and reminder occurrences. Times are chronological, with a live Now marker. At accessibility text sizes, time moves above the title rather than taking a fixed column.
+- A routine is untimed work, never a schedule row: its nudge times are the assistant's cue to consider prompting, not times the person is due at (Project Hub `projects/life-engine/adr/0007-nudges-belong-to-routines.md`). Nudges are shown and edited on the routine detail. A routine shows its shared daily count; the engine does not attribute a log to a particular nudge, so the UI must not imply per-instance completion.
+- Tasks contains untimed plan items, routines due today, undated reminders and an unscheduled next goal step. A step already represented by a plan item is not duplicated. Goal context appears in linked task rows.
 - Completion controls are 44pt or larger. A routine records one, a task/step completes, and an undated reminder completes. Timed reminders acknowledge an occurrence or snooze; merely firing a cue is not labeled user completion.
 - Move to bottom reorders untimed work only. A labeled Undo last action row is placed before the remaining tasks; actions without an undo operation clear the previous undo.
 - All reminders provides access to future and undated records. Calendar access is explicitly requested from Include my calendar rather than on launch.

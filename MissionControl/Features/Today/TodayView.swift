@@ -53,7 +53,7 @@ struct TodayView: View {
                             }.listRowBackground(Tok.surface)
                         }
                         ScheduleSection(events: events, openReminder: { detail = ReminderRef(id: $0) },
-                                        openRoutine: { openRoutine = RoutineRef(id: $0) }, openTask: { openTask = PlanItemRef(id: $0) })
+                                        openTask: { openTask = PlanItemRef(id: $0) })
                         tasksSection
                         Section {
                             if EKEventStore.authorizationStatus(for: .event) == .notDetermined {

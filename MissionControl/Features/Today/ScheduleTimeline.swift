@@ -1,15 +1,15 @@
 import SwiftUI
 
-/// Timed items share one chronological rail; untimed work stays in Tasks.
+/// Timed items share one chronological rail; untimed work stays in Tasks. A routine is untimed work even when it has
+/// nudge times: a nudge is the assistant's cue, not a time the person is due at, so it stays off this rail.
 struct ScheduleSection: View {
     @Environment(Life.self) private var life
     @Environment(\.dynamicTypeSize) private var typeSize
     let events: [DayEvent]
     let openReminder: (String) -> Void
-    let openRoutine: (String) -> Void
     let openTask: (String) -> Void
 
-    private enum Kind { case event, task, reminder, routine }
+    private enum Kind { case event, task, reminder }
     private struct Entry: Identifiable {
         let id: String
         let kind: Kind
@@ -18,8 +18,7 @@ struct ScheduleSection: View {
         let detail: String
         var task: Wire.PlanItem?
         var cue: Wire.AgendaItem?
-        var routine: Wire.RoutineStatus?
-        var cleared: Bool { task?.doneAt != nil || cue?.state == "acknowledged" || routine?.done == true }
+        var cleared: Bool { task?.doneAt != nil || cue?.state == "acknowledged" }
         var due: Bool { cue?.state == "due" }
     }
     private enum RailRow: Identifiable {
@@ -37,10 +36,6 @@ struct ScheduleSection: View {
         }
         result += life.agenda.map { Entry(id: "c:" + $0.id, kind: .reminder, at: $0.at, title: $0.reminder.title,
                                          detail: $0.state == "acknowledged" ? "Reminder · acknowledged" : $0.state == "due" ? "Reminder · waiting for you" : "Reminder", cue: $0) }
-        result += TodayLayout.routineOccurrences(life.routines).map {
-            Entry(id: $0.id, kind: .routine, at: $0.at, title: $0.status.routine.title,
-                  detail: "Routine · \($0.status.count) of \($0.status.target) today", routine: $0.status)
-        }
         return result.sorted { $0.at == $1.at ? $0.id < $1.id : $0.at < $1.at }
     }
     private var rows: [RailRow] {
@@ -116,10 +111,7 @@ struct ScheduleSection: View {
     }
 
     @ViewBuilder private func node(_ e: Entry) -> some View {
-        if let s = e.routine {
-            LogRing(status: s, size: 32).frame(width: 44, height: 44).background(Tok.surface, in: Circle())
-                .disabled(s.done || life.busyRoutines.contains(s.id))
-        } else if e.kind == .task, let t = e.task {
+        if e.kind == .task, let t = e.task {
             Button { Task { await life.completeTask(t, done: t.doneAt == nil) } } label: {
                 Image(systemName: e.cleared ? "checkmark.circle.fill" : "circle").font(.mission(.title2))
                     .frame(width: 44, height: 44).background(Tok.surface, in: Circle())
@@ -134,7 +126,6 @@ struct ScheduleSection: View {
 
     private func open(_ e: Entry) {
         if let r = e.cue { openReminder(r.reminder.id) }
-        else if let r = e.routine { openRoutine(r.id) }
         else if let t = e.task { openTask(t.id) }
     }
     private func time(_ at: Date) -> String {
