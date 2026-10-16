@@ -68,6 +68,27 @@ struct ChatTranscriptChecks {
         precondition(twice.items == once.items, "a reconnect must not double the thread")
         precondition(once.items.map(\.id) == ["u:9:1", "a:9:2"])
 
+        // A replayed message carries the lines this client prepends for the harness (the clock stamp and the client's
+        // capabilities); the thread shows what the person typed and nothing else.
+        var replayed = ChatTranscript()
+        replayed.apply(.message(turn: 5, seq: 1, role: "user", content: """
+        [Client capabilities: app=mission-control; platform=ios; tracker_catalog=mission-control.ios.goal-tracker.v1. For a new goal, read tracker_catalog_get.]
+        [Now: Thursday, 16 October 2026 at 1:05:23 AM GMT+5:30, time zone Asia/Kolkata]
+        remind me to call Sam
+        """, clientMessageID: nil))
+        precondition(replayed.items.map(\.text) == ["remind me to call Sam"], "\(replayed.items.map(\.text))")
+
+        // A bracketed line the person typed themselves is theirs, not ours.
+        var literal = ChatTranscript()
+        literal.apply(.message(turn: 6, seq: 1, role: "user", content: "[draft] buy milk", clientMessageID: nil))
+        precondition(literal.items.map(\.text) == ["[draft] buy milk"])
+
+        // And the echo of a message sent here keeps exactly what was typed, whatever the wire copy says.
+        var echoed = ChatTranscript()
+        echoed.apply(.sent(clientID: "c9", text: "call Sam"))
+        echoed.apply(.message(turn: 7, seq: 1, role: "user", content: "[Client capabilities: …]\n[Now: …]\ncall Sam", clientMessageID: "c9"))
+        precondition(echoed.items.map(\.text) == ["call Sam"] && echoed.items.map(\.id) == ["u:7:1"])
+
         // A failed turn is reported once and leaves the thread usable.
         var failed = ChatTranscript()
         failed.apply(.failed("You're offline."))

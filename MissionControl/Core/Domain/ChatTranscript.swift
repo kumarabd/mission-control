@@ -61,11 +61,13 @@ struct ChatTranscript {
             guard Self.said(content) else { return }              // a frame carrying only tool work is not something said
             if role == "user" {
                 let id = "u:\(turn):\(seq)"
-                // The echo of a message sent here replaces it where it stands, so it is never shown twice.
+                // The echo of a message sent here replaces it where it stands, so it is never shown twice — and it
+                // keeps the text the person typed, because the wire copy of a message also carries the lines this
+                // client prepends for the harness (see `spoken`).
                 if let clientMessageID, let index = items.firstIndex(where: { $0.id == "u:" + clientMessageID }) {
-                    items[index] = Item(id: id, role: .you, text: content, turn: turn, streaming: false)
+                    items[index] = Item(id: id, role: .you, text: items[index].text, turn: turn, streaming: false)
                 } else if !items.contains(where: { $0.id == id }) {
-                    items.append(Item(id: id, role: .you, text: content, turn: turn, streaming: false))
+                    items.append(Item(id: id, role: .you, text: Self.spoken(content), turn: turn, streaming: false))
                 }
             } else if role == "assistant" {
                 durable.insert(turn)
@@ -116,6 +118,22 @@ struct ChatTranscript {
     }
 
     private static func streamID(_ turn: Int) -> String { "s:\(turn)" }
+
+    /// What the person actually said. Every message this client sends carries two lines the harness needs and the
+    /// thread must not show — the clock stamp (`[Now: …]`, so "in 20 minutes" means something) and the client's
+    /// capabilities (`[Client capabilities: …]`, so a goal arrives with a tracker) — and a replayed message comes back
+    /// from the gateway with them still attached. Only these exact prefixes are dropped: a bracketed line the person
+    /// typed themselves survives.
+    static func spoken(_ content: String) -> String {
+        var lines = content.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        while let first = lines.first, isInjected(first) { lines.removeFirst() }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func isInjected(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return trimmed.hasPrefix("[Now: ") || trimmed.hasPrefix("[Client capabilities: ")
+    }
 
     /// Whether a frame says anything a person would read. (Its own check rather than the app's `trimmed` extension,
     /// so this file stays compilable on its own.)
