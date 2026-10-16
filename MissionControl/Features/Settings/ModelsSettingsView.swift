@@ -79,9 +79,7 @@ struct ModelsSettingsView: View {
             } header: {
                 Text("Models").font(.mission(.subheadline, .medium))
             } footer: {
-                Text(supportsModes
-                     ? "The LLM behind each tier. Saving redeploys your workspace's services, which takes about a minute. Leave an API key blank to keep the saved one."
-                     : "The LLM behind each tier. Saving redeploys your workspace's services, which takes about a minute. Leave an API key blank to keep the saved one. This server is too old to switch back to the platform's models.")
+                Text(footer)
             }
 
             if mode == "custom" {
@@ -161,6 +159,15 @@ struct ModelsSettingsView: View {
             }
         }
         .disabled(busy)
+    }
+
+    /// The one place the rules are written down. In custom mode it also says what leaving a tier alone does, because
+    /// the common edit is one tier — and "switch on only that one" is not obvious from a page full of toggles.
+    private var footer: String {
+        let base = "The LLM behind each tier. Saving redeploys your workspace's services, which takes about a minute. Leave an API key blank to keep the saved one."
+        guard supportsModes else { return base + " This server is too old to switch back to the platform's models." }
+        if mode == "custom" { return base + " Only the tiers you switch on are changed; the others keep whatever they have." }
+        return base
     }
 
     /// A tier still served by the platform rather than by the person's own provider.
