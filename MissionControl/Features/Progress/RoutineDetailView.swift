@@ -8,6 +8,7 @@ struct RoutineDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var history: Wire.RoutineHistory?
     @State private var confirmDelete = false
+    @State private var editingNudge: NudgeDraft?
 
     private var status: Wire.RoutineStatus? { life.routines.first { $0.id == id } }
 
@@ -32,6 +33,7 @@ struct RoutineDetailView: View {
             overviewSection(s)
             todaySection(s)
             if let h = history { weekSection(h); monthSection(h); consistencySection(h) }
+            nudgesSection(s.routine)
             detailsSection(s.routine)
             Section { Button("Delete routine", systemImage: "trash", role: .destructive) { confirmDelete = true } }
                 .listRowBackground(Tok.surface)
@@ -128,12 +130,37 @@ struct RoutineDetailView: View {
     private func detailsSection(_ r: Wire.Routine) -> some View {
         Section {
             LabeledContent("Times a day") { Text("\(r.targetPerDay)").foregroundStyle(Tok.text) }
-            LabeledContent("Nudges") { Text(r.cues.isEmpty ? "None" : r.cues.map(Self.clock).joined(separator: ", ")).foregroundStyle(Tok.text).multilineTextAlignment(.trailing) }
             LabeledContent("Days") { Text(Self.weekdays(r.weekdays)).foregroundStyle(Tok.text) }
             LabeledContent("Usual") { Text("\(r.minutes) min").foregroundStyle(Tok.text) }
             LabeledContent("Short version") { Text("\(r.shortTitle), \(r.shortMinutes) min").foregroundStyle(Tok.text).multilineTextAlignment(.trailing) }
         } header: { Text("Details").font(.mission(.subheadline, .medium)) }
         .listRowBackground(Tok.surface)
+    }
+
+    // MARK: Nudges. They belong to this routine; the assistant decides whether to speak at each one.
+
+    private func nudgesSection(_ r: Wire.Routine) -> some View {
+        Section {
+            ForEach(r.nudges, id: \.at) { n in
+                Button { editingNudge = NudgeDraft(at: n.at, message: n.message ?? "", isNew: false) } label: {
+                    LabeledContent(Self.clock(n.at)) {
+                        Text(n.message ?? "").foregroundStyle(Tok.muted).multilineTextAlignment(.trailing)
+                    }.foregroundStyle(Tok.text)
+                }
+                .swipeActions { Button("Remove", role: .destructive) { Task { await life.removeNudge(r, at: n.at) } } }
+            }
+            if r.nudges.count < 8 {
+                Button("Add a nudge", systemImage: "bell.badge") { editingNudge = NudgeDraft(at: "12:00", message: "", isNew: true) }
+            }
+        } header: { Text("Nudges").font(.mission(.subheadline, .medium)) }
+        footer: { Text(r.nudges.isEmpty ? "No nudges. Your assistant will not prompt you about this routine."
+                       : "Your assistant checks today's count at each time and speaks only if the day isn't done.").font(.mission(.footnote)) }
+        .listRowBackground(Tok.surface)
+        .sheet(item: $editingNudge) { draft in
+            NudgeSheet(draft: draft) { at, message in
+                await life.saveNudge(r, replacing: draft.isNew ? nil : draft.at, at: at, message: message)
+            }
+        }
     }
 
     // MARK: Helpers
@@ -171,6 +198,60 @@ struct RoutineDetailView: View {
         if days.isEmpty || days.count == 7 { return "Every day" }
         let names = Calendar.current.shortWeekdaySymbols
         return days.sorted().compactMap { names.indices.contains($0) ? names[$0] : nil }.joined(separator: ", ")
+    }
+}
+
+struct NudgeDraft: Identifiable {
+    var at: String
+    var message: String
+    var isNew: Bool
+    var id: String { isNew ? "new" : at }
+}
+
+/// Picks a nudge's time and an optional note on its wording.
+private struct NudgeSheet: View {
+    let draft: NudgeDraft
+    let save: (String, String) async -> Bool
+    @Environment(\.dismiss) private var dismiss
+    @State private var time: Date
+    @State private var message: String
+    @State private var saving = false
+
+    init(draft: NudgeDraft, save: @escaping (String, String) async -> Bool) {
+        self.draft = draft; self.save = save
+        _time = State(initialValue: RoutineDetailView.time(draft.at)); _message = State(initialValue: draft.message)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                DatePicker("Time", selection: $time, displayedComponents: .hourAndMinute)
+                TextField("Note on the wording (optional)", text: $message, axis: .vertical).lineLimit(1...3)
+            }
+            .navigationTitle(draft.isNew ? "New nudge" : "Edit nudge").navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        saving = true
+                        Task {
+                            let ok = await save(NewRoutineSheet.hhmm([time])[0], String(message.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200)))
+                            saving = false
+                            if ok { dismiss() }
+                        }
+                    } label: { if saving { ProgressView() } else { Text("Save") } }
+                    .disabled(saving)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+extension RoutineDetailView {
+    static func time(_ hhmm: String) -> Date {
+        let p = hhmm.split(separator: ":").compactMap { Int($0) }
+        return NewRoutineSheet.time(p.first ?? 12, p.count > 1 ? p[1] : 0)
     }
 }
 

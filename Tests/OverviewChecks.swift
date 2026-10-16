@@ -7,7 +7,7 @@ struct OverviewChecks {
     static let now = Date(timeIntervalSince1970: 1_791_900_000)
 
     static func routine(target: Int, cues: [String]) -> Wire.Routine {
-        Wire.Routine(id: "r", title: "Drink water", minutes: 2, shortTitle: "One glass", shortMinutes: 1, weekdays: [], targetPerDay: target, cues: cues,
+        Wire.Routine(id: "r", title: "Drink water", minutes: 2, shortTitle: "One glass", shortMinutes: 1, weekdays: [], targetPerDay: target, nudges: cues.map { Wire.Nudge(at: $0, message: nil) },
                      timeZone: "UTC", version: 1, deletedAt: nil, createdAt: now, updatedAt: now)
     }
 

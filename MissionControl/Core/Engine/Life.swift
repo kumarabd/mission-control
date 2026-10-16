@@ -209,10 +209,39 @@ final class Life {
     func addRoutine(title: String, targetPerDay: Int, cues: [String], weekdays: [Int], shortTitle: String, minutes: Int, shortMinutes: Int) async -> Bool {
         guard let service = routineService else { error = "Routines need your workspace, and it isn't reachable right now."; return false }
         do {
-            _ = try await service.create(title: title, targetPerDay: targetPerDay, cues: cues, weekdays: weekdays,
+            _ = try await service.create(title: title, targetPerDay: targetPerDay, nudgeTimes: cues, weekdays: weekdays,
                                          shortTitle: shortTitle.isEmpty ? "A smaller version" : shortTitle, minutes: minutes, shortMinutes: shortMinutes)
             error = nil; await loadRoutines(); return true
         } catch { self.error = Self.routineMessage(error); return false }
+    }
+
+    /// Adds a nudge to a routine, or changes the wording of the one at that time; true when the engine took it.
+    @discardableResult
+    func setNudge(_ r: Wire.Routine, at: String, message: String) async -> Bool {
+        await changeNudges(r) { try await $0.setNudge(r, at: at, message: message) }
+    }
+
+    /// Saves a nudge, moving it when `replacing` is another time. The new one is set before the old is removed, so a failure never loses a nudge.
+    func saveNudge(_ r: Wire.Routine, replacing old: String?, at: String, message: String) async -> Bool {
+        func current() -> Wire.Routine { routines.first { $0.id == r.id }?.routine ?? r }
+        guard await setNudge(current(), at: at, message: message) else { return false }
+        if let old, old != at { await removeNudge(current(), at: old) }
+        return true
+    }
+
+    @discardableResult
+    func removeNudge(_ r: Wire.Routine, at: String) async -> Bool {
+        await changeNudges(r) { try await $0.removeNudge(r, at: at) }
+    }
+
+    private func changeNudges(_ r: Wire.Routine, _ call: (RoutinesService) async throws -> Wire.Routine) async -> Bool {
+        guard let service = routineService, !busyRoutines.contains(r.id) else { return false }
+        busyRoutines.insert(r.id); defer { busyRoutines.remove(r.id) }
+        do {
+            let updated = try await call(service)
+            if let i = routines.firstIndex(where: { $0.id == r.id }) { routines[i].routine = updated }
+            error = nil; return true
+        } catch { self.error = Self.routineMessage(error); await loadRoutines(); return false }
     }
 
     func deleteRoutine(_ r: Wire.Routine) async {

@@ -15,7 +15,7 @@ struct ReminderStateChecks {
     }
 
     static func routine(_ count: Int, of target: Int, scheduled: Bool = true) -> Wire.RoutineStatus {
-        let r = Wire.Routine(id: "x\(count)\(target)", title: "R", minutes: 5, shortTitle: "s", shortMinutes: 1, weekdays: [], targetPerDay: target, cues: [],
+        let r = Wire.Routine(id: "x\(count)\(target)", title: "R", minutes: 5, shortTitle: "s", shortMinutes: 1, weekdays: [], targetPerDay: target, nudges: [],
                              timeZone: "UTC", version: 1, deletedAt: nil, createdAt: now, updatedAt: now)
         return Wire.RoutineStatus(routine: r, scheduled: scheduled, target: target, count: count, done: count >= target, variant: nil, streak: 0, daysSinceLast: nil, gap: false, hint: "")
     }

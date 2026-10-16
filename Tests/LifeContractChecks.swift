@@ -35,6 +35,11 @@ struct LifeContractChecks {
         let routine = load(Wire.Routine.self, "routine", in: dir)
         precondition(routine.title == "Morning run" && routine.targetPerDay == 1 && routine.cues == ["07:30"] && routine.weekdays == [1, 2, 3, 4, 5])
         let counted = load(Wire.Routine.self, "routine_counted", in: dir)
+        // An engine that has not shipped nudges still sends `cues`; they read as nudges without a note.
+        let old = try! Wire.decoder.decode(Wire.Routine.self, from: """
+            {"id":"o","title":"T","minutes":5,"short_title":"s","short_minutes":1,"weekdays":[],"target_per_day":1,"cues":["08:00"],"time_zone":"UTC","version":1,"deleted_at":null,"created_at":"2026-10-01T00:00:00Z","updated_at":"2026-10-01T00:00:00Z"}
+            """.data(using: .utf8)!)
+        precondition(old.cues == ["08:00"] && old.nudges.first?.message == nil)
         precondition(counted.targetPerDay == 3 && counted.cues == ["09:00", "13:00", "17:00"])
         let logged = load(Wire.RoutineStatus.self, "routine_log", in: dir)
         precondition(logged.target == 3 && logged.count == 1 && !logged.done && logged.hint == "1 of 3 today so far." && logged.id == counted.id)
@@ -138,7 +143,7 @@ struct LifeContractChecks {
         let routines = RoutinesService(api: LifeAPI(baseURL: "https://router.example/life/api/v1", token: { "tok" }) { request in
             let op = request.url!.lastPathComponent
             routineCalls.append((op, try! JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]))
-            let file = ["routines_status": "routines_status", "routines_log": "routine_log", "routines_history": "routine_history", "routines_create": "routine_counted", "routines_delete": "routine_counted"][op]!
+            let file = ["routines_status": "routines_status", "routines_log": "routine_log", "routines_history": "routine_history", "routines_create": "routine_counted", "routines_delete": "routine_counted", "nudges_set": "routine_counted", "nudges_remove": "routine_counted"][op]!
             return (fixtureData(file), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         })
         let items = try! await routines.status()
@@ -148,14 +153,20 @@ struct LifeContractChecks {
         precondition(routineCalls[1].body["variant"] as? String == "short" && !(routineCalls[1].body["idempotency_key"] as? String ?? "").isEmpty && after.target == 3)
         let hist = try! await routines.history("r1", days: 14)
         precondition(routineCalls[2].path == "routines_history" && routineCalls[2].body["days"] as? Int == 14 && hist.days.count == 14)
-        _ = try! await routines.create(title: "Drink water", targetPerDay: 3, cues: ["09:00", "13:00", "17:00"], weekdays: [1, 2], shortTitle: "One glass",
+        _ = try! await routines.create(title: "Drink water", targetPerDay: 3, nudgeTimes: ["09:00", "13:00", "17:00"], weekdays: [1, 2], shortTitle: "One glass",
                                        minutes: 2, shortMinutes: 1, timeZone: "Europe/London", key: "rk")
         let made = routineCalls[3].body
         precondition(routineCalls[3].path == "routines_create" && made["idempotency_key"] as? String == "rk" && made["target_per_day"] as? Int == 3)
-        precondition(made["cues"] as? [String] == ["09:00", "13:00", "17:00"] && made["short_title"] as? String == "One glass" && made["time_zone"] as? String == "Europe/London")
+        precondition((made["nudges"] as? [[String: Any]])?.compactMap { $0["at"] as? String } == ["09:00", "13:00", "17:00"] && made["short_title"] as? String == "One glass" && made["time_zone"] as? String == "Europe/London")
         precondition(made["weekdays"] as? [Int] == [1, 2] && made["minutes"] as? Int == 2 && made["short_minutes"] as? Int == 1)
+        _ = try! await routines.setNudge(counted, at: "18:00", message: "after work")
+        let setBody = routineCalls[4].body
+        precondition(routineCalls[4].path == "nudges_set" && setBody["id"] as? String == counted.id && setBody["expected_version"] as? Int == counted.version
+                     && setBody["at"] as? String == "18:00" && setBody["message"] as? String == "after work")
+        _ = try! await routines.removeNudge(counted, at: "18:00")
+        precondition(routineCalls[5].path == "nudges_remove" && routineCalls[5].body["at"] as? String == "18:00")
         try! await routines.delete(counted)
-        precondition(routineCalls[4].path == "routines_delete" && routineCalls[4].body["expected_version"] as? Int == counted.version)
+        precondition(routineCalls[6].path == "routines_delete" && routineCalls[6].body["expected_version"] as? Int == counted.version)
         // Goals are read, never written from the app: a goal is for review and changes through the assistant.
         var goalCalls: [String] = []
         let goalsService = GoalsService(api: LifeAPI(baseURL: "https://router.example/life/api/v1", token: { "tok" }) { request in

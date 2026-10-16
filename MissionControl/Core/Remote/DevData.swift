@@ -15,7 +15,7 @@ final class DevWorld: @unchecked Sendable {
     init() {
         let tz = TimeZone.current.identifier, now = Date()
         func routine(_ id: String, _ title: String, target: Int, count: Int, cues: [String]) -> Wire.RoutineStatus {
-            let r = Wire.Routine(id: id, title: title, minutes: 5, shortTitle: "A smaller version", shortMinutes: 1, weekdays: [], targetPerDay: target, cues: cues, timeZone: tz,
+            let r = Wire.Routine(id: id, title: title, minutes: 5, shortTitle: "A smaller version", shortMinutes: 1, weekdays: [], targetPerDay: target, nudges: cues.map { Wire.Nudge(at: $0, message: nil) }, timeZone: tz,
                                  version: 1, deletedAt: nil, createdAt: now.addingTimeInterval(-86_400 * 20), updatedAt: now)
             return Wire.RoutineStatus(routine: r, scheduled: true, target: target, count: count, done: count >= target, variant: nil, streak: 2, daysSinceLast: 0, gap: false,
                                       hint: count > 0 ? "\(count) of \(target) today so far." : "Today: \(title)")

@@ -33,6 +33,12 @@ enum Wire {
         var isDone: Bool { state == "done" }
     }
 
+    /// A time the assistant may nudge about one routine. It belongs to the routine and is not a reminder (ADR 0007).
+    struct Nudge: Codable, Equatable, Hashable {
+        var at: String               // "HH:MM" local
+        var message: String?         // optional hint for the assistant's wording
+    }
+
     struct Routine: Codable, Equatable, Identifiable {
         var id: String
         var title: String
@@ -41,12 +47,17 @@ enum Wire {
         var shortMinutes: Int
         var weekdays: [Int]          // 0 = Sunday ... 6; empty means every day
         var targetPerDay: Int
-        var cues: [String]           // "HH:MM" local nudge times
+        var nudges: [Nudge]
         var timeZone: String
         var version: Int
         var deletedAt: Date?
         var createdAt: Date
         var updatedAt: Date
+        /// The nudge times alone, for scheduling and display.
+        var cues: [String] {
+            get { nudges.map(\.at) }
+            set { nudges = newValue.map { Nudge(at: $0, message: nil) } }
+        }
     }
 
     /// One routine on one day: how many times so far against its target, and how it is going.
@@ -239,5 +250,25 @@ extension Wire.Reminder {
             text += " on " + days.sorted().compactMap { names.indices.contains($0) ? names[$0] : nil }.joined(separator: ", ")
         }
         return text
+    }
+}
+
+extension Wire.Routine {
+    /// Reads `nudges`, or the older `cues` strings from an engine that has not shipped ADR 0007 yet.
+    // ponytail: drop the `cues` fallback once every engine sends nudges.
+    init(from decoder: Decoder) throws {
+        enum K: String, CodingKey {
+            case id, title, minutes, shortTitle, shortMinutes, weekdays, targetPerDay, cues, nudges, timeZone, version, deletedAt, createdAt, updatedAt
+        }
+        let c = try decoder.container(keyedBy: K.self)
+        id = try c.decode(String.self, forKey: .id); title = try c.decode(String.self, forKey: .title)
+        minutes = try c.decode(Int.self, forKey: .minutes); shortTitle = try c.decode(String.self, forKey: .shortTitle)
+        shortMinutes = try c.decode(Int.self, forKey: .shortMinutes); weekdays = try c.decode([Int].self, forKey: .weekdays)
+        targetPerDay = try c.decode(Int.self, forKey: .targetPerDay)
+        if let n = try c.decodeIfPresent([Wire.Nudge].self, forKey: .nudges) { nudges = n }
+        else { nudges = try c.decode([String].self, forKey: .cues).map { Wire.Nudge(at: $0, message: nil) } }
+        timeZone = try c.decode(String.self, forKey: .timeZone); version = try c.decode(Int.self, forKey: .version)
+        deletedAt = try c.decodeIfPresent(Date.self, forKey: .deletedAt)
+        createdAt = try c.decode(Date.self, forKey: .createdAt); updatedAt = try c.decode(Date.self, forKey: .updatedAt)
     }
 }

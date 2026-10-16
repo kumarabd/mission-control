@@ -10,8 +10,10 @@ struct RoutinesService {
     private struct HistoryIn: Encodable { var routineId: String; var days: Int }
     private struct CreateIn: Encodable {
         var idempotencyKey: String; var title: String; var minutes: Int; var shortTitle: String; var shortMinutes: Int
-        var weekdays: [Int]; var targetPerDay: Int; var cues: [String]; var timeZone: String
+        var weekdays: [Int]; var targetPerDay: Int; var nudges: [Wire.Nudge]; var timeZone: String
     }
+    private struct NudgeIn: Encodable { var idempotencyKey: String; var id: String; var expectedVersion: Int; var at: String; var message: String? }
+    private struct NudgeOutIn: Encodable { var idempotencyKey: String; var id: String; var expectedVersion: Int; var at: String }
     private struct EditIn: Encodable { var idempotencyKey: String; var id: String; var expectedVersion: Int }
 
     /// Every active routine with today's count.
@@ -29,11 +31,21 @@ struct RoutinesService {
         try await api.call("routines_history", HistoryIn(routineId: id, days: days))
     }
 
-    func create(title: String, targetPerDay: Int, cues: [String], weekdays: [Int], shortTitle: String, minutes: Int, shortMinutes: Int,
+    func create(title: String, targetPerDay: Int, nudgeTimes: [String], weekdays: [Int], shortTitle: String, minutes: Int, shortMinutes: Int,
                 timeZone: String = TimeZone.current.identifier, key: String = UUID().uuidString) async throws -> Wire.Routine {
         try await api.call("routines_create", CreateIn(idempotencyKey: key, title: title, minutes: minutes,
                                                        shortTitle: shortTitle, shortMinutes: shortMinutes,
-                                                       weekdays: weekdays, targetPerDay: targetPerDay, cues: cues, timeZone: timeZone))
+                                                       weekdays: weekdays, targetPerDay: targetPerDay,
+                                                       nudges: nudgeTimes.map { Wire.Nudge(at: $0, message: nil) }, timeZone: timeZone))
+    }
+
+    /// Adds a nudge to a routine, or re-words the one already at that time.
+    func setNudge(_ r: Wire.Routine, at: String, message: String) async throws -> Wire.Routine {
+        try await api.call("nudges_set", NudgeIn(idempotencyKey: UUID().uuidString, id: r.id, expectedVersion: r.version, at: at, message: message))
+    }
+
+    func removeNudge(_ r: Wire.Routine, at: String) async throws -> Wire.Routine {
+        try await api.call("nudges_remove", NudgeOutIn(idempotencyKey: UUID().uuidString, id: r.id, expectedVersion: r.version, at: at))
     }
 
     func delete(_ r: Wire.Routine) async throws {
