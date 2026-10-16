@@ -5,6 +5,9 @@ import SwiftUI
 /// edit the tiers, poll the update, re-read once it settles.
 struct ModelsSettingsView: View {
     @State private var mode = "custom"
+    /// What the server last said, so Save can tell an edit from a page that merely opened: without it a platform
+    /// workspace could spend a minute redeploying itself to change nothing.
+    @State private var loaded: LoadedForm?
     /// False against a router deployed before the platform/own split: it sends no mode, and would refuse the revert
     /// its PUT implies (unknown fields are ignored, and a tiers-less body then fails validation). No control, no
     /// dead end.
@@ -24,6 +27,12 @@ struct ModelsSettingsView: View {
 
     /// One tier's edit in progress. `hasKey`/`platform` are the server's; `apiKey` is only ever what was typed
     /// here — the server never returns a key, so blank means "keep the saved one".
+    /// The whole editable state as the server last reported it, for the dirty check.
+    private struct LoadedForm: Equatable {
+        var mode: String
+        var draft: [TierName: TierForm]
+    }
+
     private struct TierForm: Equatable {
         var enabled = false
         var provider = "openai"
@@ -107,7 +116,7 @@ struct ModelsSettingsView: View {
             Section {
                 Button { Task { await save() } } label: { Text(busy ? "Applying…" : "Save changes") }
                     .buttonStyle(PrimaryButtonStyle())
-                    .disabled(busy || !complete)
+                    .disabled(busy || !complete || !dirty)
                 if applying {
                     HStack(spacing: Space.s) {
                         ProgressView().controlSize(.small)
@@ -143,11 +152,12 @@ struct ModelsSettingsView: View {
                 Toggle("Use \(name.title)", isOn: field(name, \.enabled, or: false)).labelsHidden().tint(Tok.accent)
             }
             if t.enabled {
+                // A labelled row per tier, not an unlabelled segmented bar: three identical bars read as one shared
+                // setting, when in fact each tier owns its provider (fast on Anthropic, expert on OpenAI, and so on).
                 Picker("Provider", selection: field(name, \.provider, or: "openai")) {
                     Text("OpenAI-compatible").tag("openai")
                     Text("Anthropic").tag("anthropic")
                 }
-                .pickerStyle(.segmented)
                 PlainInput(label: "Model", text: field(name, \.model, or: ""),
                            placeholder: t.provider == "anthropic" ? "claude-sonnet-4-5" : "gpt-4o-mini")
                 PlainInput(label: "Base URL", text: field(name, \.baseURL, or: ""),
@@ -205,6 +215,13 @@ struct ModelsSettingsView: View {
 
     private var complete: Bool { incompleteReason == nil }
 
+    /// True once something differs from what the server last said — a tier switched on or off, a field typed into, the
+    /// mode changed. Nothing to save means nothing to redeploy.
+    private var dirty: Bool {
+        guard let loaded else { return false }
+        return loaded.mode != mode || loaded.draft != (draft ?? [:])
+    }
+
     private func load() async {
         loading = draft == nil
         do {
@@ -212,6 +229,7 @@ struct ModelsSettingsView: View {
             supportsModes = models.mode != nil
             mode = models.mode ?? "custom"
             draft = TierName.allCases.reduce(into: [:]) { out, name in out[name] = TierForm(models.tiers[name.rawValue]) }
+            loaded = LoadedForm(mode: mode, draft: draft ?? [:])
             loadError = nil
         } catch let error as ModelsError {
             loadError = Self.message(for: error)
