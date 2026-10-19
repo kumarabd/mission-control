@@ -134,13 +134,6 @@ final class Life {
         do { goals = try await service.list(); goalsLoadError = nil } catch { goalsLoadError = Self.goalMessage(error); self.error = goalsLoadError }
     }
 
-    /// Deletes a goal with what exists only because of it, then re-reads the workspace so nothing of it is shown.
-    func deleteGoalWithRelated(_ goal: Wire.Goal) async throws {
-        guard let service = goalService else { throw LifeError.notProvisioned }
-        _ = try await service.deleteGoal(goal)
-        await refreshWorkspace()
-    }
-
     func loadView(goalID: String, catalog: String) async throws -> Wire.ViewState {
         guard let service = goalService else { throw LifeError.notProvisioned }
         return try await service.viewState(goalID: goalID, catalog: catalog)

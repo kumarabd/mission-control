@@ -13,12 +13,6 @@ struct GoalDetail: View {
     @State private var loads: [String: KitLoad] = [:]
     @State private var busy = false
     @State private var page = ""
-    @Environment(\.dismiss) private var dismiss
-    /// This goal's own conversation; made the first time it is opened or asked into.
-    @State private var goalChat: ChatModel?
-    @State private var chatOpen = false
-    @State private var confirmDelete = false
-    @State private var deleting = false
     @State private var keys: [String: String] = [:]
     private var catalog: String { TrackerClient.catalog }
     private var goal: Wire.Goal? { life.goals.first { $0.id == goalID } }
@@ -82,29 +76,6 @@ struct GoalDetail: View {
         .screenBackground()
         .navigationTitle(goal?.title ?? "Goal").navigationBarTitleDisplayMode(.inline)
         .task(id: goal?.version) { await refresh() }
-        .toolbar {
-            if let goal {
-                ToolbarItemGroup(placement: .primaryAction) {
-                    Button("Chat about this goal", systemImage: "bubble.left") { openChat(goal) }.frame(minWidth: 44, minHeight: 44)
-                    Menu {
-                        Button("Delete goal\u{2026}", systemImage: "trash", role: .destructive) { confirmDelete = true }
-                    } label: { Image(systemName: "ellipsis.circle").frame(minWidth: 44, minHeight: 44) }
-                        .accessibilityLabel("More")
-                }
-            }
-        }
-        .confirmationDialog("Delete this goal?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            if let goal { Button("Delete goal and everything for it", role: .destructive) { Task { await delete(goal) } } }
-        } message: {
-            Text("Its steps, view, measurements, reminders and routines made for it, the notes and journal entries about it, and this goal\u{2019}s chat are deleted. Routines shared with another goal stay.")
-        }
-        .sheet(isPresented: $chatOpen) {
-            if let goal, let goalChat {
-                GoalChatView(goal: goal, model: goalChat, onDone: { chatOpen = false }).environment(life)
-            }
-        }
-        .onChange(of: goalChat?.completedTurns) { _, _ in Task { await refresh() } }
-        .overlay { if deleting { ProgressView("Deleting\u{2026}").padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)) } }
         .sheet(item: $edit, onDismiss: { Task { await refresh() } }) { selection in
             if let tracker {
                 MeasurementSheet(goalID: goalID, metric: selection.metric, measurement: selection.measurement)
@@ -134,33 +105,8 @@ struct GoalDetail: View {
             }
         }
     }
-    private func chatModel(for goal: Wire.Goal) -> ChatModel {
-        if let goalChat { return goalChat }
-        let model = ChatModel(sessionID: "goal-" + goal.id.lowercased())
-        goalChat = model
-        return model
-    }
-    private func openChat(_ goal: Wire.Goal, draft: String? = nil) {
-        let model = chatModel(for: goal)
-        if let draft { model.request(draft: draft) }
-        chatOpen = true
-    }
-    /// Removes the goal with what is only for it, then erases its conversation. The goal is deleted first: if the chat's
-    /// erasing then fails the person is told so, and the goal is not left half there.
-    private func delete(_ goal: Wire.Goal) async {
-        deleting = true; defer { deleting = false }
-        let model = chatModel(for: goal)
-        do { try await life.deleteGoalWithRelated(goal) } catch { failure = Life.trackerMessage(error); return }
-        model.deleteSession()
-        for _ in 0..<40 where !model.deleted { try? await Task.sleep(for: .milliseconds(200)) }
-        guard model.deleted else {
-            failure = "The goal is deleted, but its conversation could not be erased just now."
-            return
-        }
-        dismiss()
-    }
     private func ask(_ goal: Wire.Goal) {
-        openChat(goal, draft: "Compose a view for my goal \(goal.id), “\(goal.title)”. Read the view kit (tracker_catalog_get) and the goal first, design what suits this goal, then save it with views_create (or views_update if it has one). ")
+        chat.request(draft: "Compose a view for my goal \(goal.id), “\(goal.title)”. Read the view kit (tracker_catalog_get) and the goal first, design what suits this goal, then save it with views_create (or views_update if it has one). ")
     }
     private func refresh() async {
         defer { loading = false }

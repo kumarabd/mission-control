@@ -805,7 +805,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
         case .status(let turn, _): return turn == activeTurnSequence
         case .turnEnded(let turn, _): return turn == activeTurnSequence
         case .askUser: return true
-        case .synchronizing, .historyLoaded, .error, .history, .retract, .sessionDeleted: return false
+        case .synchronizing, .historyLoaded, .error, .history, .retract: return false
         }
     }
 
@@ -836,7 +836,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
             historyLoaded = false
         case .historyLoaded:
             historyLoaded = true
-        case .history, .retract, .sessionDeleted:
+        case .history, .retract:
             break    // the text chat's: it pages through older messages and asks for only what is for the person
         case .turnStarted(let turn):
             // While a new user frame is pending, accept only its canonical

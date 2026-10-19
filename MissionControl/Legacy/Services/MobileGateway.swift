@@ -19,8 +19,6 @@ final class MobileGateway {
         case history(beforeTurn: Int, oldestTurn: Int, hasMore: Bool, messages: [HistoryMessage])
         case synchronizing
         case historyLoaded
-        /// The gateway erased this connection's session (a goal's chat).
-        case sessionDeleted
         case error(String)
     }
 
@@ -54,11 +52,7 @@ final class MobileGateway {
     /// and takes narration back with a retract instead.
     private let streams: Bool
 
-    /// A goal's own chat session ("goal-<goal id>"); nil is the person's main conversation.
-    private let sessionID: String?
-
-    init(usesResumeCursor: Bool = true, humanOnly: Bool = false, streams: Bool = true, sessionID: String? = nil) {
-        self.sessionID = sessionID
+    init(usesResumeCursor: Bool = true, humanOnly: Bool = false, streams: Bool = true) {
         self.usesResumeCursor = usesResumeCursor
         self.humanOnly = humanOnly
         self.streams = streams
@@ -153,9 +147,6 @@ final class MobileGateway {
     /// Stops whatever the assistant is doing for this session, so a question nobody will answer does not hold the turn open.
     func cancelTurn() { enqueue(["type": "cancel"]) }
 
-    /// Erases this session for good. The gateway only does it for a goal's session; it answers `.sessionDeleted`.
-    func deleteSession() { enqueue(["type": "delete_session"]) }
-
     /// Asks for the turns just before `turn`: the user and assistant messages of up to `limit` of them, oldest first.
     func requestHistory(before turn: Int, limit: Int = 5) {
         enqueue(["type": "history", "before_turn_seq": turn, "limit": limit])
@@ -183,7 +174,6 @@ final class MobileGateway {
             var auth: [String: Any] = ["type": "auth", "token": token, "device_id": deviceID]
             if usesResumeCursor, let cursor = UserDefaults.standard.object(forKey: cursorKey) as? Int { auth["after_turn_seq"] = cursor }
             if let agentID = UserDefaults.standard.string(forKey: selectedAgentKey), !agentID.isEmpty { auth["agent_id"] = agentID }
-            if let sessionID { auth["session_id"] = sessionID }
             if humanOnly { auth["human_only"] = true }
             if !streams { auth["stream"] = false }
             try await send(auth, on: task)
@@ -294,8 +284,6 @@ final class MobileGateway {
                 if usesResumeCursor { UserDefaults.standard.set(max(turn, UserDefaults.standard.integer(forKey: cursorKey)), forKey: cursorKey) }
                 onEvent?(.turnEnded(turn, status: frame.status ?? "completed"))
             }
-        case "session_deleted":
-            onEvent?(.sessionDeleted)
         case "resumed":
             isLive = true; backoff = 1; onEvent?(.historyLoaded); flushPendingFrames()
         case "error":

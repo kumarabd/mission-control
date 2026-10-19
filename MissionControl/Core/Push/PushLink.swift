@@ -17,13 +17,6 @@ enum PushLink {
         return Target(entity: entity, id: id, section: section)
     }
 
-    /// A goal's link in the assistant's words, `missioncontrol://goal/<id>`: tapping it opens that goal.
-    static func target(from url: URL) -> Target? {
-        guard url.scheme == "missioncontrol", url.host == "goal" else { return nil }
-        let id = url.lastPathComponent
-        return id.isEmpty || id == "/" ? nil : Target(entity: "goal", id: id, section: .goals)
-    }
-
     static func section(for entity: String) -> Section? {
         switch entity {
         case "reminder": .goals                    // a reminder lives in Goals ▸ Reminders, not on Today

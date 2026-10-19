@@ -18,7 +18,7 @@ final class ChatModel {
 
     /// The resume cursor is shared with the voice path and a stale value makes the gateway skip turns, so this always
     /// takes the replayed tail instead.
-    private let gateway: MobileGateway
+    private let gateway = MobileGateway(usesResumeCursor: false, humanOnly: true)
 
     private(set) var transcript = ChatTranscript()
     private(set) var question: Question?
@@ -31,14 +31,10 @@ final class ChatModel {
     private(set) var draftToken = 0
 
     private var open = false
-    /// Set once the gateway has erased this session; the screen that asked for it can then go.
-    private(set) var deleted = false
     /// A turn must have started before a question can belong to it: a leftover question from an earlier turn must not
     /// attach itself to a conversation that has just opened.
 
-    /// `sessionID` is a goal's own chat ("goal-<goal id>"); nil is the main conversation.
-    init(sessionID: String? = nil) {
-        gateway = MobileGateway(usesResumeCursor: false, humanOnly: true, sessionID: sessionID)
+    init() {
         gateway.onEvent = { [weak self] event in self?.handle(event) }
     }
 
@@ -86,12 +82,6 @@ final class ChatModel {
     /// A page that arrives faster than this still shows the loading row for this long, so the person sees that
     /// something was fetched rather than the thread changing on its own.
     private static let minimumLoadingShown: TimeInterval = 0.4
-
-    /// Erases this conversation for good (a goal's chat only). `deleted` turns true when the gateway has done it.
-    func deleteSession() {
-        beginInteraction()
-        gateway.deleteSession()
-    }
 
     func cancelTurn() {
         gateway.cancelTurn()
@@ -144,8 +134,6 @@ final class ChatModel {
             }
         case .historyLoaded:
             connected = true
-        case .sessionDeleted:
-            deleted = true; transcript = ChatTranscript(); question = nil
         case .synchronizing:
             connected = false
         case .error(let message):

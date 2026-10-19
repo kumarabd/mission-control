@@ -19,11 +19,6 @@ struct PushLinkChecks {
         precondition(PushLink.target(from: ["link": ["entity": "pizza", "id": "1"]]) == nil)
         precondition(PushLink.target(from: ["link": ["entity": "reminder", "id": ""]]) == nil)
         precondition(PushLink.target(from: ["link": ["entity": "reminder"]]) == nil)
-        // A goal's link in the assistant's words opens that goal; any other URL is none of ours.
-        precondition(PushLink.target(from: URL(string: "missioncontrol://goal/3f2c1a0e-4b6d")!) == .init(entity: "goal", id: "3f2c1a0e-4b6d", section: .goals))
-        precondition(PushLink.target(from: URL(string: "https://example.com/goal/1")!) == nil)
-        precondition(PushLink.target(from: URL(string: "missioncontrol://reminder/1")!) == nil)
-        precondition(PushLink.target(from: URL(string: "missioncontrol://goal")!) == nil)
         print("PushLinkChecks passed")
     }
 }
