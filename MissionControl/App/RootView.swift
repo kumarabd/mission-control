@@ -52,10 +52,21 @@ struct MainTabs: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var life: Life?
     @State private var notifications = NotificationsModel()
-    @State private var chat = ChatModel()
+    @State private var chat: ChatModel
     @State private var tab = Tab.today
     @State private var memoryRefreshToken = 0
     @State private var settings = false
+
+    init(userId: String) {
+        self.userId = userId
+        _chat = State(initialValue: ChatModel(owner: userId))
+        #if DEBUG
+        // `-start-tab chat` opens a developer build on that tab, so a screen can be run and looked at without tapping to it.
+        if let name = UserDefaults.standard.string(forKey: "start-tab") {
+            _tab = State(initialValue: ["today": Tab.today, "goals": .goals, "memory": .memory, "chat": .chat][name] ?? .today)
+        }
+        #endif
+    }
 
     enum Tab: Hashable { case today, goals, memory, chat }
 
@@ -65,7 +76,7 @@ struct MainTabs: View {
                 TabView(selection: $tab) {
                     TodayView(onSettings: { settings = true }).tabItem { Label("Today", systemImage: "sun.max") }.tag(Tab.today)
                     ProgressTab(onSettings: { settings = true }).tabItem { Label("Goals", systemImage: "chart.line.uptrend.xyaxis") }.tag(Tab.goals)
-                    ChatView(onSettings: { settings = true }).tabItem { Label("Chat", systemImage: "bubble.left") }.tag(Tab.chat)
+                    ChatView(onSettings: { settings = true }).tabItem { Label("Chat", systemImage: "bubble.left") }.badge(chat.unread).tag(Tab.chat)
                     MemoryView(onSettings: { settings = true }, refreshToken: memoryRefreshToken).tabItem { Label("Memory", systemImage: "brain.head.profile") }.tag(Tab.memory)
                 }
                 .environment(life)
@@ -73,7 +84,9 @@ struct MainTabs: View {
                 .environment(chat)
                 .sheet(isPresented: $settings) { SettingsView() }
                 .task { await life.syncTimeZone(); await life.load(); await notifications.refresh() }
+                .onAppear { chat.setForeground(scenePhase == .active) }
                 .onChange(of: scenePhase) { _, phase in
+                    chat.setForeground(phase == .active)
                     if phase == .active { Task { await life.syncTimeZone(); await life.refreshWorkspace(); await notifications.refresh() } }
                 }
                 .task { PushRegistrar.shared.attach(auth) }

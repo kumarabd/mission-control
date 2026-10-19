@@ -16,6 +16,9 @@ struct ChatView: View {
     @State private var selectedUpdate: WorkspaceUpdate?
     /// The message at the top before older ones were loaded, so the thread stays where it was instead of jumping.
     @State private var keepAtTop: String?
+    /// Whether the end of the thread is in view. Replies do not pull you down from older messages you are reading.
+    @State private var atBottom = true
+    @State private var newBelow = 0
     @FocusState private var focused: Bool
 
     private var voiceOn: Bool { voice.state != .idle && voice.state != .unavailable }
@@ -30,12 +33,18 @@ struct ChatView: View {
                             // Reaching the top asks for the next page of older messages, and says so while it waits.
                             earlierRow.onAppear { loadEarlier() }
                         }
-                        ForEach(chat.transcript.displayed) { item in bubble(item).id(item.id) }
+                        ForEach(ChatTranscript.rows(chat.transcript.displayed)) { row in
+                            switch row {
+                            case .day(let day): ChatDayHeading(day: day)
+                            case .message(let item, let grouped, let showsTime):
+                                ChatBubble(item: item, groupedAbove: grouped, showsTime: showsTime, onRetry: { chat.retry(item) }).id(item.id)
+                            }
+                        }
                         if voiceOn, !voice.conversationText.displayedUserText.isEmpty {
-                            bubble(.init(id: "voice:you", role: .you, text: voice.conversationText.displayedUserText, turn: 0, streaming: false))
+                            ChatBubble(item: .init(id: "voice:you", role: .you, text: voice.conversationText.displayedUserText, turn: 0, streaming: false))
                         }
                         if voiceOn, !voice.conversationText.assistantText.isEmpty {
-                            bubble(.init(id: "voice:assistant", role: .assistant, text: voice.conversationText.assistantText, turn: 0, streaming: false))
+                            ChatBubble(item: .init(id: "voice:assistant", role: .assistant, text: voice.conversationText.assistantText, turn: 0, streaming: false))
                         }
                         if chat.transcript.isWorking { working }
                         if !receipts.isEmpty { receiptsBlock }
@@ -46,15 +55,22 @@ struct ChatView: View {
                         if let failure = chat.transcript.failure {
                             Text(failure).font(.mission(.callout)).foregroundStyle(Tok.critical)
                         }
+                        Color.clear.frame(height: 1).id(Self.endID)
+                            .onAppear { atBottom = true; newBelow = 0 }
+                            .onDisappear { atBottom = false }
                     }
                     .padding(.horizontal, Space.l).padding(.vertical, Space.m)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .defaultScrollAnchor(.bottom)
                 .scrollDismissesKeyboard(.interactively)
-                .onChange(of: chat.transcript.items.count) { _, _ in scrollToEnd(proxy) }
-                .onChange(of: chat.transcript.items.last?.text) { _, _ in scrollToEnd(proxy) }
-                .onChange(of: chat.question?.requestID) { _, _ in scrollToEnd(proxy) }
+                .overlay(alignment: .bottomTrailing) { if !atBottom { jumpToLatest(proxy) } }
+                .onChange(of: chat.transcript.items.count) { old, new in
+                    if atBottom || chat.transcript.items.last?.role == .you { scrollToEnd(proxy) }
+                    else if new > old { newBelow += new - old }
+                }
+                .onChange(of: chat.transcript.items.last?.text) { _, _ in if atBottom { scrollToEnd(proxy) } }
+                .onChange(of: chat.question?.requestID) { _, _ in if atBottom { scrollToEnd(proxy) } }
                 .onChange(of: chat.transcript.earlier.count) { old, new in
                     guard new > old, let id = keepAtTop else { return }
                     keepAtTop = nil
@@ -63,7 +79,9 @@ struct ChatView: View {
             }
             .screenBackground()
             .navigationTitle("Chat")
+            .safeAreaInset(edge: .top) { if chat.showsOffline { offlineBanner } }
             .safeAreaInset(edge: .bottom) { bottomBar }
+            .sensoryFeedback(.impact(weight: .light), trigger: chat.transcript.items.count)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { AppMark() }
                 ToolbarItemGroup(placement: .primaryAction) {
@@ -79,12 +97,12 @@ struct ChatView: View {
                 }
             }
             .onAppear {
-                chat.beginInteraction()
+                chat.isVisible = true
                 voice.updateGatewayAppActivity(scenePhase == .active)
                 consumeDraft()
             }
             .onDisappear {
-                chat.endInteraction()
+                chat.isVisible = false
                 voice.updateGatewayAppActivity(false)
             }
             .onChange(of: scenePhase) { _, phase in if phase != .inactive { voice.updateGatewayAppActivity(phase == .active) } }
@@ -99,35 +117,57 @@ struct ChatView: View {
 
     // MARK: The thread
 
+    private static let endID = "chat.end"
+
+    /// Said once the connection has been gone a moment: what happens to what you type meanwhile.
+    private var offlineBanner: some View {
+        HStack(spacing: Space.s) {
+            ProgressView().controlSize(.small)
+            Text(chat.transcript.items.contains { $0.delivery != .sent }
+                 ? "Offline \u{2014} unsent messages go when you\u{2019}re back."
+                 : "Offline \u{2014} reconnecting\u{2026}")
+                .font(.mission(.footnote)).foregroundStyle(Tok.muted)
+            Spacer()
+        }
+        .padding(.horizontal, Space.l).padding(.vertical, Space.s)
+        .frame(maxWidth: .infinity)
+        .background(Tok.raised)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func jumpToLatest(_ proxy: ScrollViewProxy) -> some View {
+        Button {
+            newBelow = 0
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo(Self.endID, anchor: .bottom) }
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "chevron.down").font(.mission(.subheadline, .semibold)).foregroundStyle(Tok.text)
+                    .frame(width: 44, height: 44).background(Tok.surface, in: Circle())
+                    .overlay { Circle().strokeBorder(Tok.hairline) }
+                if newBelow > 0 {
+                    Text("\(newBelow)").font(.mission(.caption2, .semibold)).foregroundStyle(Tok.onAccent)
+                        .padding(.horizontal, 6).frame(minWidth: 18, minHeight: 18)
+                        .background(Tok.accent, in: Capsule()).offset(x: 6, y: -4)
+                }
+            }
+        }
+        .padding(Space.m)
+        .accessibilityLabel(newBelow > 0 ? "Jump to latest, \(newBelow) new" : "Jump to latest")
+    }
+
     private var greeting: some View {
         Text("Ask for anything: \u{201C}remind me to call Sam tomorrow at 5pm\u{201D}, \u{201C}I want to drink more water\u{201D}, \u{201C}what should I do with 20 minutes?\u{201D} Type, or tap the microphone and talk.")
             .font(.mission(.footnote)).foregroundStyle(Tok.muted)
     }
 
-    private func bubble(_ item: ChatTranscript.Item) -> some View {
-        HStack(spacing: 0) {
-            if item.role == .you { Spacer(minLength: 48) }
-            Group {
-                if item.role == .assistant { MarkdownView(text: item.text) }
-                else { Text(item.text).font(.mission(.body)).foregroundStyle(Tok.text) }
-            }
-            .textSelection(.enabled)
-            .padding(Space.m)
-            .background(item.role == .you ? Tok.accent.opacity(0.14) : Tok.surface, in: MissionTheme.cardShape)
-            .overlay { MissionTheme.cardShape.strokeBorder(Tok.hairline) }
-            if item.role == .assistant { Spacer(minLength: 48) }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel((item.role == .you ? "You: " : "Assistant: ") + item.text)
-    }
-
     private var working: some View {
-        HStack(spacing: Space.s) {
-            ProgressView()
-            Text(chat.transcript.progress.isEmpty ? "Thinking\u{2026}" : chat.transcript.progress)
-                .font(.mission(.footnote)).foregroundStyle(Tok.muted)
+        VStack(alignment: .leading, spacing: Space.xs) {
+            TypingDots()
+            if !chat.transcript.progress.isEmpty {
+                Text(chat.transcript.progress).font(.mission(.footnote)).foregroundStyle(Tok.muted)
+            }
         }
-        .accessibilityElement(children: .combine)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// A question the assistant needs answered, with its suggested answers as buttons.
@@ -183,7 +223,7 @@ struct ChatView: View {
                         .frame(width: 44, height: 44).background(Tok.accent.opacity(0.14), in: Circle())
                 }
                 .disabled(chat.transcript.isWorking).accessibilityLabel("Talk instead")
-                if chat.transcript.isWorking {
+                if chat.transcript.isWorking && draft.trimmed.isEmpty {
                     Button { chat.cancelTurn() } label: {
                         Image(systemName: "stop.fill").font(.mission(.headline, .semibold)).foregroundStyle(Tok.onAccent)
                             .frame(width: 44, height: 44).background(Tok.accent.opacity(0.6), in: Circle())
@@ -204,7 +244,7 @@ struct ChatView: View {
     }
 
     private var canSend: Bool {
-        !draft.trimmed.isEmpty && !chat.transcript.isWorking
+        !draft.trimmed.isEmpty
             && (chat.question == nil || chat.question!.allowsFreeText || chat.question!.options.isEmpty)
     }
 
@@ -266,7 +306,7 @@ struct ChatView: View {
     /// Talking replaces typing: the text connection steps aside so the two never answer the same turn.
     private func startVoice() {
         if chat.transcript.isRunning || chat.question != nil { chat.cancelTurn() }
-        chat.endInteraction()
+        chat.setVoice(true)
         receipts = []
         voice.updateGatewayAppActivity(scenePhase == .active)
         voice.toggle()
@@ -275,7 +315,7 @@ struct ChatView: View {
     /// Hands back to the text thread, which replays the tail so the spoken turns land in the conversation.
     private func endVoice() {
         voice.toggle()
-        chat.beginInteraction()
+        chat.setVoice(false)
         Task { await refresh() }
     }
 }

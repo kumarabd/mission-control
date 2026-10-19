@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Security
 import UIKit
 
@@ -11,20 +12,22 @@ final class MobileGateway {
         case delta(turnSequence: Int, text: String, replace: Bool, progress: Bool)
         /// The text streamed for this turn so far was narration between tool calls: take it back.
         case retract(turnSequence: Int)
-        case message(turnSequence: Int, sequence: Int, role: String, content: String, clientMessageID: String?)
+        case message(turnSequence: Int, sequence: Int, role: String, content: String, clientMessageID: String?, at: Date?)
         case status(turnSequence: Int, text: String)
         case askUser(GatewayQuestion)
         case turnEnded(Int, status: String)
         /// A page of older messages the gateway sent in answer to `requestHistory`, oldest first.
         case history(beforeTurn: Int, oldestTurn: Int, hasMore: Bool, messages: [HistoryMessage])
         case synchronizing
+        /// The connection dropped; it is being reopened.
+        case offline
         case historyLoaded
         case error(String)
     }
 
     struct HistoryMessage: Decodable {
-        let turnSequence: Int; let sequence: Int; let role: String; let content: String
-        enum CodingKeys: String, CodingKey { case role, content; case turnSequence = "turn_seq"; case sequence = "seq" }
+        let turnSequence: Int; let sequence: Int; let role: String; let content: String; let at: Date?
+        enum CodingKeys: String, CodingKey { case role, content; case turnSequence = "turn_seq"; case sequence = "seq"; case at = "created_at" }
     }
 
     struct GatewayQuestion {
@@ -56,6 +59,27 @@ final class MobileGateway {
         self.usesResumeCursor = usesResumeCursor
         self.humanOnly = humanOnly
         self.streams = streams
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            guard path.status == .satisfied else { return }
+            Task { @MainActor in self?.networkReturned() }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "gateway.network"))
+    }
+
+    deinit { pathMonitor.cancel() }
+
+    private let pathMonitor = NWPathMonitor()
+
+    /// The network came back (or changed): a connection that is not live reopens now instead of waiting out its backoff.
+    private func networkReturned() {
+        guard shouldMaintainConnection, !isLive else { return }
+        backoff = 1
+        reconnectTask?.cancel(); reconnectTask = nil
+        transportGeneration &+= 1
+        receiveTask?.cancel(); receiveTask = nil
+        pingTask?.cancel(); pingTask = nil
+        socket?.cancel(with: .goingAway, reason: nil); socket = nil
+        connectIfNeeded()
     }
 
     private let authentication: any AgentGatewayAuthenticating = ClerkGatewayAuthentication()
@@ -129,8 +153,8 @@ final class MobileGateway {
         socket?.cancel(with: .goingAway, reason: nil); socket = nil
     }
 
-    func sendMessage(_ text: String, mode: String = "voice") -> String {
-        let clientMessageID = UUID().uuidString
+    /// `clientMessageID` is given to send a message again: the gateway dedupes on it, so a retry cannot double a message.
+    func sendMessage(_ text: String, mode: String = "voice", clientMessageID: String = UUID().uuidString) -> String {
         // The message goes as typed: no clock stamp, no client-capabilities preamble. The agent's own context about
         // the person and their device belongs on the engine/harness side, not glued to their words — it was showing
         // up in the transcript, and it was being stored as part of what they said.
@@ -184,7 +208,7 @@ final class MobileGateway {
                 guard !Task.isCancelled, shouldMaintainConnection, socket === task,
                       transportGeneration == generation else { return }
                 guard case let .string(text) = incoming, let data = text.data(using: .utf8) else { continue }
-                handle(try JSONDecoder().decode(ServerFrame.self, from: data))
+                handle(try Self.frameDecoder.decode(ServerFrame.self, from: data))
             }
         } catch is CancellationError {
             return
@@ -266,7 +290,7 @@ final class MobileGateway {
             }
         case "message":
             if let turn = frame.turnSequence, let sequence = frame.sequence, let role = frame.role, let content = frame.content {
-                onEvent?(.message(turnSequence: turn, sequence: sequence, role: role, content: content, clientMessageID: frame.clientMessageID))
+                onEvent?(.message(turnSequence: turn, sequence: sequence, role: role, content: content, clientMessageID: frame.clientMessageID, at: frame.createdAt))
             }
         case "status":
             if let turn = frame.turnSequence { onEvent?(.status(turnSequence: turn, text: frame.text ?? "")) }
@@ -293,6 +317,19 @@ final class MobileGateway {
         }
     }
 
+    /// Frames name their own keys; only the times need reading, with or without fractional seconds.
+    private static let frameDecoder: JSONDecoder = {
+        let withFraction = ISO8601DateFormatter(); withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter(); plain.formatOptions = [.withInternetDateTime]
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let text = try decoder.singleValueContainer().decode(String.self)
+            if let date = withFraction.date(from: text) ?? plain.date(from: text) { return date }
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "not an RFC 3339 timestamp: \(text)"))
+        }
+        return decoder
+    }()
+
     private func startPing(for task: URLSessionWebSocketTask) {
         pingTask?.cancel()
         pingTask = Task { [weak self] in
@@ -312,6 +349,7 @@ final class MobileGateway {
 
     private func scheduleReconnect() {
         guard shouldMaintainConnection, !intentionallyDisconnected, reconnectTask == nil else { return }
+        onEvent?(.offline)
         transportGeneration &+= 1
         receiveTask?.cancel(); receiveTask = nil
         isLive = false; pingTask?.cancel(); pingTask = nil
@@ -332,8 +370,10 @@ private struct ServerFrame: Decodable {
     let status: String?; let message: String?
     let beforeTurnSeq: Int?; let oldestTurnSeq: Int?; let hasMore: Bool?; let messages: [MobileGateway.HistoryMessage]?
     let retract: Bool?
+    let createdAt: Date?
     enum CodingKeys: String, CodingKey {
         case type, role, content, text, replace, progress, kind, prompt, options, status, message, messages, retract
+        case createdAt = "created_at"
         case beforeTurnSeq = "before_turn_seq"; case oldestTurnSeq = "oldest_turn_seq"; case hasMore = "has_more"
         case turnSequence = "turn_seq"; case sequence = "seq"; case clientMessageID = "client_msg_id"
         case requestID = "request_id"; case allowsFreeText = "allow_free_text"

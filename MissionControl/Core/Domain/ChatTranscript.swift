@@ -6,10 +6,13 @@ import Foundation
 ///
 /// Turn numbers only ever move forward, so an id built from (turn, sequence) is stable across reconnects.
 struct ChatTranscript {
-    enum Role: Equatable { case you, assistant }
+    enum Role: String, Codable, Equatable { case you, assistant }
+    /// Whether the gateway has the message: a message just typed is sending until the gateway echoes it, and failed if it
+    /// never did (offline, refused), when the person can send it again.
+    enum Delivery: String, Codable, Equatable { case sent, sending, failed }
 
     /// One message of an older page the gateway sent on request.
-    struct Past: Equatable { var turn: Int; var seq: Int; var role: String; var content: String }
+    struct Past: Equatable { var turn: Int; var seq: Int; var role: String; var content: String; var at: Date? = nil }
 
     /// How many of the most recent messages are kept. Older ones are fetched as the person scrolls up, and dropped again
     /// when the chat closes, so what the app holds stays this small however long the conversation is.
@@ -17,14 +20,18 @@ struct ChatTranscript {
 
     enum Event {
         /// A message just typed here, before the gateway has echoed it.
-        case sent(clientID: String, text: String)
+        case sent(clientID: String, text: String, at: Date = Date())
+        /// A message that was not delivered, shown as failed with a way to send it again.
+        case deliveryFailed(clientID: String)
+        /// The person sent a failed message again; it keeps its place and its id, so the gateway's dedupe makes it safe.
+        case resending(clientID: String)
         /// An answer to the assistant's question. The gateway does not report answers as messages, so this stays local.
         case answered(text: String)
         /// The assistant asked a question and the turn is parked on it. The turn has not ended (the gateway ends a turn
         /// only when it is finished), but it is waiting on the person, not working.
         case asked
         case started(turn: Int)
-        case message(turn: Int, seq: Int, role: String, content: String, clientMessageID: String?)
+        case message(turn: Int, seq: Int, role: String, content: String, clientMessageID: String?, at: Date? = nil)
         case delta(turn: Int, text: String, replace: Bool, progress: Bool)
         case status(turn: Int, text: String)
         /// What streamed for this turn so far was narration between tool calls, which the gateway does not keep: take
@@ -39,12 +46,15 @@ struct ChatTranscript {
         case earlierFailed(String)
     }
 
-    struct Item: Identifiable, Equatable {
+    struct Item: Identifiable, Equatable, Codable {
         let id: String
         let role: Role
         var text: String
         var turn: Int
         var streaming: Bool
+        /// When it was said (the gateway's time for a saved message, the phone's for one just typed or streaming).
+        var at: Date? = nil
+        var delivery: Delivery = .sent
     }
 
     /// The most recent messages (at most `window`), as they arrive.
@@ -80,16 +90,27 @@ struct ChatTranscript {
 
     mutating func apply(_ event: Event) {
         switch event {
-        case .sent(let clientID, let text):
-            items.append(Item(id: "u:" + clientID, role: .you, text: text, turn: 0, streaming: false))
+        case .sent(let clientID, let text, let at):
+            items.append(Item(id: "u:" + clientID, role: .you, text: text, turn: 0, streaming: false, at: at, delivery: .sending))
             trim()
             pendingSend = true
             waitingOnYou = false
             failure = nil
 
+        case .deliveryFailed(let clientID):
+            if let index = items.firstIndex(where: { $0.id == "u:" + clientID && $0.delivery == .sending }) { items[index].delivery = .failed }
+            pendingSend = items.contains { $0.delivery == .sending }
+
+        case .resending(let clientID):
+            if let index = items.firstIndex(where: { $0.id == "u:" + clientID && $0.delivery == .failed }) {
+                items[index].delivery = .sending
+                pendingSend = true
+                failure = nil
+            }
+
         case .answered(let text):
             guard Self.said(text) else { return }
-            items.append(Item(id: "u:ans:" + UUID().uuidString, role: .you, text: text, turn: 0, streaming: false))
+            items.append(Item(id: "u:ans:" + UUID().uuidString, role: .you, text: text, turn: 0, streaming: false, at: Date()))
             trim()
             waitingOnYou = false
             failure = nil
@@ -102,7 +123,7 @@ struct ChatTranscript {
             pendingSend = false
             waitingOnYou = false
 
-        case .message(let turn, let seq, let role, let content, let clientMessageID):
+        case .message(let turn, let seq, let role, let content, let clientMessageID, let at):
             guard Self.said(content) else { return }              // a frame carrying only tool work is not something said
             if role == "user" {
                 let id = "u:\(turn):\(seq)"
@@ -110,9 +131,9 @@ struct ChatTranscript {
                 // keeps the text the person typed, because the wire copy of a message also carries the lines this
                 // client prepends for the harness (see `spoken`).
                 if let clientMessageID, let index = items.firstIndex(where: { $0.id == "u:" + clientMessageID }) {
-                    items[index] = Item(id: id, role: .you, text: items[index].text, turn: turn, streaming: false)
+                    items[index] = Item(id: id, role: .you, text: items[index].text, turn: turn, streaming: false, at: at ?? items[index].at)
                 } else if !items.contains(where: { $0.id == id }), !isBeforeWindow(turn) {
-                    items.append(Item(id: id, role: .you, text: Self.spoken(content), turn: turn, streaming: false))
+                    items.append(Item(id: id, role: .you, text: Self.spoken(content), turn: turn, streaming: false, at: at))
                     trim()
                 }
             } else if role == "assistant" {
@@ -121,7 +142,7 @@ struct ChatTranscript {
                 if let index = items.firstIndex(where: { $0.id == id }) {
                     items[index].text = content                     // the same message replayed
                 } else if !isBeforeWindow(turn) {
-                    items.append(Item(id: id, role: .assistant, text: content, turn: turn, streaming: false))
+                    items.append(Item(id: id, role: .assistant, text: content, turn: turn, streaming: false, at: at))
                     trim()
                 }
                 items.removeAll { $0.id == Self.streamID(turn) }     // the durable text supersedes the stream
@@ -137,7 +158,7 @@ struct ChatTranscript {
                 items[index].text = replace ? text : items[index].text + text
                 items[index].streaming = true
             } else if !isBeforeWindow(turn) {
-                items.append(Item(id: id, role: .assistant, text: text, turn: turn, streaming: true))
+                items.append(Item(id: id, role: .assistant, text: text, turn: turn, streaming: true, at: Date()))
                 trim()
             }
 
@@ -162,6 +183,8 @@ struct ChatTranscript {
             progress = ""
 
         case .failed(let message):
+            // Whatever was still waiting on the gateway did not get there.
+            for index in items.indices where items[index].delivery == .sending { items[index].delivery = .failed }
             failure = message
             runningTurn = nil
             pendingSend = false
@@ -183,7 +206,7 @@ struct ChatTranscript {
                 let id = (m.role == "user" ? "u:" : "a:") + "\(m.turn):\(m.seq)"
                 guard !earlier.contains(where: { $0.id == id }), !items.contains(where: { $0.id == id }) else { continue }
                 older.append(Item(id: id, role: m.role == "user" ? .you : .assistant,
-                                  text: m.role == "user" ? Self.spoken(m.content) : m.content, turn: m.turn, streaming: false))
+                                  text: m.role == "user" ? Self.spoken(m.content) : m.content, turn: m.turn, streaming: false, at: m.at))
             }
             earlier.insert(contentsOf: older, at: 0)
         }
@@ -218,6 +241,23 @@ struct ChatTranscript {
         return before
     }
 
+    /// What to keep on the phone: the recent window, without a stream still being written (its saved message comes back
+    /// from the gateway when the app opens).
+    var saved: [Item] { items.filter { !$0.streaming } }
+
+    /// Starts the thread from what was kept. A message that was still sending when the app closed never reached the
+    /// gateway for certain, so it comes back failed, ready to send again. What the gateway replays after this only fills
+    /// in what is newer; the turns the kept messages already cover are skipped.
+    mutating func restore(_ kept: [Item]) {
+        items = kept.suffix(Self.window).map { item in
+            var item = item
+            item.streaming = false
+            if item.delivery == .sending { item.delivery = .failed }
+            return item
+        }
+        if let oldest = items.first(where: { $0.turn > 0 }) { floorTurn = oldest.turn }
+    }
+
     /// Forgets everything loaded from further back; the recent window stays.
     mutating func dropEarlier() {
         earlier = []
@@ -247,4 +287,42 @@ struct ChatTranscript {
     /// Whether a frame says anything a person would read. (Its own check rather than the app's `trimmed` extension,
     /// so this file stays compilable on its own.)
     private static func said(_ text: String) -> Bool { !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    // MARK: Rows
+
+    /// One line of the thread as drawn: a day heading, or a message with how it sits among its neighbours.
+    enum Row: Identifiable, Equatable {
+        case day(Date)
+        case message(Item, groupedAbove: Bool, showsTime: Bool)
+        var id: String {
+            switch self {
+            case .day(let d): "day:\(Int(d.timeIntervalSince1970))"
+            case .message(let item, _, _): item.id
+            }
+        }
+    }
+
+    /// Messages in a run (the same speaker, within this many seconds of each other) sit close together and share one
+    /// time, under the last of them; a new day gets a heading.
+    static let runGap: TimeInterval = 120
+
+    static func rows(_ items: [Item], calendar: Calendar = .current) -> [Row] {
+        var rows: [Row] = []
+        for (index, item) in items.enumerated() {
+            let previous = index > 0 ? items[index - 1] : nil
+            if let at = item.at, previous?.at.map({ !calendar.isDate($0, inSameDayAs: at) }) ?? true {
+                rows.append(.day(calendar.startOfDay(for: at)))
+            }
+            let grouped = previous.map { Self.sameRun($0, item) } ?? false
+            let next = index + 1 < items.count ? items[index + 1] : nil
+            rows.append(.message(item, groupedAbove: grouped, showsTime: item.at != nil && !(next.map { Self.sameRun(item, $0) } ?? false)))
+        }
+        return rows
+    }
+
+    private static func sameRun(_ a: Item, _ b: Item) -> Bool {
+        guard a.role == b.role else { return false }
+        guard let x = a.at, let y = b.at else { return true }
+        return abs(y.timeIntervalSince(x)) <= runGap
+    }
 }

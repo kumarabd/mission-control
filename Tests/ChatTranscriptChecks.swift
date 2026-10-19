@@ -219,6 +219,78 @@ struct ChatTranscriptChecks {
         failed.apply(.failed("You're offline."))
         precondition(failed.failure == "You're offline." && !failed.isRunning)
 
+
+        // Delivery: a message is sending until the gateway echoes it; if it never does, it fails and can be sent again
+        // in the same place, and the echo of that second try (or the first, arriving late) settles it.
+        var dv = ChatTranscript()
+        dv.apply(.sent(clientID: "d1", text: "first"))
+        precondition(dv.items[0].delivery == .sending && dv.pendingSend)
+        dv.apply(.deliveryFailed(clientID: "d1"))
+        precondition(dv.items[0].delivery == .failed && !dv.pendingSend && !dv.isRunning)
+        dv.apply(.resending(clientID: "d1"))
+        precondition(dv.items[0].delivery == .sending && dv.pendingSend)
+        let echoedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        dv.apply(.message(turn: 9, seq: 1, role: "user", content: "first", clientMessageID: "d1", at: echoedAt))
+        precondition(dv.items.map(\.id) == ["u:9:1"] && dv.items[0].delivery == .sent && dv.items[0].at == echoedAt)
+        var late = ChatTranscript()                                       // the echo of a failed message still settles it
+        late.apply(.sent(clientID: "d2", text: "x")); late.apply(.deliveryFailed(clientID: "d2"))
+        late.apply(.message(turn: 3, seq: 1, role: "user", content: "x", clientMessageID: "d2"))
+        precondition(late.items.count == 1 && late.items[0].delivery == .sent)
+        var refused = ChatTranscript()                                    // an error frame fails what was waiting
+        refused.apply(.sent(clientID: "d3", text: "y")); refused.apply(.failed("failed to submit message"))
+        precondition(refused.items[0].delivery == .failed && !refused.isRunning)
+        var noop = ChatTranscript()                                       // a delivered message is never marked failed
+        noop.apply(.sent(clientID: "d4", text: "z"))
+        noop.apply(.message(turn: 4, seq: 1, role: "user", content: "z", clientMessageID: "d4"))
+        noop.apply(.deliveryFailed(clientID: "d4"))
+        precondition(noop.items[0].delivery == .sent)
+
+        // What is kept on the phone comes back as the recent window: a message still sending is failed, a half-written
+        // stream is gone, and the replay that follows fills in only what is newer, in order.
+        var kept = ChatTranscript()
+        for t in 1...4 { turn(t, in: &kept) }
+        kept.apply(.sent(clientID: "k1", text: "unsent"))
+        kept.apply(.started(turn: 5)); kept.apply(.delta(turn: 5, text: "half", replace: false, progress: false))
+        let onDisk = try! JSONDecoder().decode([ChatTranscript.Item].self, from: JSONEncoder().encode(kept.saved))
+        precondition(!onDisk.contains { $0.streaming }, "no half-written stream is kept")
+        var back = ChatTranscript()
+        back.restore(onDisk)
+        precondition(back.items.count == 9 && back.items.last?.id == "u:k1" && back.items.last?.delivery == .failed, "\(back.items.map(\.id))")
+        let beforeReplay = back.items.map(\.id)
+        for t in 1...4 { turn(t, in: &back) }                             // the gateway replays turns the thread already has
+        precondition(back.items.map(\.id) == beforeReplay, "a replay must not reorder or repeat: \(back.items.map(\.id))")
+        turn(5, in: &back)
+        precondition(back.items.map(\.id).contains("a:5:2") && back.items.count == ChatTranscript.window)
+
+        // Rows: a heading for each day, runs of the same speaker close together with one time under the last.
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        func at(_ day: Int, _ h: Int, _ m: Int, _ s: Int = 0) -> Date { cal.date(from: DateComponents(year: 2026, month: 10, day: day, hour: h, minute: m, second: s))! }
+        func item(_ id: String, _ role: ChatTranscript.Role, _ when: Date?) -> ChatTranscript.Item { .init(id: id, role: role, text: id, turn: 1, streaming: false, at: when) }
+        let rows = ChatTranscript.rows([
+            item("a", .you, at(18, 23, 58)), item("b", .assistant, at(18, 23, 59)),
+            item("c", .you, at(19, 8, 0)), item("d", .you, at(19, 8, 1)), item("e", .you, at(19, 8, 30)),
+        ], calendar: cal)
+        func shape(_ r: ChatTranscript.Row) -> String {
+            switch r {
+            case .day: "day"
+            case .message(let i, let g, let t): "\(i.id)\(g ? "^" : "")\(t ? "@" : "")"
+            }
+        }
+        precondition(rows.map(shape) == ["day", "a@", "b@", "day", "c", "d^@", "e@"], "\(rows.map(shape))")
+        precondition(ChatTranscript.rows([item("x", .you, nil)], calendar: cal).map(shape) == ["x"], "a message with no time gets no heading and no time")
+
+        // On disk: what was saved comes back as it was, one file per person, and a file that cannot be read is an error.
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("chat-store-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let mine = [ChatTranscript.Item(id: "u:1:1", role: .you, text: "hi", turn: 1, streaming: false, at: Date(timeIntervalSince1970: 1_700_000_000))]
+        precondition(try! ChatStore.load(owner: "user_a", in: dir).isEmpty)
+        try! ChatStore.save(mine, owner: "user_a", in: dir)
+        precondition(try! ChatStore.load(owner: "user_a", in: dir) == mine)
+        precondition(try! ChatStore.load(owner: "user_b", in: dir).isEmpty, "another person's chat is never shown")
+        try! Data("not json".utf8).write(to: ChatStore.url(owner: "user_a", in: dir))
+        precondition((try? ChatStore.load(owner: "user_a", in: dir)) == nil, "an unreadable file is reported, not read as empty")
+        ChatStore.remove(owner: "user_a", in: dir)
+        precondition(try! ChatStore.load(owner: "user_a", in: dir).isEmpty)
         print("ChatTranscriptChecks passed")
     }
 }

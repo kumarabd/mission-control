@@ -1,0 +1,94 @@
+import SwiftUI
+import UIKit
+
+/// One message of the thread: yours on the right, the assistant's (set as markdown) on the left. A message in a run sits
+/// close under the one before it, and the last of a run carries the time. Yours also says where it stands: faded while
+/// sending, and, if it never got there, red with a way to send it again.
+struct ChatBubble: View {
+    let item: ChatTranscript.Item
+    var groupedAbove = false
+    var showsTime = false
+    var onRetry: () -> Void = {}
+
+    var body: some View {
+        VStack(alignment: item.role == .you ? .trailing : .leading, spacing: 3) {
+            HStack(spacing: 0) {
+                if item.role == .you { Spacer(minLength: 48) }
+                Group {
+                    if item.role == .assistant { MarkdownView(text: item.text) }
+                    else { Text(item.text).font(.mission(.body)).foregroundStyle(Tok.text) }
+                }
+                .textSelection(.enabled)
+                .padding(Space.m)
+                .background(item.role == .you ? Tok.accent.opacity(0.14) : Tok.surface, in: MissionTheme.cardShape)
+                .overlay { MissionTheme.cardShape.strokeBorder(item.delivery == .failed ? Tok.critical.opacity(0.6) : Tok.hairline) }
+                .opacity(item.delivery == .sending ? 0.6 : 1)
+                .contextMenu {
+                    Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = item.text }
+                    if item.delivery == .failed { Button("Send again", systemImage: "arrow.clockwise", action: onRetry) }
+                }
+                if item.role == .assistant { Spacer(minLength: 48) }
+            }
+            footer
+        }
+        .padding(.top, groupedAbove ? -Space.s + 2 : 0)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel((item.role == .you ? "You: " : "Assistant: ") + item.text + (item.delivery == .failed ? ". Not delivered." : ""))
+        .accessibilityAction(named: "Send again") { if item.delivery == .failed { onRetry() } }
+    }
+
+    @ViewBuilder private var footer: some View {
+        switch item.delivery {
+        case .failed:
+            Button(action: onRetry) {
+                Label("Not delivered \u{00B7} Send again", systemImage: "exclamationmark.circle")
+                    .font(.mission(.caption)).foregroundStyle(Tok.critical)
+            }
+            .buttonStyle(.plain).frame(minHeight: 28)
+        case .sending:
+            Text("Sending\u{2026}").font(.mission(.caption)).foregroundStyle(Tok.muted)
+        case .sent:
+            if showsTime, let at = item.at {
+                Text(at, format: .dateTime.hour().minute()).font(.mission(.caption)).foregroundStyle(Tok.muted)
+            }
+        }
+    }
+}
+
+/// A day heading between messages from different days.
+struct ChatDayHeading: View {
+    let day: Date
+    var body: some View {
+        Text(Self.title(day))
+            .font(.mission(.caption, .medium)).foregroundStyle(Tok.muted)
+            .frame(maxWidth: .infinity).padding(.vertical, Space.xs)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    static func title(_ day: Date, calendar: Calendar = .current, now: Date = Date()) -> String {
+        if calendar.isDate(day, inSameDayAs: now) { return "Today" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(day, inSameDayAs: yesterday) { return "Yesterday" }
+        let sameYear = calendar.component(.year, from: day) == calendar.component(.year, from: now)
+        return day.formatted(sameYear ? .dateTime.weekday(.wide).month(.abbreviated).day() : .dateTime.month(.abbreviated).day().year())
+    }
+}
+
+/// Three dots that rise and fall while the assistant is writing. Still under Reduce Motion.
+struct TypingDots: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.12, paused: reduceMotion)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 5) {
+                ForEach(0..<3, id: \.self) { i in
+                    Circle().fill(Tok.muted).frame(width: 7, height: 7)
+                        .offset(y: reduceMotion ? 0 : -3 * max(0, sin(t * 6 - Double(i) * 0.7)))
+                }
+            }
+        }
+        .padding(.horizontal, Space.m).padding(.vertical, 14)
+        .background(Tok.surface, in: MissionTheme.cardShape)
+        .overlay { MissionTheme.cardShape.strokeBorder(Tok.hairline) }
+        .accessibilityElement(children: .ignore).accessibilityLabel("The assistant is writing")
+    }
+}

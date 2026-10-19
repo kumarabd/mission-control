@@ -801,11 +801,11 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
         switch event {
         case .turnStarted(let turn): return turn == activeTurnSequence
         case .delta(let turn, _, _, _): return turn == activeTurnSequence
-        case .message(let turn, _, _, _, _): return turn == activeTurnSequence
+        case .message(let turn, _, _, _, _, _): return turn == activeTurnSequence
         case .status(let turn, _): return turn == activeTurnSequence
         case .turnEnded(let turn, _): return turn == activeTurnSequence
         case .askUser: return true
-        case .synchronizing, .historyLoaded, .error, .history, .retract: return false
+        case .synchronizing, .offline, .historyLoaded, .error, .history, .retract: return false
         }
     }
 
@@ -815,7 +815,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
             switch event {
             case .synchronizing: return
             case .historyLoaded: historyLoaded = true; return
-            case let .message(turn, _, role, content, clientMessageID):
+            case let .message(turn, _, role, content, clientMessageID, _):
                 if let clientMessageID, pendingUserMessages.remove(clientMessageID) != nil {
                     suppressStreamingSpeech = false
                     beginAssistantTurn(turn)
@@ -836,7 +836,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
             historyLoaded = false
         case .historyLoaded:
             historyLoaded = true
-        case .history, .retract:
+        case .history, .retract, .offline:
             break    // the text chat's: it pages through older messages and asks for only what is for the person
         case .turnStarted(let turn):
             // While a new user frame is pending, accept only its canonical
@@ -864,7 +864,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
                 conversationText.updateAssistant(streamBuffer)
                 appendSpeakableText(text, replacing: replace)
             }
-        case let .message(turn, _, role, content, clientMessageID):
+        case let .message(turn, _, role, content, clientMessageID, _):
             if let clientMessageID, pendingUserMessages.remove(clientMessageID) != nil {
                 suppressStreamingSpeech = false
                 beginAssistantTurn(turn)

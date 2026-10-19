@@ -113,10 +113,11 @@ or Reduce Motion — those are checked in the app.
 
 The chat transcript (replay and streaming, made idempotent):
 
-    xcrun swiftc -parse-as-library MissionControl/Core/Domain/ChatTranscript.swift Tests/ChatTranscriptChecks.swift -o /private/tmp/chat-transcript-checks
+    xcrun swiftc -parse-as-library MissionControl/Core/Domain/ChatTranscript.swift MissionControl/Core/Domain/ChatStore.swift Tests/ChatTranscriptChecks.swift -o /private/tmp/chat-transcript-checks
     /private/tmp/chat-transcript-checks
 
-Covers a sent message being replaced by its own echo rather than doubled, streamed
+Also covers delivery states (sending, failed, sent again, a late echo), the recent window kept on disk and restored
+without a replay reordering it, and the rows the thread is drawn from (day headings, runs, times). Covers a sent message being replaced by its own echo rather than doubled, streamed
 deltas appending and resetting, progress narration staying out of the answer, the
 durable message superseding the stream, a replayed delta for a finished turn being
 ignored, a stopped turn keeping what was already seen, an empty frame leaving no
