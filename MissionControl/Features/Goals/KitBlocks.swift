@@ -105,6 +105,7 @@ struct KitBlockView: View {
                     case "steps": StepsBlock(block: block, data: data, goal: goal, interactive: interactive, onStep: actions.step)
                     case "timeline": TimelineBlock(block: block, data: data)
                     case "routines": RoutinesBlock(goal: goal, interactive: interactive)
+                    case "reminders": RemindersBlock(goal: goal, interactive: interactive)
                     case "log": LogBlock(block: block, view: view, tracker: tracker, interactive: interactive, actions: actions)
                     case "link": LinkBlock(block: block)
                     default: EmptyView()
@@ -588,6 +589,39 @@ private struct TimelineBlock: View {
 // MARK: Routines
 
 /// The goal's own routines: tap a ring to record one for today; open one for its history.
+/// The reminders set for this goal, soonest first, each finished with one tap.
+private struct RemindersBlock: View {
+    @Environment(Life.self) private var life
+    let goal: Wire.Goal
+    var interactive: Bool
+    var body: some View {
+        let linked = life.reminders.filter { $0.link?.entity == "goal" && $0.link?.id == goal.id && $0.state == "pending" }
+        if linked.isEmpty {
+            Label("No reminders for this goal", systemImage: "bell").font(.mission(.body)).foregroundStyle(Tok.muted)
+        } else {
+            VStack(spacing: Space.xs) {
+                ForEach(linked) { reminder in
+                    HStack(spacing: Space.m) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(reminder.title).font(.mission(.body, .medium)).foregroundStyle(Tok.text)
+                            Text(when(reminder)).font(.mission(.caption)).foregroundStyle(Tok.muted)
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                        Button { Task { await life.completeReminder(reminder) } } label: {
+                            Image(systemName: "checkmark.circle").font(.title2).foregroundStyle(Tok.accent).frame(width: 44, height: 44)
+                        }
+                        .disabled(!interactive).accessibilityLabel("Mark \(reminder.title) done")
+                    }.frame(minHeight: 44)
+                }
+            }
+        }
+    }
+    private func when(_ r: Wire.Reminder) -> String {
+        guard let due = r.dueAt else { return "Whenever" }
+        let text = due.formatted(.relative(presentation: .named))
+        return r.recurrence == nil ? text : text + " · repeats"
+    }
+}
+
 private struct RoutinesBlock: View {
     @Environment(Life.self) private var life
     let goal: Wire.Goal
