@@ -36,13 +36,17 @@ extension Wire {
         var lines: [Marker]?; var band: Band?; var trendTo: Calc?; var layout: String?; var weeks: Int?
         var source: String?; var thresholds: [Double]?
         var format: String?; var unit: String?; var decimals: Int?
-        var body: String?; var url: String?
+        var body: String?; var points: [String]?; var url: String?
     }
+    /// A view is pages of titled sections of blocks. The structure is the engine's; what fills it is the composer's.
+    struct ViewSection: Codable, Equatable, Identifiable { var id: String; var title: String; var intro: String?; var blocks: [ViewBlock] }
+    struct ViewPage: Codable, Equatable, Identifiable { var id: String; var title: String?; var sections: [ViewSection] }
     /// A goal's view for one client catalogue: a manifest of blocks that refer to the goal and to metrics.
     struct GoalView: Codable, Equatable, Identifiable {
         var id: String; var subjectKind: String; var subjectId: String; var catalogId: String
-        var metrics: [TrackerMetric]; var blocks: [ViewBlock]; var version: Int
+        var metrics: [TrackerMetric]; var pages: [ViewPage]; var version: Int
         var createdAt: Date?; var updatedAt: Date?
+        var blocks: [ViewBlock] { pages.flatMap { $0.sections.flatMap(\.blocks) } }
         /// A block this client can show. An unknown one is shown as unsupported on its own; it never hides the rest.
         func supports(_ block: ViewBlock) -> Bool {
             let known = Set(["sentence", "bar", "series", "grid", "steps", "timeline", "routines", "log", "text", "link"])

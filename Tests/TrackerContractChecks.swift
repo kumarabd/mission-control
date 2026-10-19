@@ -26,21 +26,21 @@ import Foundation
 
         // Rendering guards: an unknown or unmatched block is unsupported on its own, never the whole view.
         var odd = view
-        odd.blocks[0].kind = "remote_code"
-        precondition(!odd.supports(odd.blocks[0]) && odd.supports(odd.blocks[1]))
+        odd.pages[0].sections[0].blocks[0].kind = "remote_code"
+        precondition(!odd.supports(odd.pages[0].sections[0].blocks[0]) && odd.supports(odd.pages[0].sections[0].blocks[1]))
         odd = view
         let trend = odd.blocks.firstIndex { $0.kind == "series" }!
-        odd.blocks[trend].metric = "missing"
-        precondition(!odd.supports(odd.blocks[trend]))
+        odd.pages[0].sections[0].blocks[trend].metric = "missing"
+        precondition(!odd.supports(odd.pages[0].sections[0].blocks[trend]))
         odd = view
         let link = odd.blocks.firstIndex { $0.kind == "link" }!
         for bad in ["javascript:alert(1)", "data:text/html,x", "file:///etc/passwd", "not a url", ""] {
-            odd.blocks[link].url = bad
-            precondition(!odd.supports(odd.blocks[link]), bad)
+            odd.pages[0].sections[0].blocks[link].url = bad
+            precondition(!odd.supports(odd.pages[0].sections[0].blocks[link]), bad)
         }
-        odd.blocks[link].url = nil
-        precondition(!odd.supports(odd.blocks[link]))
-        var empty = state; empty.view?.blocks = []
+        odd.pages[0].sections[0].blocks[link].url = nil
+        precondition(!odd.supports(odd.pages[0].sections[0].blocks[link]))
+        var empty = state; empty.view?.pages = []
         precondition(empty.view(catalog: catalog) == nil)
 
         precondition(TrackerClient.link("https://example.com/a?b=1")?.host == "example.com" && TrackerClient.link("http://example.com") != nil)

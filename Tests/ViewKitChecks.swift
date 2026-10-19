@@ -53,11 +53,11 @@ import Foundation
         // The manifests the engine accepts decode here, and each block kind is known.
         for name in ["dining_limit", "weight_target", "habit_days", "savings_deadline"] {
             let raw = try Data(contentsOf: dir.appendingPathComponent(name + ".json"))
-            struct Manifest: Decodable { var metrics: [Wire.TrackerMetric]; var blocks: [Wire.ViewBlock] }
+            struct Manifest: Decodable { var metrics: [Wire.TrackerMetric]; var pages: [Wire.ViewPage] }
             let m = try Wire.decoder.decode(Manifest.self, from: raw)
             let view = Wire.GoalView(id: "v", subjectKind: "goal", subjectId: "g", catalogId: TrackerClient.catalog,
-                                     metrics: m.metrics, blocks: m.blocks, version: 1)
-            precondition(!m.blocks.isEmpty && m.blocks.allSatisfy { view.supports($0) }, name)
+                                     metrics: m.metrics, pages: m.pages, version: 1)
+            precondition(!view.blocks.isEmpty && view.blocks.allSatisfy { view.supports($0) }, name)
         }
         print("view kit checks passed")
     }

@@ -76,7 +76,15 @@ struct KitBlockView: View {
         } else if block.kind == "sentence" || block.kind == "text" {
             VStack(alignment: .leading, spacing: Space.xs) {
                 if let title = block.title, !hero { Text(title).font(.mission(.headline, .medium)).accessibilityAddTraits(.isHeader) }
-                if block.kind == "text" { Text(block.body ?? "").font(.mission(.body)).foregroundStyle(Tok.muted) }
+                if block.kind == "text" {
+                    Text(block.body ?? "").font(.mission(.body)).foregroundStyle(Tok.muted)
+                    ForEach(block.points ?? [], id: \.self) { point in
+                        HStack(alignment: .firstTextBaseline, spacing: Space.s) {
+                            Circle().fill(Tok.accent).frame(width: 5, height: 5).accessibilityHidden(true)
+                            Text(point).font(.mission(.body))
+                        }
+                    }
+                }
                 else { SentenceBlock(block: block, data: data, waiting: waiting, failure: failure, retry: actions.retry) }
             }
             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, Space.xs)

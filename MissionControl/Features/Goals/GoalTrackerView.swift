@@ -12,6 +12,7 @@ struct GoalDetail: View {
     @State private var edit: MeasurementSelection?
     @State private var loads: [String: KitLoad] = [:]
     @State private var busy = false
+    @State private var page = ""
     @State private var keys: [String: String] = [:]
     private var catalog: String { TrackerClient.catalog }
     private var goal: Wire.Goal? { life.goals.first { $0.id == goalID } }
@@ -31,10 +32,27 @@ struct GoalDetail: View {
                                 }
                             }
                             feedback
-                            VStack(alignment: .leading, spacing: Space.m) {
-                                ForEach(Array(view.blocks.enumerated()), id: \.element.id) { index, block in
-                                    KitBlockView(block: block, view: view, loads: loads, data: kitData, tracker: tracker, goal: goal,
-                                                 interactive: !busy, index: index, actions: kitActions)
+                            if view.pages.count > 1 {
+                                Picker("Page", selection: Binding(get: { view.pages.contains { $0.id == page } ? page : view.pages[0].id }, set: { page = $0 })) {
+                                    ForEach(view.pages) { Text($0.title ?? "").tag($0.id) }
+                                }.pickerStyle(.segmented)
+                            }
+                            if let current = view.pages.first(where: { $0.id == page }) ?? view.pages.first {
+                                VStack(alignment: .leading, spacing: Space.l) {
+                                    ForEach(current.sections) { section in
+                                        VStack(alignment: .leading, spacing: Space.m) {
+                                            VStack(alignment: .leading, spacing: Space.xs) {
+                                                Text(section.title).font(.mission(.title3, .semibold)).accessibilityAddTraits(.isHeader)
+                                                if let intro = section.intro, !intro.isEmpty {
+                                                    Text(intro).font(.mission(.subheadline)).foregroundStyle(Tok.muted)
+                                                }
+                                            }.padding(.horizontal, Space.xs)
+                                            ForEach(Array(section.blocks.enumerated()), id: \.element.id) { index, block in
+                                                KitBlockView(block: block, view: view, loads: loads, data: kitData, tracker: tracker, goal: goal,
+                                                             interactive: !busy, index: index, actions: kitActions)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             Button { ask(goal) } label: { Label("Change this view", systemImage: "bubble.left") }
