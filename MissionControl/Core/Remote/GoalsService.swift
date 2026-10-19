@@ -30,6 +30,13 @@ struct GoalsService {
     func viewState(goalID: String, catalog: String) async throws -> Wire.ViewState {
         try await api.call("views_state", ViewIn(goalId: goalID, catalogId: catalog))
     }
+    /// Deletes a goal and what exists only because of it (its steps, view, measurements, reminders, notes and journal
+    /// entries about it, and the routines no other goal uses). Returns how many of each kind went.
+    func deleteGoal(_ goal: Wire.Goal, key: String = UUID().uuidString) async throws -> [String: Int] {
+        struct Out: Decodable { var removed: [String: Int] }
+        let out: Out = try await api.call("goals_delete", EditIn(idempotencyKey: key, id: goal.id, expectedVersion: goal.version))
+        return out.removed
+    }
     func saveMeasurement(_ input: MeasurementIn) async throws {
         let _: Wire.GoalMeasurement = try await api.call(input.id == nil ? "goal_measurements_record" : "goal_measurements_update", input)
     }

@@ -52,6 +52,12 @@ struct ChatView: View {
                 }
                 .defaultScrollAnchor(.bottom)
                 .scrollDismissesKeyboard(.interactively)
+                // A link to a goal in the assistant's reply opens the goal; any other link goes to the system.
+                .environment(\.openURL, OpenURLAction { url in
+                    guard let target = PushLink.target(from: url) else { return .systemAction }
+                    DeepLink.shared.pending = target
+                    return .handled
+                })
                 .onChange(of: chat.transcript.items.count) { _, _ in scrollToEnd(proxy) }
                 .onChange(of: chat.transcript.items.last?.text) { _, _ in scrollToEnd(proxy) }
                 .onChange(of: chat.question?.requestID) { _, _ in scrollToEnd(proxy) }
@@ -104,22 +110,7 @@ struct ChatView: View {
             .font(.mission(.footnote)).foregroundStyle(Tok.muted)
     }
 
-    private func bubble(_ item: ChatTranscript.Item) -> some View {
-        HStack(spacing: 0) {
-            if item.role == .you { Spacer(minLength: 48) }
-            Group {
-                if item.role == .assistant { MarkdownView(text: item.text) }
-                else { Text(item.text).font(.mission(.body)).foregroundStyle(Tok.text) }
-            }
-            .textSelection(.enabled)
-            .padding(Space.m)
-            .background(item.role == .you ? Tok.accent.opacity(0.14) : Tok.surface, in: MissionTheme.cardShape)
-            .overlay { MissionTheme.cardShape.strokeBorder(Tok.hairline) }
-            if item.role == .assistant { Spacer(minLength: 48) }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel((item.role == .you ? "You: " : "Assistant: ") + item.text)
-    }
+    private func bubble(_ item: ChatTranscript.Item) -> some View { ChatBubble(item: item) }
 
     private var working: some View {
         HStack(spacing: Space.s) {
