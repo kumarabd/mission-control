@@ -14,6 +14,10 @@ struct GoalDetail: View {
     @State private var busy = false
     @State private var page = ""
     @State private var keys: [String: String] = [:]
+    /// How many times the app has asked the assistant to compose this goal's view, and the chat's finished-turn count when
+    /// it last did (the request is still being worked on until a turn finishes).
+    @State private var composeAttempts = 0
+    @State private var composeBase: Int?
     private var catalog: String { TrackerClient.catalog }
     private var goal: Wire.Goal? { life.goals.first { $0.id == goalID } }
 
@@ -64,8 +68,15 @@ struct GoalDetail: View {
                 } else {
                     VStack(spacing: 0) {
                         feedback.padding(.horizontal, Space.m)
-                        if failure == nil {
-                            Button { ask(goal) } label: { Label("Build a tracker for this goal", systemImage: "chart.xyaxis.line") }
+                        if composing {
+                            HStack(spacing: Space.s) {
+                                ProgressView()
+                                Text("Building this view\u{2026} the assistant is composing it for this goal.").font(.mission(.subheadline)).foregroundStyle(Tok.muted)
+                            }
+                            .padding(Space.m).frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityElement(children: .combine)
+                        } else if failure == nil {
+                            Button { composeAttempts = 0; ask(goal) } label: { Label("Build a view for this goal", systemImage: "chart.xyaxis.line") }
                                 .font(.mission(.body)).frame(minHeight: 44)
                         }
                         GoalReview(goalID: goalID)
@@ -75,7 +86,10 @@ struct GoalDetail: View {
         }
         .screenBackground()
         .navigationTitle(goal?.title ?? "Goal").navigationBarTitleDisplayMode(.inline)
-        .task(id: goal?.version) { await refresh() }
+        .task(id: goal?.version) { loadComposeState(); await refresh() }
+        // A goal with no view gets one composed as soon as the assistant is free; when its turn ends, the view is read.
+        .onChange(of: chat.transcript.isRunning) { _, running in if !running { composeIfNeeded() } }
+        .onChange(of: chat.completedTurns) { _, _ in Task { await refresh() } }
         .sheet(item: $edit, onDismiss: { Task { await refresh() } }) { selection in
             if let tracker {
                 MeasurementSheet(goalID: goalID, metric: selection.metric, measurement: selection.measurement)
@@ -106,7 +120,32 @@ struct GoalDetail: View {
         }
     }
     private func ask(_ goal: Wire.Goal) {
-        chat.request(draft: "Compose a view for my goal \(goal.id), “\(goal.title)”. Read the view kit (tracker_catalog_get) and the goal first, design what suits this goal, then save it with views_create (or views_update if it has one). ")
+        chat.request(draft: Self.composePrompt(goal))
+    }
+    private static func composePrompt(_ goal: Wire.Goal) -> String {
+        "Compose a view for my goal \(goal.id), “\(goal.title)”. Read the view kit (tracker_catalog_get) and the goal first, design what suits this goal, then save it with views_create (or views_update if it has one). "
+    }
+
+    // MARK: Composing the view
+
+    /// The app asks for a view this many times before it leaves the rest to the person's own button.
+    private static let maxAutoAttempts = 2
+    private var composing: Bool { composeBase == chat.completedTurns }
+    private func composeKey(_ name: String) -> String { "goalView.\(name).\(goalID)" }
+
+    private func loadComposeState() {
+        composeAttempts = UserDefaults.standard.integer(forKey: composeKey("attempts"))
+    }
+
+    /// Asks the assistant to compose this goal's view, once the goal is known to have none, nothing else the assistant is
+    /// doing would be interrupted (a message sent mid-reply interrupts it), and it has not been tried too often.
+    private func composeIfNeeded() {
+        guard let goal, failure == nil, tracker != nil, tracker?.view(catalog: catalog) == nil, !composing,
+              composeAttempts < Self.maxAutoAttempts, !chat.transcript.isRunning, chat.question == nil else { return }
+        composeBase = chat.completedTurns
+        composeAttempts += 1
+        UserDefaults.standard.set(composeAttempts, forKey: composeKey("attempts"))
+        chat.send(Self.composePrompt(goal))
     }
     private func refresh() async {
         defer { loading = false }
@@ -114,7 +153,11 @@ struct GoalDetail: View {
             let state = try await life.loadView(goalID: goalID, catalog: catalog)
             guard !Task.isCancelled, state.goalId == goalID else { return }
             tracker = state; failure = nil
-            if let view = state.view(catalog: catalog) { await loadKit(view, state) }
+            if let view = state.view(catalog: catalog) {
+                composeBase = nil; composeAttempts = 0
+                UserDefaults.standard.removeObject(forKey: composeKey("attempts"))
+                await loadKit(view, state)
+            } else { composeIfNeeded() }
         } catch {
             guard !Task.isCancelled else { return }
             // An older server remains usable, without pretending to have a generated tracker.
