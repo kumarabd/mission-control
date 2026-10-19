@@ -14,6 +14,35 @@ struct ChatTranscriptChecks {
         t.apply(.ended(turn: 7, status: "ok"))
         precondition(!t.isRunning)
 
+        // A turn parked on a question has not ended, but it is waiting on the person, not working: the answer must be
+        // possible, and the progress spinner must not keep turning while the pings keep arriving.
+        var q = ChatTranscript()
+        q.apply(.sent(clientID: "q1", text: "I want to spend less on subscriptions"))
+        q.apply(.started(turn: 5))
+        precondition(q.isWorking && !q.waitingOnYou)
+        q.apply(.status(turn: 5, text: "Working on it \u{2014} ask_user, step 12."))
+        q.apply(.asked)
+        precondition(q.isRunning && q.waitingOnYou && !q.isWorking)
+        q.apply(.delta(turn: 5, text: "Working on it \u{2014} ask_user, step 12.", replace: true, progress: true))
+        precondition(!q.isWorking, "a later status ping must not make a waiting turn look busy")
+        q.apply(.started(turn: 5))                                       // a reconnect replays the turn start...
+        precondition(q.isWorking)
+        q.apply(.asked)                                                  // ...and then the open question
+        precondition(!q.isWorking)
+        q.apply(.answered(text: "Yes, count them"))
+        q.apply(.started(turn: -1))                                      // an answer carries on the same turn
+        precondition(q.isWorking && !q.waitingOnYou)
+        q.apply(.asked)
+        q.apply(.ended(turn: 5, status: "completed"))
+        precondition(!q.isRunning && !q.waitingOnYou && !q.isWorking)
+        var typed = ChatTranscript()                                     // typing something else ends the wait too
+        typed.apply(.started(turn: 6)); typed.apply(.asked)
+        typed.apply(.sent(clientID: "q2", text: "never mind"))
+        precondition(!typed.waitingOnYou && typed.isWorking)
+        var broken = ChatTranscript()
+        broken.apply(.started(turn: 7)); broken.apply(.asked); broken.apply(.failed("You're offline."))
+        precondition(!broken.waitingOnYou && !broken.isRunning)
+
         // Deltas build one bubble; replace resets it rather than appending.
         var d = ChatTranscript()
         d.apply(.started(turn: 1))

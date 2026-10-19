@@ -103,6 +103,7 @@ final class ChatModel {
             transcript.apply(.status(turn: turn, text: text))
         case .askUser(let q) where sawTurn:
             question = Question(requestID: q.requestID, prompt: q.prompt, options: q.options, allowsFreeText: q.allowsFreeText)
+            transcript.apply(.asked)
         case .askUser:
             break    // a question with no turn behind it is a leftover, not something to answer
         case .turnEnded(let turn, let status):

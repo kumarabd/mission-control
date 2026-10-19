@@ -13,6 +13,9 @@ struct ChatTranscript {
         case sent(clientID: String, text: String)
         /// An answer to the assistant's question. The gateway does not report answers as messages, so this stays local.
         case answered(text: String)
+        /// The assistant asked a question and the turn is parked on it. The turn has not ended (the gateway ends a turn
+        /// only when it is finished), but it is waiting on the person, not working.
+        case asked
         case started(turn: Int)
         case message(turn: Int, seq: Int, role: String, content: String, clientMessageID: String?)
         case delta(turn: Int, text: String, replace: Bool, progress: Bool)
@@ -39,23 +42,34 @@ struct ChatTranscript {
     /// Turns whose durable assistant message has arrived; their streamed deltas are then duplicates.
     private var durable: Set<Int> = []
 
+    /// A question is open and the turn is waiting for the person's answer.
+    private(set) var waitingOnYou = false
+
     var isRunning: Bool { pendingSend || runningTurn != nil }
+    /// Running and not waiting on the person: the only time to show progress, or to hold back sending and answering.
+    var isWorking: Bool { isRunning && !waitingOnYou }
 
     mutating func apply(_ event: Event) {
         switch event {
         case .sent(let clientID, let text):
             items.append(Item(id: "u:" + clientID, role: .you, text: text, turn: 0, streaming: false))
             pendingSend = true
+            waitingOnYou = false
             failure = nil
 
         case .answered(let text):
             guard Self.said(text) else { return }
             items.append(Item(id: "u:ans:" + UUID().uuidString, role: .you, text: text, turn: 0, streaming: false))
+            waitingOnYou = false
             failure = nil
+
+        case .asked:
+            waitingOnYou = true
 
         case .started(let turn):
             runningTurn = turn
             pendingSend = false
+            waitingOnYou = false
 
         case .message(let turn, let seq, let role, let content, let clientMessageID):
             guard Self.said(content) else { return }              // a frame carrying only tool work is not something said
@@ -107,12 +121,14 @@ struct ChatTranscript {
             durable.remove(turn)
             runningTurn = nil
             pendingSend = false
+            waitingOnYou = false
             progress = ""
 
         case .failed(let message):
             failure = message
             runningTurn = nil
             pendingSend = false
+            waitingOnYou = false
             progress = ""
         }
     }

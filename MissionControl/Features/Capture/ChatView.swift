@@ -31,7 +31,7 @@ struct ChatView: View {
                         if voiceOn, !voice.conversationText.assistantText.isEmpty {
                             bubble(.init(id: "voice:assistant", role: .assistant, text: voice.conversationText.assistantText, turn: 0, streaming: false))
                         }
-                        if chat.transcript.isRunning { working }
+                        if chat.transcript.isWorking { working }
                         if !receipts.isEmpty { receiptsBlock }
                         if let question = chat.question { askBlock(question) }
                         if voice.state == .unavailable, !voice.message.isEmpty {
@@ -125,7 +125,7 @@ struct ChatView: View {
             MarkdownView(text: q.prompt)
             ForEach(q.options, id: \.id) { option in
                 Button(option.label) { chat.answer(q, optionID: option.id) }
-                    .buttonStyle(SecondaryButtonStyle()).disabled(chat.transcript.isRunning)
+                    .buttonStyle(SecondaryButtonStyle())
             }
         }
     }
@@ -171,8 +171,8 @@ struct ChatView: View {
                     Image(systemName: "mic.fill").font(.mission(.headline, .semibold)).foregroundStyle(Tok.accent)
                         .frame(width: 44, height: 44).background(Tok.accent.opacity(0.14), in: Circle())
                 }
-                .disabled(chat.transcript.isRunning).accessibilityLabel("Talk instead")
-                if chat.transcript.isRunning {
+                .disabled(chat.transcript.isWorking).accessibilityLabel("Talk instead")
+                if chat.transcript.isWorking {
                     Button { chat.cancelTurn() } label: {
                         Image(systemName: "stop.fill").font(.mission(.headline, .semibold)).foregroundStyle(Tok.onAccent)
                             .frame(width: 44, height: 44).background(Tok.accent.opacity(0.6), in: Circle())
@@ -193,7 +193,7 @@ struct ChatView: View {
     }
 
     private var canSend: Bool {
-        !draft.trimmed.isEmpty && !chat.transcript.isRunning
+        !draft.trimmed.isEmpty && !chat.transcript.isWorking
             && (chat.question == nil || chat.question!.allowsFreeText || chat.question!.options.isEmpty)
     }
 
