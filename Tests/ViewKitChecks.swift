@@ -38,6 +38,11 @@ import Foundation
             let slots = decode(s["slots"]!, [String: Wire.Slot].self)
             let got = ViewKit.sentence(s["text"] as! String, slots: slots, data(s["data"] as! String), locale: en)
             precondition(got == (s["expect"] as? String), "\(s["name"]!): got \(String(describing: got))")
+            if s.keys.contains("expect_parts") {
+                let parts = ViewKit.sentenceParts(s["text"] as! String, slots: slots, data(s["data"] as! String), locale: en)
+                let want = (s["expect_parts"] as? [[Any]])?.map { ViewKit.Part(text: $0[0] as! String, isFigure: $0[1] as! Bool) }
+                precondition(parts == want, "\(s["name"]!) parts: got \(String(describing: parts))")
+            }
         }
         for b in vectors["buckets"] as! [[String: Any]] {
             let window = b["window"].map { decode($0, Wire.Window.self) }

@@ -184,13 +184,29 @@ enum ViewKit {
         }
     }
 
+    /// A piece of a sentence: plain words, or a figure the calculations filled in.
+    struct Part: Equatable { var text: String; var isFigure: Bool }
+
+    private static let slotName = try! NSRegularExpression(pattern: #"\{([a-z][a-z0-9_]{0,31})\}"#)
+
+    /// A sentence as pieces, so a client can set its figures apart from its words; nil while any figure it needs is unknown.
+    static func sentenceParts(_ text: String, slots: [String: Wire.Slot], _ data: Data, locale: Locale = .current) -> [Part]? {
+        let whole = NSRange(text.startIndex..., in: text)
+        var parts: [Part] = [], cursor = text.startIndex
+        for match in slotName.matches(in: text, range: whole) {
+            guard let all = Range(match.range, in: text), let name = Range(match.range(at: 1), in: text) else { continue }
+            if all.lowerBound > cursor { parts.append(Part(text: String(text[cursor..<all.lowerBound]), isFigure: false)) }
+            guard let slot = slots[String(text[name])],
+                  let printed = format(evaluate(slot.calc, data), format: slot.format, unit: slot.unit, decimals: slot.decimals, locale: locale) else { return nil }
+            parts.append(Part(text: printed, isFigure: true))
+            cursor = all.upperBound
+        }
+        if cursor < text.endIndex { parts.append(Part(text: String(text[cursor...]), isFigure: false)) }
+        return parts
+    }
+
     /// A sentence with every {name} filled in, or nil while any figure it needs is unknown.
     static func sentence(_ text: String, slots: [String: Wire.Slot], _ data: Data, locale: Locale = .current) -> String? {
-        var out = text
-        for (name, slot) in slots {
-            guard let printed = format(evaluate(slot.calc, data), format: slot.format, unit: slot.unit, decimals: slot.decimals, locale: locale) else { return nil }
-            out = out.replacingOccurrences(of: "{\(name)}", with: printed)
-        }
-        return out
+        sentenceParts(text, slots: slots, data, locale: locale)?.map(\.text).joined()
     }
 }
