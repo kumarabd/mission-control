@@ -81,7 +81,8 @@ extension Wire {
 
 /// One app/platform identity for native rendering.
 enum TrackerClient {
-    static func catalog(isPad: Bool) -> String { "mission-control.\(isPad ? "ipados" : "ios").view-kit.v1" }
+    /// The view kit this client draws. One manifest per goal serves every client; each draws it with its own components.
+    static let catalog = "view-kit.v1"
     static func number(_ text: String, locale: Locale = .current) -> Double? {
         let scanner = Scanner(string: text.trimmingCharacters(in: .whitespacesAndNewlines))
         scanner.locale = locale

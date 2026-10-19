@@ -6,7 +6,7 @@ import Foundation
         func decode<T: Decodable>(_ name: String, _ type: T.Type) throws -> T {
             try Wire.decoder.decode(type, from: Data(contentsOf: dir.appendingPathComponent(name + ".json")))
         }
-        let catalog = TrackerClient.catalog(isPad: false)
+        let catalog = TrackerClient.catalog
         let legacy = try decode("goal", Wire.Goal.self)
         let view = try decode("view", Wire.GoalView.self)
         let state = try decode("view_state", Wire.ViewState.self)
@@ -20,7 +20,7 @@ import Foundation
         precondition(weight?.source == Wire.MetricSource(provider: "health", series: "body_weight"))
         precondition(view.metrics.first { $0.id == "distance" }?.source == nil)
         precondition(state.view(catalog: catalog) != nil)
-        precondition(state.view(catalog: TrackerClient.catalog(isPad: true)) == nil)
+        precondition(state.view(catalog: "another-kit.v1") == nil)
         precondition(view.blocks.allSatisfy { view.supports($0) })
         precondition(view.blocks.contains { $0.kind == "link" })
 

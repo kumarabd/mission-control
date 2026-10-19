@@ -13,7 +13,7 @@ struct GoalDetail: View {
     @State private var loads: [String: KitLoad] = [:]
     @State private var busy = false
     @State private var keys: [String: String] = [:]
-    private var catalog: String { TrackerClient.catalog(isPad: UIDevice.current.userInterfaceIdiom == .pad) }
+    private var catalog: String { TrackerClient.catalog }
     private var goal: Wire.Goal? { life.goals.first { $0.id == goalID } }
 
     var body: some View {
