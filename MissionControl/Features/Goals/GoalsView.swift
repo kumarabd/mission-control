@@ -42,13 +42,10 @@ struct GoalRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             Text(goal.title).font(.mission(.headline, .medium))
-            if let metric = goal.tracker?.metrics?.first {
-                Text(metric.target.map { "\(metric.label) · Target \($0.formatted()) \(metric.unit)" } ?? "Track \(metric.label.lowercased())")
-                    .font(.mission(.subheadline)).foregroundStyle(Tok.muted)
-            } else if goal.tracker != nil, !goal.steps.isEmpty {
-                Text("\(goal.progress.done) of \(goal.progress.total) milestones completed").font(.mission(.subheadline)).foregroundStyle(Tok.muted)
-            } else if let c = goal.consistency, c.last30.scheduled > 0 {
+            if let c = goal.consistency, c.last30.scheduled > 0 {
                 MissionProgressBar(fraction: Double(c.last30.done) / Double(c.last30.scheduled), label: "\(c.last30.done) of \(c.last30.scheduled) routine days kept")
+            } else if !goal.steps.isEmpty {
+                Text("\(goal.progress.done) of \(goal.progress.total) milestones completed").font(.mission(.subheadline)).foregroundStyle(Tok.muted)
             } else {
                 Text(routines == 0 ? "No routines yet" : "Just started").font(.mission(.subheadline)).foregroundStyle(Tok.muted)
             }
@@ -59,7 +56,7 @@ struct GoalRow: View {
     }
 }
 
-/// Existing goals and older servers retain their basic review until a tracker is accepted.
+/// A goal with no view for this device shows its basic review until the assistant adds one.
 struct GoalReview: View {
     @Environment(Life.self) private var life
     @Environment(ChatModel.self) private var chat

@@ -134,14 +134,17 @@ final class Life {
         do { goals = try await service.list(); goalsLoadError = nil } catch { goalsLoadError = Self.goalMessage(error); self.error = goalsLoadError }
     }
 
-    func loadTracker(goalID: String, catalog: String) async throws -> Wire.TrackerState {
+    func loadView(goalID: String, catalog: String) async throws -> Wire.ViewState {
         guard let service = goalService else { throw LifeError.notProvisioned }
-        return try await service.tracker(goalID: goalID, catalog: catalog)
+        return try await service.viewState(goalID: goalID, catalog: catalog)
     }
-    func reviewTracker(_ proposal: Wire.TrackerProposal, accept: Bool, key: String) async throws {
-        guard let service = goalService else { throw LifeError.notProvisioned }
-        if accept { try await service.apply(proposal, key: key) } else { try await service.discard(proposal, key: key) }
-        await loadGoals()
+    private var providerService: ProviderService?
+    func attachProviders(_ service: ProviderService?) { providerService = service }
+    /// A bound metric's recent values, read live from its data provider.
+    func loadSeries(provider: String, series: String) async throws -> Wire.SeriesData {
+        guard let service = providerService else { throw LifeError.notProvisioned }
+        let range = TrackerClient.seriesRange()
+        return try await service.series(provider: provider, series: series, from: range.from, to: range.to)
     }
     func saveMeasurement(_ input: GoalsService.MeasurementIn) async throws {
         guard let service = goalService else { throw LifeError.notProvisioned }

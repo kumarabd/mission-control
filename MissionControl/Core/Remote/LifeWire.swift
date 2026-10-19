@@ -142,8 +142,6 @@ enum Wire {
         var routineIds: [String]?
         /// How well those routines were kept, summed over them. Keeping up, not how far the outcome has moved. Absent from an older engine.
         var consistency: GoalConsistency?
-        var tracker: TrackerDefinition? = nil
-        var trackerRevision: Int? = nil
     }
 
     struct PlanItem: Codable, Equatable, Identifiable {

@@ -99,6 +99,7 @@ struct MainTabs: View {
                 l.attachReminders(RemindersService(api: api))
                 l.attachRoutines(RoutinesService(api: api))
                 l.attachGoals(GoalsService(api: api))
+                l.attachProviders(ProviderService(routerBaseURL: Config.routerBaseURL, token: { [auth] in await auth.token() }))
                 l.attachPlan(PlanService(api: api))
                 l.attachSettings(SettingsService(api: api))
                 // The notification inbox is the gateway's, not the Life Engine's: it holds what the assistant sent.
