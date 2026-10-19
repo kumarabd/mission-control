@@ -33,7 +33,6 @@ final class ChatModel {
     private var open = false
     /// A turn must have started before a question can belong to it: a leftover question from an earlier turn must not
     /// attach itself to a conversation that has just opened.
-    private var sawTurn = false
 
     init() {
         gateway.onEvent = { [weak self] event in self?.handle(event) }
@@ -105,7 +104,6 @@ final class ChatModel {
     private func handle(_ event: MobileGateway.Event) {
         switch event {
         case .turnStarted(let turn):
-            sawTurn = true
             transcript.apply(.started(turn: turn))
         case .message(let turn, let seq, let role, let content, let clientMessageID):
             transcript.apply(.message(turn: turn, seq: seq, role: role, content: content, clientMessageID: clientMessageID))
@@ -115,11 +113,11 @@ final class ChatModel {
             transcript.apply(.retract(turn: turn))
         case .status(let turn, let text):
             transcript.apply(.status(turn: turn, text: text))
-        case .askUser(let q) where sawTurn:
+        case .askUser(let q):
+            // The gateway sends only a question whose turn is still running, and sends it again after a turn_end
+            // clears it: an engine task's question belongs to the task, not to the chat turn that was running.
             question = Question(requestID: q.requestID, prompt: q.prompt, options: q.options, allowsFreeText: q.allowsFreeText)
             transcript.apply(.asked)
-        case .askUser:
-            break    // a question with no turn behind it is a leftover, not something to answer
         case .turnEnded(let turn, let status):
             transcript.apply(.ended(turn: turn, status: status))
             question = nil
