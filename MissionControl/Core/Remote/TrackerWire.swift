@@ -45,7 +45,7 @@ extension Wire {
         var createdAt: Date?; var updatedAt: Date?
         /// A block this client can show. An unknown one is shown as unsupported on its own; it never hides the rest.
         func supports(_ block: ViewBlock) -> Bool {
-            let known = Set(["sentence", "bar", "series", "grid", "steps", "timeline", "log", "text", "link"])
+            let known = Set(["sentence", "bar", "series", "grid", "steps", "timeline", "routines", "log", "text", "link"])
             guard known.contains(block.kind) else { return false }
             switch block.kind {
             case "series", "grid", "log": return metrics.contains { $0.id == block.metric }

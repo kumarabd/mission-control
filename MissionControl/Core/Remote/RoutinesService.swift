@@ -6,7 +6,7 @@ struct RoutinesService {
     var api: LifeAPI
 
     private struct Empty: Encodable {}
-    private struct LogIn: Encodable { var idempotencyKey: String; var routineId: String; var delta: Int; var variant: String }
+    private struct LogIn: Encodable { var idempotencyKey: String; var routineId: String; var delta: Int; var variant: String; var day: String? }
     private struct HistoryIn: Encodable { var routineId: String; var days: Int }
     private struct CreateIn: Encodable {
         var idempotencyKey: String; var title: String; var minutes: Int; var shortTitle: String; var shortMinutes: Int
@@ -23,8 +23,9 @@ struct RoutinesService {
     }
 
     /// One more time (or `-1` to take one back). Returns the routine as it now stands, so the screen can update at once.
-    func log(_ id: String, delta: Int = 1, short: Bool = false) async throws -> Wire.RoutineStatus {
-        try await api.call("routines_log", LogIn(idempotencyKey: UUID().uuidString, routineId: id, delta: delta, variant: short ? "short" : "full"))
+    /// `day` (yyyy-MM-dd) records or takes back one on a past day; omitted is today.
+    func log(_ id: String, delta: Int = 1, short: Bool = false, day: String? = nil) async throws -> Wire.RoutineStatus {
+        try await api.call("routines_log", LogIn(idempotencyKey: UUID().uuidString, routineId: id, delta: delta, variant: short ? "short" : "full", day: day))
     }
 
     func history(_ id: String, days: Int = 30) async throws -> Wire.RoutineHistory {

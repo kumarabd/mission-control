@@ -32,11 +32,9 @@ struct GoalDetail: View {
                             }
                             feedback
                             VStack(alignment: .leading, spacing: Space.m) {
-                                ForEach(view.blocks) { block in
-                                    KitBlockView(block: block, view: view, loads: loads, data: kitData, tracker: tracker, goal: goal, interactive: !busy,
-                                        onCheckIn: { metric, measurement in edit = MeasurementSelection(metric: metric, measurement: measurement) },
-                                        onStep: { step in Task { await complete(step) } },
-                                        onRetry: { Task { await refresh() } })
+                                ForEach(Array(view.blocks.enumerated()), id: \.element.id) { index, block in
+                                    KitBlockView(block: block, view: view, loads: loads, data: kitData, tracker: tracker, goal: goal,
+                                                 interactive: !busy, index: index, actions: kitActions)
                                 }
                             }
                             Button { ask(goal) } label: { Label("Change this view", systemImage: "bubble.left") }
@@ -66,6 +64,14 @@ struct GoalDetail: View {
                     .environment(life)
             }
         }
+    }
+    private var kitActions: KitActions {
+        KitActions(
+            checkIn: { metric, measurement in edit = MeasurementSelection(metric: metric, measurement: measurement) },
+            step: { step in Task { await complete(step) } },
+            retry: { Task { await refresh() } },
+            logDay: { metric, day, delta in Task { await logDay(metric, day, delta) } },
+            record: { metric, value in await record(metric, value) })
     }
     /// What the view's calculations read: every metric whose data has arrived.
     private var kitData: ViewKit.Data {
@@ -128,6 +134,32 @@ struct GoalDetail: View {
             return .ready(history.days.compactMap { d in d.count > 0 ? TrackerClient.day(d.day).map { ViewKit.Point(date: $0, value: Double(d.count)) } : nil })
         }
         return .ready([])
+    }
+    /// Records (or takes back) one on a day for a routine-backed metric. The day changes at once; the engine's answer follows.
+    private func logDay(_ metric: Wire.TrackerMetric, _ day: Date, _ delta: Int) async {
+        guard let routine = metric.routineId, !busy else { return }
+        if case .ready(var points)? = loads[metric.id] {
+            let cal = Calendar.current, start = cal.startOfDay(for: day)
+            if let i = points.firstIndex(where: { cal.startOfDay(for: $0.date) == start }) {
+                points[i].value += Double(delta)
+                if points[i].value <= 0 { points.remove(at: i) }
+            } else if delta > 0 { points.append(ViewKit.Point(date: day, value: Double(delta))) }
+            loads[metric.id] = .ready(points)
+        }
+        let f = DateFormatter()
+        f.calendar = .current; f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
+        await life.logRoutine(routine, delta: delta, day: f.string(from: day))
+        loads[metric.id] = await fetch(metric)
+        if let message = life.error { failure = message }
+    }
+    /// Saves one number a person typed into a log block; returns a message when it could not.
+    private func record(_ metric: Wire.TrackerMetric, _ value: Double) async -> String? {
+        do {
+            try await life.saveMeasurement(GoalsService.MeasurementIn(idempotencyKey: UUID().uuidString, goalId: goalID, metricId: metric.id, id: nil,
+                                                                      expectedVersion: nil, value: value, measuredAt: nil, notes: ""))
+            await refresh()
+            return nil
+        } catch { return Life.trackerMessage(error) }
     }
     private func key(_ intent: String) -> String {
         if let key = keys[intent] { return key }

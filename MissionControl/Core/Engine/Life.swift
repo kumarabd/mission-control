@@ -192,11 +192,11 @@ final class Life {
     }
 
     /// Adds one (or takes one back with `-1`) and shows the new count at once from the engine's answer.
-    func logRoutine(_ id: String, delta: Int = 1, short: Bool = false) async {
+    func logRoutine(_ id: String, delta: Int = 1, short: Bool = false, day: String? = nil) async {
         guard let service = routineService, !busyRoutines.contains(id) else { return }
         busyRoutines.insert(id); defer { busyRoutines.remove(id) }
         do {
-            let updated = try await service.log(id, delta: delta, short: short)
+            let updated = try await service.log(id, delta: delta, short: short, day: day)
             if let i = routines.firstIndex(where: { $0.id == id }) { routines[i] = updated }
             error = nil
             if goals.contains(where: { ($0.routineIds ?? []).contains(id) }) { await loadGoals() }
