@@ -14,6 +14,8 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var receipts: [WorkspaceUpdate] = []
     @State private var selectedUpdate: WorkspaceUpdate?
+    /// The message at the top before older ones were loaded, so the thread stays where it was instead of jumping.
+    @State private var keepAtTop: String?
     @FocusState private var focused: Bool
 
     private var voiceOn: Bool { voice.state != .idle && voice.state != .unavailable }
@@ -24,7 +26,11 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: Space.m) {
                         if chat.transcript.items.isEmpty && !chat.transcript.isRunning && !voiceOn { greeting }
-                        ForEach(chat.transcript.items) { item in bubble(item).id(item.id) }
+                        if chat.transcript.hasMoreEarlier && !chat.transcript.items.isEmpty {
+                            // Reaching the top asks for the next page of older messages, and says so while it waits.
+                            earlierRow.onAppear { loadEarlier() }
+                        }
+                        ForEach(chat.transcript.displayed) { item in bubble(item).id(item.id) }
                         if voiceOn, !voice.conversationText.displayedUserText.isEmpty {
                             bubble(.init(id: "voice:you", role: .you, text: voice.conversationText.displayedUserText, turn: 0, streaming: false))
                         }
@@ -49,6 +55,11 @@ struct ChatView: View {
                 .onChange(of: chat.transcript.items.count) { _, _ in scrollToEnd(proxy) }
                 .onChange(of: chat.transcript.items.last?.text) { _, _ in scrollToEnd(proxy) }
                 .onChange(of: chat.question?.requestID) { _, _ in scrollToEnd(proxy) }
+                .onChange(of: chat.transcript.earlier.count) { old, new in
+                    guard new > old, let id = keepAtTop else { return }
+                    keepAtTop = nil
+                    proxy.scrollTo(id, anchor: .top)
+                }
             }
             .screenBackground()
             .navigationTitle("Chat")
@@ -219,6 +230,25 @@ struct ChatView: View {
 
     private func consumeDraft() {
         if let draft = chat.consumeDraft(), !draft.isEmpty { self.draft = draft; focused = true }
+    }
+
+    private var earlierRow: some View {
+        HStack(spacing: Space.s) {
+            if chat.transcript.loadingEarlier {
+                ProgressView()
+                Text("Loading earlier messages\u{2026}").font(.mission(.footnote)).foregroundStyle(Tok.muted)
+            } else if let failure = chat.transcript.earlierFailure {
+                Text(failure).font(.mission(.footnote)).foregroundStyle(Tok.muted)
+                Button("Try again") { loadEarlier() }.font(.mission(.footnote)).frame(minHeight: 44)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 36)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func loadEarlier() {
+        keepAtTop = chat.transcript.displayed.first?.id
+        chat.loadEarlier()
     }
 
     private func scrollToEnd(_ proxy: ScrollViewProxy) {

@@ -43,6 +43,102 @@ struct ChatTranscriptChecks {
         broken.apply(.started(turn: 7)); broken.apply(.asked); broken.apply(.failed("You're offline."))
         precondition(!broken.waitingOnYou && !broken.isRunning)
 
+        // Only the most recent messages are kept: 8 turns of two messages arrive, 10 stay.
+        func turn(_ t: Int, in tr: inout ChatTranscript) {
+            tr.apply(.started(turn: t))
+            tr.apply(.message(turn: t, seq: 1, role: "user", content: "q\(t)", clientMessageID: nil))
+            tr.apply(.message(turn: t, seq: 2, role: "assistant", content: "a\(t)", clientMessageID: nil))
+            tr.apply(.ended(turn: t, status: "completed"))
+        }
+        var w = ChatTranscript()
+        for t in 1...8 { turn(t, in: &w) }
+        precondition(w.items.count == ChatTranscript.window && w.earlier.isEmpty, "\(w.items.count)")
+        precondition(w.items.map(\.id) == ["u:4:1", "a:4:2", "u:5:1", "a:5:2", "u:6:1", "a:6:2", "u:7:1", "a:7:2", "u:8:1", "a:8:2"], "\(w.items.map(\.id))")
+        precondition(w.displayed == w.items && w.hasMoreEarlier)
+
+        // A reconnect replays the recent turns again: what the window already passed is not appended after newer ones.
+        for t in 1...8 { turn(t, in: &w) }
+        precondition(w.items.map(\.id).first == "u:4:1" && w.items.last?.id == "a:8:2" && w.items.count == 10, "\(w.items.map(\.id))")
+        w.apply(.message(turn: 3, seq: 2, role: "assistant", content: "a3 again", clientMessageID: nil))
+        w.apply(.delta(turn: 2, text: "late stream", replace: false, progress: false))
+        precondition(w.items.count == 10 && !w.items.contains { $0.id == "a:3:2" || $0.id == "s:2" })
+
+        // A message just sent counts toward the window, and the window moves on with it.
+        w.apply(.sent(clientID: "n1", text: "hello"))
+        precondition(w.items.count == 10 && w.items.last?.id == "u:n1" && w.items.first?.id == "a:4:2", "\(w.items.map(\.id))")
+
+        // Reaching the top asks for the turns before the window; a turn cut in half by the window comes back whole.
+        var p = ChatTranscript()
+        for t in 1...8 { turn(t, in: &p) }
+        p.apply(.sent(clientID: "n2", text: "x"))                          // 11 items: u:4:1 dropped, a:4:2 first
+        precondition(p.items.first?.id == "a:4:2")
+        let before = p.beginLoadEarlier()
+        precondition(before == 5 && p.loadingEarlier, "\(String(describing: before))")   // one past the oldest turn held
+        precondition(p.beginLoadEarlier() == nil, "one request at a time")
+        p.apply(.earlier(messages: [
+            .init(turn: 2, seq: 1, role: "user", content: "q2"), .init(turn: 2, seq: 2, role: "assistant", content: "a2"),
+            .init(turn: 3, seq: 1, role: "user", content: "q3"), .init(turn: 3, seq: 2, role: "assistant", content: "a3"),
+            .init(turn: 4, seq: 1, role: "user", content: "q4"), .init(turn: 4, seq: 2, role: "assistant", content: "a4"),
+        ], oldestTurn: 2, hasMore: true))
+        precondition(!p.loadingEarlier && p.hasMoreEarlier)
+        precondition(p.earlier.map(\.id) == ["u:2:1", "a:2:2", "u:3:1", "a:3:2", "u:4:1"], "\(p.earlier.map(\.id))")   // a:4:2 is already held
+        precondition(p.displayed.map(\.id).first == "u:2:1" && p.displayed.count == p.earlier.count + p.items.count)
+        precondition(Set(p.displayed.map(\.id)).count == p.displayed.count, "no message is shown twice")
+        precondition(p.beginLoadEarlier() == 2, "the next page asks before the oldest turn looked at")
+        p.apply(.earlier(messages: [.init(turn: 1, seq: 1, role: "user", content: "q1"), .init(turn: 1, seq: 2, role: "assistant", content: "a1")], oldestTurn: 1, hasMore: false))
+        precondition(!p.hasMoreEarlier && p.beginLoadEarlier() == nil && p.displayed.first?.id == "u:1:1")
+
+        // With older messages on screen, a new message does not leave a gap: what falls off the window joins them.
+        let shown = p.displayed.map(\.id)
+        p.apply(.sent(clientID: "n3", text: "y"))
+        precondition(Array(p.displayed.map(\.id).dropLast()) == shown && p.displayed.last?.id == "u:n3", "\(p.displayed.map(\.id))")
+        precondition(p.items.count == 10)
+
+        // Closing the chat drops what was loaded from further back and keeps the window.
+        let window = p.items
+        p.dropEarlier()
+        precondition(p.earlier.isEmpty && p.items == window && p.hasMoreEarlier && !p.loadingEarlier)
+        precondition(p.beginLoadEarlier() != nil, "scrolling up again asks again")
+
+        // A failed request does not leave the thread waiting for a page that is not coming.
+        p.apply(.failed("You're offline."))
+        precondition(!p.loadingEarlier)
+
+        // Text that streamed before its step turned out to be narration is taken back, and only that turn's.
+        var r = ChatTranscript()
+        r.apply(.started(turn: 4))
+        r.apply(.delta(turn: 4, text: "I have spending_analyze which", replace: false, progress: false))
+        r.apply(.message(turn: 3, seq: 1, role: "assistant", content: "an earlier reply", clientMessageID: nil))
+        precondition(r.items.map(\.id) == ["s:4", "a:3:1"] || r.items.map(\.id) == ["a:3:1", "s:4"], "\(r.items.map(\.id))")
+        r.apply(.retract(turn: 4))
+        precondition(r.items.map(\.id) == ["a:3:1"], "\(r.items.map(\.id))")
+        r.apply(.retract(turn: 4))                                                 // nothing left to take back: harmless
+        r.apply(.retract(turn: 99))
+        precondition(r.items.map(\.id) == ["a:3:1"])
+        r.apply(.delta(turn: 4, text: "Here is the answer", replace: false, progress: false))   // the real reply streams on
+        precondition(r.items.contains { $0.id == "s:4" && $0.text == "Here is the answer" })
+        r.apply(.status(turn: 4, text: "Working on it"))
+        precondition(r.progress == "Working on it", "a retract does not touch the progress line")
+
+        // A failed request for older messages is shown at the top, stops the loading state, and clears on the next try.
+        var f = ChatTranscript()
+        for t in 1...8 { turn(t, in: &f) }
+        precondition(f.beginLoadEarlier() != nil && f.loadingEarlier && f.earlierFailure == nil)
+        f.apply(.earlierFailed("Couldn\u{2019}t load earlier messages."))
+        precondition(!f.loadingEarlier && f.earlierFailure != nil && f.failure == nil, "it is not a failure of the chat")
+        precondition(f.beginLoadEarlier() != nil && f.earlierFailure == nil && f.loadingEarlier, "trying again clears it and loads")
+        f.apply(.earlier(messages: [], oldestTurn: 1, hasMore: false))
+        precondition(!f.loadingEarlier && f.earlierFailure == nil)
+        f.apply(.earlierFailed("x")); f.dropEarlier()
+        precondition(f.earlierFailure == nil)
+
+        // Messages with nothing to show, or of another role, are not added from a page.
+        var q2 = ChatTranscript()
+        q2.apply(.message(turn: 9, seq: 1, role: "user", content: "hi", clientMessageID: nil))
+        q2.apply(.earlier(messages: [.init(turn: 8, seq: 1, role: "assistant", content: "  "), .init(turn: 8, seq: 2, role: "tool", content: "x"),
+                                     .init(turn: 8, seq: 3, role: "assistant", content: "real")], oldestTurn: 8, hasMore: true))
+        precondition(q2.earlier.map(\.id) == ["a:8:3"], "\(q2.earlier.map(\.id))")
+
         // Deltas build one bubble; replace resets it rather than appending.
         var d = ChatTranscript()
         d.apply(.started(turn: 1))

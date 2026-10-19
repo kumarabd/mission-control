@@ -99,7 +99,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
     private let synthesizer = AVSpeechSynthesizer()
     // No saved resume position: it is one number for the whole app, and when it is ahead of this session's turn numbers the
     // gateway skips the very turn we just started. Replayed history is ignored by `historyLoaded` below.
-    private let gateway = MobileGateway(usesResumeCursor: false)
+    private let gateway = MobileGateway(usesResumeCursor: false, humanOnly: true, streams: false)
     private var speechLocale: Locale?
     private var captureFormat: AVAudioFormat?
     private var transcriber: SpeechTranscriber?
@@ -805,7 +805,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
         case .status(let turn, _): return turn == activeTurnSequence
         case .turnEnded(let turn, _): return turn == activeTurnSequence
         case .askUser: return true
-        case .synchronizing, .historyLoaded, .error: return false
+        case .synchronizing, .historyLoaded, .error, .history, .retract: return false
         }
     }
 
@@ -836,6 +836,8 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
             historyLoaded = false
         case .historyLoaded:
             historyLoaded = true
+        case .history, .retract:
+            break    // the text chat's: it pages through older messages and asks for only what is for the person
         case .turnStarted(let turn):
             // While a new user frame is pending, accept only its canonical
             // acknowledgement below; an older in-flight turn must not speak.

@@ -8,6 +8,13 @@ import Foundation
 struct ChatTranscript {
     enum Role: Equatable { case you, assistant }
 
+    /// One message of an older page the gateway sent on request.
+    struct Past: Equatable { var turn: Int; var seq: Int; var role: String; var content: String }
+
+    /// How many of the most recent messages are kept. Older ones are fetched as the person scrolls up, and dropped again
+    /// when the chat closes, so what the app holds stays this small however long the conversation is.
+    static let window = 10
+
     enum Event {
         /// A message just typed here, before the gateway has echoed it.
         case sent(clientID: String, text: String)
@@ -20,8 +27,16 @@ struct ChatTranscript {
         case message(turn: Int, seq: Int, role: String, content: String, clientMessageID: String?)
         case delta(turn: Int, text: String, replace: Bool, progress: Bool)
         case status(turn: Int, text: String)
+        /// What streamed for this turn so far was narration between tool calls, which the gateway does not keep: take
+        /// the bubble back. A later stream for the same turn starts a fresh one.
+        case retract(turn: Int)
         case ended(turn: Int, status: String)
         case failed(String)
+        /// A page of older messages, oldest first. `oldestTurn` is the lowest turn the gateway looked at, even if it held
+        /// no message: the next request asks before it. `hasMore` is false at the start of the conversation.
+        case earlier(messages: [Past], oldestTurn: Int, hasMore: Bool)
+        /// A request for older messages failed. It is shown where the page would have gone, not as a failure of the chat.
+        case earlierFailed(String)
     }
 
     struct Item: Identifiable, Equatable {
@@ -32,7 +47,21 @@ struct ChatTranscript {
         var streaming: Bool
     }
 
+    /// The most recent messages (at most `window`), as they arrive.
     private(set) var items: [Item] = []
+    /// Older messages loaded on request, oldest first; they sit before `items` and are dropped by `dropEarlier()`.
+    private(set) var earlier: [Item] = []
+    private(set) var hasMoreEarlier = true
+    private(set) var loadingEarlier = false
+    /// Why the last request for older messages failed, until the next attempt.
+    private(set) var earlierFailure: String?
+    /// The next history request asks for turns before this one.
+    private var earlierCursor: Int?
+    /// Turns at or below this are older than the window. A replay of one is ignored, not appended again out of order.
+    private var floorTurn: Int?
+
+    /// What the thread shows: anything loaded from further back, then the recent window.
+    var displayed: [Item] { earlier + items }
     /// What the assistant says it is doing while it works ("Thinking…"), when it says anything.
     private(set) var progress = ""
     private(set) var runningTurn: Int?
@@ -53,6 +82,7 @@ struct ChatTranscript {
         switch event {
         case .sent(let clientID, let text):
             items.append(Item(id: "u:" + clientID, role: .you, text: text, turn: 0, streaming: false))
+            trim()
             pendingSend = true
             waitingOnYou = false
             failure = nil
@@ -60,6 +90,7 @@ struct ChatTranscript {
         case .answered(let text):
             guard Self.said(text) else { return }
             items.append(Item(id: "u:ans:" + UUID().uuidString, role: .you, text: text, turn: 0, streaming: false))
+            trim()
             waitingOnYou = false
             failure = nil
 
@@ -80,16 +111,18 @@ struct ChatTranscript {
                 // client prepends for the harness (see `spoken`).
                 if let clientMessageID, let index = items.firstIndex(where: { $0.id == "u:" + clientMessageID }) {
                     items[index] = Item(id: id, role: .you, text: items[index].text, turn: turn, streaming: false)
-                } else if !items.contains(where: { $0.id == id }) {
+                } else if !items.contains(where: { $0.id == id }), !isBeforeWindow(turn) {
                     items.append(Item(id: id, role: .you, text: Self.spoken(content), turn: turn, streaming: false))
+                    trim()
                 }
             } else if role == "assistant" {
                 durable.insert(turn)
                 let id = "a:\(turn):\(seq)"
                 if let index = items.firstIndex(where: { $0.id == id }) {
                     items[index].text = content                     // the same message replayed
-                } else {
+                } else if !isBeforeWindow(turn) {
                     items.append(Item(id: id, role: .assistant, text: content, turn: turn, streaming: false))
+                    trim()
                 }
                 items.removeAll { $0.id == Self.streamID(turn) }     // the durable text supersedes the stream
                 progress = ""
@@ -103,12 +136,16 @@ struct ChatTranscript {
             if let index = items.firstIndex(where: { $0.id == id }) {
                 items[index].text = replace ? text : items[index].text + text
                 items[index].streaming = true
-            } else {
+            } else if !isBeforeWindow(turn) {
                 items.append(Item(id: id, role: .assistant, text: text, turn: turn, streaming: true))
+                trim()
             }
 
         case .status(_, let text):
             progress = text
+
+        case .retract(let turn):
+            items.removeAll { $0.id == Self.streamID(turn) }
 
         case .ended(let turn, _):
             if let index = items.firstIndex(where: { $0.id == Self.streamID(turn) }) {
@@ -129,8 +166,65 @@ struct ChatTranscript {
             runningTurn = nil
             pendingSend = false
             waitingOnYou = false
+            loadingEarlier = false
             progress = ""
+
+        case .earlierFailed(let message):
+            loadingEarlier = false
+            earlierFailure = message
+
+        case .earlier(let past, let oldestTurn, let hasMore):
+            loadingEarlier = false
+            earlierFailure = nil
+            hasMoreEarlier = hasMore
+            earlierCursor = oldestTurn
+            var older: [Item] = []
+            for m in past where Self.said(m.content) && (m.role == "user" || m.role == "assistant") {
+                let id = (m.role == "user" ? "u:" : "a:") + "\(m.turn):\(m.seq)"
+                guard !earlier.contains(where: { $0.id == id }), !items.contains(where: { $0.id == id }) else { continue }
+                older.append(Item(id: id, role: m.role == "user" ? .you : .assistant,
+                                  text: m.role == "user" ? Self.spoken(m.content) : m.content, turn: m.turn, streaming: false))
+            }
+            earlier.insert(contentsOf: older, at: 0)
         }
+    }
+
+    /// Keeps only the most recent `window` messages. What falls off is dropped, unless older messages are already on
+    /// screen: then it joins them, so the two never leave a gap between them.
+    private mutating func trim() {
+        guard items.count > Self.window else { return }
+        let overflow = items.count - Self.window
+        let dropped = Array(items.prefix(overflow))
+        items.removeFirst(overflow)
+        if !earlier.isEmpty { earlier.append(contentsOf: dropped) }
+        hasMoreEarlier = true
+        if let first = items.first(where: { $0.turn > 0 }) { floorTurn = max(floorTurn ?? 0, first.turn) }
+    }
+
+    /// A message of a turn the window has already moved past. A replay (every reconnect replays the recent turns)
+    /// carries these; they are ignored, not appended after newer ones.
+    private func isBeforeWindow(_ turn: Int) -> Bool {
+        guard let floorTurn, turn > 0 else { return false }
+        return turn <= floorTurn
+    }
+
+    /// The turn a history request should ask before, or nil when there is nothing to ask or one is already out. The
+    /// first request starts one past the oldest turn held, so a turn the window cut in half comes back whole.
+    mutating func beginLoadEarlier() -> Int? {
+        guard hasMoreEarlier, !loadingEarlier else { return nil }
+        guard let before = earlierCursor ?? items.first(where: { $0.turn > 0 }).map({ $0.turn + 1 }) else { return nil }
+        loadingEarlier = true
+        earlierFailure = nil
+        return before
+    }
+
+    /// Forgets everything loaded from further back; the recent window stays.
+    mutating func dropEarlier() {
+        earlier = []
+        earlierCursor = nil
+        hasMoreEarlier = true
+        loadingEarlier = false
+        earlierFailure = nil
     }
 
     private static func streamID(_ turn: Int) -> String { "s:\(turn)" }

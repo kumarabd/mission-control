@@ -9,13 +9,22 @@ final class MobileGateway {
     enum Event {
         case turnStarted(Int)
         case delta(turnSequence: Int, text: String, replace: Bool, progress: Bool)
+        /// The text streamed for this turn so far was narration between tool calls: take it back.
+        case retract(turnSequence: Int)
         case message(turnSequence: Int, sequence: Int, role: String, content: String, clientMessageID: String?)
         case status(turnSequence: Int, text: String)
         case askUser(GatewayQuestion)
         case turnEnded(Int, status: String)
+        /// A page of older messages the gateway sent in answer to `requestHistory`, oldest first.
+        case history(beforeTurn: Int, oldestTurn: Int, hasMore: Bool, messages: [HistoryMessage])
         case synchronizing
         case historyLoaded
         case error(String)
+    }
+
+    struct HistoryMessage: Decodable {
+        let turnSequence: Int; let sequence: Int; let role: String; let content: String
+        enum CodingKeys: String, CodingKey { case role, content; case turnSequence = "turn_seq"; case sequence = "seq" }
     }
 
     struct GatewayQuestion {
@@ -33,8 +42,21 @@ final class MobileGateway {
     /// client that only wants the turn it just started (capture) turns it off: a stale number from an older session would
     /// make the gateway skip every turn at or below it, and the reply would never arrive.
     private let usesResumeCursor: Bool
+    /// Ask the gateway for only what is for the person: their own messages, the assistant's replies and questions. Not
+    /// the narration between tool calls, nor what a turn the agent started itself says. Both the text chat and the voice
+    /// assistant ask for this: in voice, narration would be read aloud.
+    private let humanOnly: Bool
+    /// False asks for no token streaming, so a reply arrives once, as its saved message. The first step's text streams
+    /// before anyone knows it was narration, and speech cannot be taken back, so the voice assistant turns streaming off
+    /// (it speaks a reply when it is saved, a little later than it would have started streaming). The text chat streams
+    /// and takes narration back with a retract instead.
+    private let streams: Bool
 
-    init(usesResumeCursor: Bool = true) { self.usesResumeCursor = usesResumeCursor }
+    init(usesResumeCursor: Bool = true, humanOnly: Bool = false, streams: Bool = true) {
+        self.usesResumeCursor = usesResumeCursor
+        self.humanOnly = humanOnly
+        self.streams = streams
+    }
 
     private let authentication: any AgentGatewayAuthenticating = ClerkGatewayAuthentication()
     private let gatewayURL = URL(string: "https://harness-router.nighthawklabs.org/gateway/ios/ws")!
@@ -125,6 +147,11 @@ final class MobileGateway {
     /// Stops whatever the assistant is doing for this session, so a question nobody will answer does not hold the turn open.
     func cancelTurn() { enqueue(["type": "cancel"]) }
 
+    /// Asks for the turns just before `turn`: the user and assistant messages of up to `limit` of them, oldest first.
+    func requestHistory(before turn: Int, limit: Int = 5) {
+        enqueue(["type": "history", "before_turn_seq": turn, "limit": limit])
+    }
+
     func answer(requestID: String, optionID: String? = nil, freeText: String? = nil) {
         var frame: [String: Any] = ["type": "answer", "request_id": requestID]
         if let optionID { frame["selected_option_id"] = optionID }
@@ -147,6 +174,8 @@ final class MobileGateway {
             var auth: [String: Any] = ["type": "auth", "token": token, "device_id": deviceID]
             if usesResumeCursor, let cursor = UserDefaults.standard.object(forKey: cursorKey) as? Int { auth["after_turn_seq"] = cursor }
             if let agentID = UserDefaults.standard.string(forKey: selectedAgentKey), !agentID.isEmpty { auth["agent_id"] = agentID }
+            if humanOnly { auth["human_only"] = true }
+            if !streams { auth["stream"] = false }
             try await send(auth, on: task)
             guard !Task.isCancelled, socket === task, transportGeneration == generation else { return }
             startPing(for: task)
@@ -229,8 +258,11 @@ final class MobileGateway {
             if let turn = frame.turnSequence { onEvent?(.turnStarted(turn)) }
         case "delta":
             if let turn = frame.turnSequence {
-                onEvent?(.delta(turnSequence: turn, text: frame.text ?? "", replace: frame.replace ?? false,
-                                progress: frame.progress == true))
+                if frame.retract == true { onEvent?(.retract(turnSequence: turn)) }
+                else {
+                    onEvent?(.delta(turnSequence: turn, text: frame.text ?? "", replace: frame.replace ?? false,
+                                    progress: frame.progress == true))
+                }
             }
         case "message":
             if let turn = frame.turnSequence, let sequence = frame.sequence, let role = frame.role, let content = frame.content {
@@ -238,6 +270,10 @@ final class MobileGateway {
             }
         case "status":
             if let turn = frame.turnSequence { onEvent?(.status(turnSequence: turn, text: frame.text ?? "")) }
+        case "history":
+            if let before = frame.beforeTurnSeq, let oldest = frame.oldestTurnSeq {
+                onEvent?(.history(beforeTurn: before, oldestTurn: oldest, hasMore: frame.hasMore ?? false, messages: frame.messages ?? []))
+            }
         case "ask_user":
             if let requestID = frame.requestID, let prompt = frame.prompt {
                 onEvent?(.askUser(.init(requestID: requestID, kind: frame.kind ?? "question", prompt: prompt,
@@ -294,8 +330,11 @@ private struct ServerFrame: Decodable {
     let clientMessageID: String?; let text: String?; let replace: Bool?; let progress: Bool?; let requestID: String?; let kind: String?
     let prompt: String?; let options: [MobileGateway.GatewayQuestion.Option]?; let allowsFreeText: Bool?
     let status: String?; let message: String?
+    let beforeTurnSeq: Int?; let oldestTurnSeq: Int?; let hasMore: Bool?; let messages: [MobileGateway.HistoryMessage]?
+    let retract: Bool?
     enum CodingKeys: String, CodingKey {
-        case type, role, content, text, replace, progress, kind, prompt, options, status, message
+        case type, role, content, text, replace, progress, kind, prompt, options, status, message, messages, retract
+        case beforeTurnSeq = "before_turn_seq"; case oldestTurnSeq = "oldest_turn_seq"; case hasMore = "has_more"
         case turnSequence = "turn_seq"; case sequence = "seq"; case clientMessageID = "client_msg_id"
         case requestID = "request_id"; case allowsFreeText = "allow_free_text"
     }

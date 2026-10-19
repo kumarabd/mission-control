@@ -18,7 +18,7 @@ final class ChatModel {
 
     /// The resume cursor is shared with the voice path and a stale value makes the gateway skip turns, so this always
     /// takes the replayed tail instead.
-    private let gateway = MobileGateway(usesResumeCursor: false)
+    private let gateway = MobileGateway(usesResumeCursor: false, humanOnly: true)
 
     private(set) var transcript = ChatTranscript()
     private(set) var question: Question?
@@ -51,6 +51,7 @@ final class ChatModel {
     func endInteraction() {
         guard open else { return }
         open = false
+        transcript.dropEarlier()
         gateway.endInteraction()
     }
 
@@ -71,6 +72,17 @@ final class ChatModel {
         if let shown { transcript.apply(.answered(text: shown)) }
         transcript.apply(.started(turn: -1))   // an answer carries on the same turn; keep it marked as running
     }
+
+    /// Asks the gateway for older messages, when there are any and none are already on the way.
+    func loadEarlier() {
+        guard let before = transcript.beginLoadEarlier() else { return }
+        earlierRequestedAt = Date()
+        gateway.requestHistory(before: before)
+    }
+    private var earlierRequestedAt: Date?
+    /// A page that arrives faster than this still shows the loading row for this long, so the person sees that
+    /// something was fetched rather than the thread changing on its own.
+    private static let minimumLoadingShown: TimeInterval = 0.4
 
     func cancelTurn() {
         gateway.cancelTurn()
@@ -99,6 +111,8 @@ final class ChatModel {
             transcript.apply(.message(turn: turn, seq: seq, role: role, content: content, clientMessageID: clientMessageID))
         case .delta(let turn, let text, let replace, let progress):
             transcript.apply(.delta(turn: turn, text: text, replace: replace, progress: progress))
+        case .retract(let turn):
+            transcript.apply(.retract(turn: turn))
         case .status(let turn, let text):
             transcript.apply(.status(turn: turn, text: text))
         case .askUser(let q) where sawTurn:
@@ -110,12 +124,24 @@ final class ChatModel {
             transcript.apply(.ended(turn: turn, status: status))
             question = nil
             completedTurns += 1
+        case .history(_, let oldest, let hasMore, let messages):
+            let page = ChatTranscript.Event.earlier(
+                messages: messages.map { .init(turn: $0.turnSequence, seq: $0.sequence, role: $0.role, content: $0.content) },
+                oldestTurn: oldest, hasMore: hasMore)
+            let wait = Self.minimumLoadingShown - Date().timeIntervalSince(earlierRequestedAt ?? .distantPast)
+            if wait > 0 {
+                Task { try? await Task.sleep(for: .seconds(wait)); transcript.apply(page) }
+            } else {
+                transcript.apply(page)
+            }
         case .historyLoaded:
             connected = true
         case .synchronizing:
             connected = false
         case .error(let message):
-            transcript.apply(.failed(message))
+            // While older messages are being fetched, an error is that request's: it belongs at the top of the thread.
+            if transcript.loadingEarlier { transcript.apply(.earlierFailed("Couldn\u{2019}t load earlier messages.")) }
+            else { transcript.apply(.failed(message)) }
         }
     }
 
