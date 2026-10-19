@@ -141,10 +141,10 @@ final class Life {
     private var providerService: ProviderService?
     func attachProviders(_ service: ProviderService?) { providerService = service }
     /// A bound metric's recent values, read live from its data provider.
-    func loadSeries(provider: String, series: String) async throws -> Wire.SeriesData {
+    func loadSeries(provider: String, series: String, granularity: String = "day") async throws -> Wire.SeriesData {
         guard let service = providerService else { throw LifeError.notProvisioned }
-        let range = TrackerClient.seriesRange()
-        return try await service.series(provider: provider, series: series, from: range.from, to: range.to)
+        let range = TrackerClient.seriesRange(days: 400)
+        return try await service.series(provider: provider, series: series, from: range.from, to: range.to, granularity: granularity)
     }
     func saveMeasurement(_ input: GoalsService.MeasurementIn) async throws {
         guard let service = goalService else { throw LifeError.notProvisioned }

@@ -22,18 +22,18 @@ import Foundation
         precondition(state.view(catalog: catalog) != nil)
         precondition(state.view(catalog: TrackerClient.catalog(isPad: true)) == nil)
         precondition(view.blocks.allSatisfy { view.supports($0) })
-        precondition(view.blocks.contains { $0.type == "link" })
+        precondition(view.blocks.contains { $0.kind == "link" })
 
         // Rendering guards: an unknown or unmatched block is unsupported on its own, never the whole view.
         var odd = view
-        odd.blocks[0].type = "remote_code"
+        odd.blocks[0].kind = "remote_code"
         precondition(!odd.supports(odd.blocks[0]) && odd.supports(odd.blocks[1]))
         odd = view
-        let trend = odd.blocks.firstIndex { $0.type == "metric_trend" }!
-        odd.blocks[trend].metricId = "missing"
+        let trend = odd.blocks.firstIndex { $0.kind == "series" }!
+        odd.blocks[trend].metric = "missing"
         precondition(!odd.supports(odd.blocks[trend]))
         odd = view
-        let link = odd.blocks.firstIndex { $0.type == "link" }!
+        let link = odd.blocks.firstIndex { $0.kind == "link" }!
         for bad in ["javascript:alert(1)", "data:text/html,x", "file:///etc/passwd", "not a url", ""] {
             odd.blocks[link].url = bad
             precondition(!odd.supports(odd.blocks[link]), bad)

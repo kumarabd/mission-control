@@ -4,31 +4,53 @@ extension Wire {
     struct TrackerMetric: Codable, Equatable, Identifiable {
         var id: String; var label: String; var unit: String
         var target: Double?; var minimum: Double?; var maximum: Double?
-        /// Where the values come from. Absent: the person records them.
+        /// Where the values come from: a provider's series, or a routine's logs. Neither: the person records them.
         var source: MetricSource?
+        var routineId: String?
         func accepts(_ value: Double) -> Bool {
             value.isFinite && (minimum.map { value >= $0 } ?? true) && (maximum.map { value <= $0 } ?? true)
         }
     }
     /// A data provider's series, read live: `provider` is the engine's router prefix (for example `finance`).
-    struct MetricSource: Codable, Equatable, Hashable { var provider: String; var series: String }
+    struct MetricSource: Codable, Equatable, Hashable { var provider: String; var series: String; var granularity: String? }
 
-    /// One block of a view: a catalogue type this client renders, naming the metric or address it needs.
-    struct ViewBlock: Codable, Equatable, Identifiable {
-        var id: String; var type: String; var title: String; var metricId: String?; var url: String?
+    /// The view kit. A view is composed from a finite set of blocks and calculations; none of it names a kind of goal.
+    /// The engine validates a manifest and this client evaluates the calculations on live data, so no figure in a view
+    /// was ever written by the model (docs: the engine's tracker_catalog_get).
+    struct Window: Codable, Equatable { var period: String?; var days: Int? }
+    struct Calc: Codable, Equatable {
+        var fn: String
+        var metric: String?; var value: Double?; var date: String?
+        var window: Window?; var period: String?; var per: String?
+        var args: [Calc]?
     }
-    /// A goal's tracker for one client catalogue: a manifest of blocks that refer to the goal and to metrics.
+    struct Slot: Codable, Equatable { var calc: Calc; var format: String; var unit: String?; var decimals: Int? }
+    struct Marker: Codable, Equatable { var at: Calc; var label: String }
+    struct Band: Codable, Equatable { var from: Calc; var to: Calc; var label: String }
+    /// One block of a view. A flat shape: which fields a kind uses is the engine's catalogue.
+    struct ViewBlock: Codable, Equatable, Identifiable {
+        var id: String; var kind: String; var title: String?; var emphasis: String?
+        var text: String?; var slots: [String: Slot]?
+        var value: Calc?; var of: Calc?; var markers: [Marker]?; var projection: Calc?
+        var metric: String?; var style: String?; var window: Window?; var bucket: String?; var aggregate: String?
+        var lines: [Marker]?; var band: Band?; var trendTo: Calc?; var layout: String?; var weeks: Int?
+        var source: String?; var thresholds: [Double]?
+        var format: String?; var unit: String?; var decimals: Int?
+        var body: String?; var url: String?
+    }
+    /// A goal's view for one client catalogue: a manifest of blocks that refer to the goal and to metrics.
     struct GoalView: Codable, Equatable, Identifiable {
         var id: String; var subjectKind: String; var subjectId: String; var catalogId: String
         var metrics: [TrackerMetric]; var blocks: [ViewBlock]; var version: Int
         var createdAt: Date?; var updatedAt: Date?
         /// A block this client can show. An unknown one is shown as unsupported on its own; it never hides the rest.
         func supports(_ block: ViewBlock) -> Bool {
-            switch block.type {
-            case "metric_trend", "check_in": return metrics.contains { $0.id == block.metricId }
-            case "milestones", "routine_consistency": return true
+            let known = Set(["sentence", "bar", "series", "grid", "steps", "timeline", "log", "text", "link"])
+            guard known.contains(block.kind) else { return false }
+            switch block.kind {
+            case "series", "grid", "log": return metrics.contains { $0.id == block.metric }
             case "link": return TrackerClient.link(block.url) != nil
-            default: return false
+            default: return true
             }
         }
     }
@@ -59,7 +81,7 @@ extension Wire {
 
 /// One app/platform identity for native rendering.
 enum TrackerClient {
-    static func catalog(isPad: Bool) -> String { "mission-control.\(isPad ? "ipados" : "ios").goal-tracker.v1" }
+    static func catalog(isPad: Bool) -> String { "mission-control.\(isPad ? "ipados" : "ios").view-kit.v1" }
     static func number(_ text: String, locale: Locale = .current) -> Double? {
         let scanner = Scanner(string: text.trimmingCharacters(in: .whitespacesAndNewlines))
         scanner.locale = locale

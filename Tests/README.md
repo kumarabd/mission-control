@@ -150,6 +150,11 @@ It does not contact a live gateway.
     xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Remote/LifeAPI.swift MissionControl/Core/Remote/GoalsService.swift Tests/TrackerContractChecks.swift -o /private/tmp/mission-tracker-checks
     /private/tmp/mission-tracker-checks Tests/Fixtures/life
 
+The view kit's calculations (the figures of a spending limit, a weigh-in and a habit, and that the engine's example manifests decode here):
+
+    xcrun swiftc -parse-as-library MissionControl/Core/Domain/ViewKit.swift MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Remote/LifeAPI.swift MissionControl/Core/Remote/GoalsService.swift Tests/ViewKitChecks.swift -o /private/tmp/mission-viewkit-checks
+    /private/tmp/mission-viewkit-checks Tests/Fixtures/views
+
 Decodes engine-recorded definitions, proposals and observations; rejects wrong-client or unknown-module rendering; checks legacy goals, numeric locale handling and exact record/update/delete/approval requests. The engine integration suite covers actual idempotency, stale revisions, unit/history preservation and concurrent approval. These checks do not prove an agent turn, a live tenant rollout, or device appearance.
 
 ## Semantic Memory
