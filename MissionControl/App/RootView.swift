@@ -53,6 +53,7 @@ struct MainTabs: View {
     @State private var life: Life?
     @State private var notifications = NotificationsModel()
     @State private var chat: ChatModel
+    @State private var agents = AgentsDirectory()
     @State private var tab = Tab.today
     @State private var memoryRefreshToken = 0
     @State private var settings = false
@@ -82,6 +83,8 @@ struct MainTabs: View {
                 .environment(life)
                 .environment(notifications)
                 .environment(chat)
+                .environment(agents)
+                .task { await agents.load() }
                 .sheet(isPresented: $settings) { SettingsView() }
                 .task { await life.syncTimeZone(); await life.load(); await notifications.refresh() }
                 .onAppear { chat.setForeground(scenePhase == .active) }

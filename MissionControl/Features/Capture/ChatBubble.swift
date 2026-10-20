@@ -1,19 +1,30 @@
 import SwiftUI
 import UIKit
 
-/// One message of the thread: yours on the right, the assistant's (set as markdown) on the left. A message in a run sits
+/// Who a message is from, for the picture beside it.
+struct ChatParty: Equatable {
+    var name: String
+    var imageURL: String?
+}
+
+/// One message of the thread: yours on the right, the assistant's (set as markdown) on the left, each with the sender's
+/// picture beside the last message of a run. A message in a run sits
 /// close under the one before it, and the last of a run carries the time. Yours also says where it stands: faded while
 /// sending, and, if it never got there, red with a way to send it again.
 struct ChatBubble: View {
     let item: ChatTranscript.Item
     var groupedAbove = false
     var showsTime = false
+    var showsAvatar = false
+    var agent = ChatParty(name: "Assistant")
+    var you = ChatParty(name: "You")
     var onRetry: () -> Void = {}
 
     var body: some View {
         VStack(alignment: item.role == .you ? .trailing : .leading, spacing: 3) {
-            HStack(spacing: 0) {
-                if item.role == .you { Spacer(minLength: 48) }
+            HStack(alignment: .bottom, spacing: Space.s) {
+                if item.role == .you { Spacer(minLength: 24) }
+                else { avatar(agent) }
                 Group {
                     if item.role == .assistant { MarkdownView(text: item.text) }
                     else { Text(item.text).font(.mission(.body)).foregroundStyle(Tok.text) }
@@ -27,15 +38,23 @@ struct ChatBubble: View {
                     Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = item.text }
                     if item.delivery == .failed { Button("Send again", systemImage: "arrow.clockwise", action: onRetry) }
                 }
-                if item.role == .assistant { Spacer(minLength: 48) }
+                if item.role == .assistant { Spacer(minLength: 24) }
+                else { avatar(you) }
             }
-            footer
+            footer.padding(item.role == .you ? .trailing : .leading, Self.avatarSize + Space.s)
         }
         .padding(.top, groupedAbove ? -Space.s + 2 : 0)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel((item.role == .you ? "You: " : "Assistant: ") + item.text + (item.delivery == .failed ? ". Not delivered." : ""))
+        .accessibilityLabel((item.role == .you ? "You: " : "\(agent.name): ") + item.text + (item.delivery == .failed ? ". Not delivered." : ""))
         .accessibilityAction(named: "Send again") { if item.delivery == .failed { onRetry() } }
     }
+
+    /// The picture at the end of a run; the rest of the run keeps the same gap so the bubbles stay in line.
+    @ViewBuilder private func avatar(_ party: ChatParty) -> some View {
+        if showsAvatar { AvatarView(name: party.name, url: party.imageURL, size: Self.avatarSize).transition(.scale.combined(with: .opacity)) }
+        else { Color.clear.frame(width: Self.avatarSize, height: Self.avatarSize) }
+    }
+    static let avatarSize: CGFloat = 30
 
     @ViewBuilder private var footer: some View {
         switch item.delivery {

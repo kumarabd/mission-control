@@ -273,11 +273,11 @@ struct ChatTranscriptChecks {
         func shape(_ r: ChatTranscript.Row) -> String {
             switch r {
             case .day: "day"
-            case .message(let i, let g, let t): "\(i.id)\(g ? "^" : "")\(t ? "@" : "")"
+            case .message(let i, let g, let t, let e): "\(i.id)\(g ? "^" : "")\(t ? "@" : "")\(e ? "$" : "")"
             }
         }
-        precondition(rows.map(shape) == ["day", "a@", "b@", "day", "c", "d^@", "e@"], "\(rows.map(shape))")
-        precondition(ChatTranscript.rows([item("x", .you, nil)], calendar: cal).map(shape) == ["x"], "a message with no time gets no heading and no time")
+        precondition(rows.map(shape) == ["day", "a@$", "b@$", "day", "c", "d^@$", "e@$"], "\(rows.map(shape))")
+        precondition(ChatTranscript.rows([item("x", .you, nil)], calendar: cal).map(shape) == ["x$"], "a message with no time gets no heading and no time")
 
         // On disk: what was saved comes back as it was, one file per person, and a file that cannot be read is an error.
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("chat-store-" + UUID().uuidString)

@@ -26,6 +26,14 @@ final class ChatModel {
     /// takes the replayed tail instead.
     private let gateway = MobileGateway(usesResumeCursor: false, humanOnly: true)
     private let owner: String
+    /// The agent this conversation is with. Each agent has its own thread on the gateway and its own saved window here.
+    private(set) var agentID: String
+    /// Where the pick is kept; the gateway reads it when it connects, and Settings > Agents writes it. Empty is the default agent.
+    private static let selectionKey = "gateway.ios.selectedAgentID"
+    private static func selectedAgent() -> String {
+        let id = UserDefaults.standard.string(forKey: selectionKey) ?? ""
+        return id.isEmpty ? ChatStore.defaultAgent : id
+    }
     private static let log = Logger(subsystem: "com.kumarabd.MissionControl", category: "chat")
 
     private(set) var transcript = ChatTranscript()
@@ -56,14 +64,47 @@ final class ChatModel {
 
     init(owner: String) {
         self.owner = owner
+        agentID = Self.selectedAgent()
         gateway.onEvent = { [weak self] event in self?.handle(event) }
-        do { transcript.restore(try ChatStore.load(owner: owner)) }
+        restoreSaved()
+    }
+
+    private func restoreSaved() {
+        do { transcript.restore(try ChatStore.load(owner: owner, agent: agentID)) }
         catch {
             // The saved copy is only a cache of what the gateway holds: say it could not be read, drop it, carry on.
             Self.log.error("saved chat unreadable: \(error.localizedDescription, privacy: .public)")
-            ChatStore.remove(owner: owner)
+            ChatStore.remove(owner: owner, agent: agentID)
             transcript.apply(.failed("The saved messages could not be read; showing what the assistant has."))
         }
+    }
+
+    // MARK: Which agent
+
+    /// Turns to another agent: its thread replaces this one (the saved window at once, the gateway's replay once connected).
+    func switchAgent(to id: String) {
+        guard id != agentID else { return }
+        saveTask?.cancel()
+        do { try ChatStore.save(transcript.saved, owner: owner, agent: agentID) }
+        catch { Self.log.error("could not save the chat: \(error.localizedDescription, privacy: .public)") }
+        deliveryTimers.values.forEach { $0.cancel() }
+        deliveryTimers = [:]
+        UserDefaults.standard.set(id == ChatStore.defaultAgent ? "" : id, forKey: Self.selectionKey)
+        agentID = id
+        transcript = ChatTranscript()
+        question = nil
+        unread = 0
+        restoreSaved()
+        // The gateway reads the pick when it connects, so a live connection is closed and opened again.
+        let wasOpen = open
+        endInteraction()
+        if wasOpen { reconcile() }
+    }
+
+    /// Settings > Agents can change the pick while Chat is not showing; Chat calls this when it appears.
+    func syncAgentSelection() {
+        let id = Self.selectedAgent()
+        if id != agentID { switchAgent(to: id) }
     }
 
     // MARK: The socket's lifetime
@@ -188,7 +229,7 @@ final class ChatModel {
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(400))
             guard !Task.isCancelled, let self else { return }
-            do { try ChatStore.save(transcript.saved, owner: owner) }
+            do { try ChatStore.save(transcript.saved, owner: owner, agent: agentID) }
             catch { Self.log.error("could not save the chat: \(error.localizedDescription, privacy: .public)") }
         }
     }

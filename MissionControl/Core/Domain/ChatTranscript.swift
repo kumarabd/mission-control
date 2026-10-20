@@ -293,11 +293,11 @@ struct ChatTranscript {
     /// One line of the thread as drawn: a day heading, or a message with how it sits among its neighbours.
     enum Row: Identifiable, Equatable {
         case day(Date)
-        case message(Item, groupedAbove: Bool, showsTime: Bool)
+        case message(Item, groupedAbove: Bool, showsTime: Bool, endsRun: Bool)
         var id: String {
             switch self {
             case .day(let d): "day:\(Int(d.timeIntervalSince1970))"
-            case .message(let item, _, _): item.id
+            case .message(let item, _, _, _): item.id
             }
         }
     }
@@ -315,7 +315,8 @@ struct ChatTranscript {
             }
             let grouped = previous.map { Self.sameRun($0, item) } ?? false
             let next = index + 1 < items.count ? items[index + 1] : nil
-            rows.append(.message(item, groupedAbove: grouped, showsTime: item.at != nil && !(next.map { Self.sameRun(item, $0) } ?? false)))
+            let endsRun = !(next.map { Self.sameRun(item, $0) } ?? false)
+            rows.append(.message(item, groupedAbove: grouped, showsTime: item.at != nil && endsRun, endsRun: endsRun))
         }
         return rows
     }

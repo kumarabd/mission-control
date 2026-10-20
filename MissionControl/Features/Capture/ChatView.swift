@@ -8,6 +8,7 @@ struct ChatView: View {
     var onSettings: () -> Void = {}
     @Environment(Life.self) private var life
     @Environment(ChatModel.self) private var chat
+    @Environment(AgentsDirectory.self) private var directory
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var voice = AssistantVoiceCoordinator()
@@ -19,9 +20,14 @@ struct ChatView: View {
     /// Whether the end of the thread is in view. Replies do not pull you down from older messages you are reading.
     @State private var atBottom = true
     @State private var newBelow = 0
+    @State private var switching = false
     @FocusState private var focused: Bool
 
     private var voiceOn: Bool { voice.state != .idle && voice.state != .unavailable }
+    /// The assistant is busy with a turn, typed or spoken.
+    private var busy: Bool { chat.transcript.isWorking || voice.state == .processing }
+    private var agent: ChatParty { ChatParty(name: directory.name(chat.agentID), imageURL: directory.avatarURL(chat.agentID)) }
+    private var you: ChatParty { ChatParty(name: AgentsDirectory.profileName, imageURL: AgentsDirectory.profileImageURL) }
 
     var body: some View {
         NavigationStack {
@@ -36,17 +42,20 @@ struct ChatView: View {
                         ForEach(ChatTranscript.rows(chat.transcript.displayed)) { row in
                             switch row {
                             case .day(let day): ChatDayHeading(day: day)
-                            case .message(let item, let grouped, let showsTime):
-                                ChatBubble(item: item, groupedAbove: grouped, showsTime: showsTime, onRetry: { chat.retry(item) }).id(item.id)
+                            case .message(let item, let grouped, let showsTime, let endsRun):
+                                ChatBubble(item: item, groupedAbove: grouped, showsTime: showsTime, showsAvatar: endsRun, agent: agent, you: you,
+                                           onRetry: { chat.retry(item) }).id(item.id)
                             }
                         }
                         if voiceOn, !voice.conversationText.displayedUserText.isEmpty {
-                            ChatBubble(item: .init(id: "voice:you", role: .you, text: voice.conversationText.displayedUserText, turn: 0, streaming: false))
+                            ChatBubble(item: .init(id: "voice:you", role: .you, text: voice.conversationText.displayedUserText, turn: 0, streaming: false),
+                                       showsAvatar: true, agent: agent, you: you)
                         }
                         if voiceOn, !voice.conversationText.assistantText.isEmpty {
-                            ChatBubble(item: .init(id: "voice:assistant", role: .assistant, text: voice.conversationText.assistantText, turn: 0, streaming: false))
+                            ChatBubble(item: .init(id: "voice:assistant", role: .assistant, text: voice.conversationText.assistantText, turn: 0, streaming: false),
+                                       showsAvatar: true, agent: agent, you: you)
                         }
-                        if chat.transcript.isWorking { working }
+                        if busy { working }
                         if !receipts.isEmpty { receiptsBlock }
                         if let question = chat.question { askBlock(question) }
                         if voice.state == .unavailable, !voice.message.isEmpty {
@@ -79,11 +88,13 @@ struct ChatView: View {
             }
             .screenBackground()
             .navigationTitle("Chat")
+            .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .top) { if chat.showsOffline { offlineBanner } }
             .safeAreaInset(edge: .bottom) { bottomBar }
             .sensoryFeedback(.impact(weight: .light), trigger: chat.transcript.items.count)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { AppMark() }
+                ToolbarItem(placement: .principal) { agentChip }
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button("Settings", systemImage: "person.crop.circle", action: onSettings).frame(minWidth: 44, minHeight: 44)
                 }
@@ -96,7 +107,12 @@ struct ChatView: View {
                 case .task: PlanItemDetailSheet(id: item.entityID)
                 }
             }
+            .sheet(isPresented: $switching) {
+                AgentSwitcher(onManage: { switching = false; onSettings() })
+                    .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+            }
             .onAppear {
+                chat.syncAgentSelection()
                 chat.isVisible = true
                 voice.updateGatewayAppActivity(scenePhase == .active)
                 consumeDraft()
@@ -160,14 +176,38 @@ struct ChatView: View {
             .font(.mission(.footnote)).foregroundStyle(Tok.muted)
     }
 
+    /// The assistant is on it: its picture, the dots and, when it says, what it is doing. Shown for spoken turns too, where
+    /// the text connection is not the one working.
     private var working: some View {
-        VStack(alignment: .leading, spacing: Space.xs) {
-            TypingDots()
-            if !chat.transcript.progress.isEmpty {
-                Text(chat.transcript.progress).font(.mission(.footnote)).foregroundStyle(Tok.muted)
+        HStack(alignment: .bottom, spacing: Space.s) {
+            AvatarView(name: agent.name, url: agent.imageURL, size: ChatBubble.avatarSize)
+            VStack(alignment: .leading, spacing: Space.xs) {
+                TypingDots()
+                if !chat.transcript.progress.isEmpty, chat.transcript.isWorking {
+                    Text(chat.transcript.progress).font(.mission(.footnote)).foregroundStyle(Tok.muted)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .transition(.opacity)
+    }
+
+    /// Who you are talking to; tapping it opens the list of agents.
+    private var agentChip: some View {
+        Button { focused = false; switching = true } label: {
+            HStack(spacing: Space.s) {
+                AvatarView(name: agent.name, url: agent.imageURL, size: 26)
+                Text(agent.name).font(.mission(.headline, .medium)).foregroundStyle(Tok.text).lineLimit(1)
+                if directory.agents.count > 1 || !directory.loaded {
+                    Image(systemName: "chevron.down").font(.mission(.caption2, .semibold)).foregroundStyle(Tok.muted)
+                }
+            }
+            .padding(.horizontal, Space.m).frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(voiceOn)
+        .accessibilityLabel("Talking to \(agent.name). Change agent")
     }
 
     /// A question the assistant needs answered, with its suggested answers as buttons.
@@ -317,5 +357,68 @@ struct ChatView: View {
         voice.toggle()
         chat.setVoice(false)
         Task { await refresh() }
+    }
+}
+
+/// The agents to talk to, each with its picture and what it is for. Picking one turns the chat to that agent's thread.
+private struct AgentSwitcher: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(ChatModel.self) private var chat
+    @Environment(AgentsDirectory.self) private var directory
+    var onManage: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if directory.agents.isEmpty {
+                    EmptyState(symbol: directory.failure == nil ? "person.2" : "wifi.exclamationmark",
+                               title: directory.failure ?? "Just one assistant",
+                               message: directory.failure == nil ? "Add more agents in Settings and switch between them here." : "Check your connection and try again.",
+                               actionTitle: directory.failure == nil ? "Manage agents" : "Try again") {
+                        if directory.failure == nil { onManage() } else { Task { await directory.load() } }
+                    }
+                } else {
+                    ScrollView {
+                        VStack(spacing: Space.s) {
+                            ForEach(directory.agents) { agent in row(agent) }
+                            Button("Manage agents", action: onManage).font(.mission(.subheadline)).frame(minHeight: 44).padding(.top, Space.s)
+                        }
+                        .padding(Space.l)
+                    }
+                }
+            }
+            .screenBackground()
+            .navigationTitle("Talk to").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .task { await directory.load() }
+        }
+    }
+
+    private func row(_ agent: GatewayAgentsAPI.Agent) -> some View {
+        let selected = agent.agentID == chat.agentID
+        return Button {
+            withAnimation(.snappy) { chat.switchAgent(to: agent.agentID) }
+            dismiss()
+        } label: {
+            HStack(spacing: Space.m) {
+                AvatarView(name: agent.displayName, url: agent.avatarURL, size: 48)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(agent.displayName).font(.mission(.headline, .medium)).foregroundStyle(Tok.text)
+                    if !agent.description.isEmpty {
+                        Text(agent.description).font(.mission(.footnote)).foregroundStyle(Tok.muted).lineLimit(2).multilineTextAlignment(.leading)
+                    }
+                }
+                Spacer(minLength: 0)
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.mission(.title3)).foregroundStyle(selected ? Tok.accent : Tok.hairline)
+            }
+            .padding(Space.m)
+            .background(selected ? Tok.accent.opacity(0.10) : Tok.surface, in: MissionTheme.cardShape)
+            .overlay { MissionTheme.cardShape.strokeBorder(selected ? Tok.accent.opacity(0.5) : Tok.hairline) }
+            .contentShape(MissionTheme.cardShape)
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
