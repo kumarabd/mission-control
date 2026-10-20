@@ -43,9 +43,9 @@ final class PushRegistrar {
         #else
         let environment = "production"
         #endif
-        // `sources` names the engines this app is the face of, so a notification from one is pushed to this app and no other.
+        // `sources` names the engines this app is the face of (the Life Engine, and the agent itself for its own notifications), so a notification from one is pushed to this app and no other.
         let body: [String: Any] = ["platform": "ios", "device_id": GatewayDeviceIdentity.value, "token": hex, "environment": environment,
-                                   "topic": Bundle.main.bundleIdentifier ?? "", "name": UIDevice.current.name, "sources": ["life"]]
+                                   "topic": Bundle.main.bundleIdentifier ?? "", "name": UIDevice.current.name, "sources": ["life", "agent"]]
         var req = URLRequest(url: url, timeoutInterval: 20)
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
