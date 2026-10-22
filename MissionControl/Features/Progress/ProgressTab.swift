@@ -10,6 +10,9 @@ struct ProgressTab: View {
     @State private var sheet: Sheet?
     @State private var detail: ReminderRef?
     @State private var path = NavigationPath()
+    @State private var selectedGoal: GoalRef?
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var splitGoals: Bool { sizeClass == .regular && segment == .goals }
 
     enum Segment: String, CaseIterable, Identifiable { case goals = "Goals", routines = "Routines", reminders = "Reminders"; var id: Self { self } }
     enum Sheet: Identifiable { case routine, reminder; var id: Self { self } }
@@ -23,11 +26,11 @@ struct ProgressTab: View {
                 .pickerStyle(.segmented).padding(.horizontal, Space.l).padding(.vertical, Space.s)
                 switch segment {
                 case .routines: RoutinesList { sheet = .routine }
-                case .goals: GoalsList { startGoal() }
+                case .goals: goals
                 case .reminders: RemindersList(detail: $detail) { sheet = .reminder }
                 }
             }
-            .readableWidth()
+            .readableWidth(splitGoals ? .infinity : 720)
             .screenBackground()
             .navigationTitle(segment.rawValue)
             .navigationDestination(for: GoalRef.self) { GoalDetail(goalID: $0.id) }
@@ -51,6 +54,22 @@ struct ProgressTab: View {
         }
     }
 
+    /// iPhone pushes a goal; iPad keeps the list as a column and shows the selected goal beside it.
+    @ViewBuilder private var goals: some View {
+        if sizeClass == .regular {
+            HStack(spacing: 0) {
+                GoalsList(selection: $selectedGoal) { startGoal() }.frame(width: 380)
+                Divider()
+                NavigationStack {
+                    if let selectedGoal { GoalDetail(goalID: selectedGoal.id).id(selectedGoal.id) }
+                    else { ContentUnavailableView("Select a goal", systemImage: "flag", description: Text("Its progress and routines appear here.")) }
+                }
+            }
+        } else {
+            GoalsList { startGoal() }
+        }
+    }
+
     /// A goal is made in conversation; a routine or a reminder is a form.
     private func new() {
         switch segment {
@@ -70,7 +89,9 @@ struct ProgressTab: View {
     private func openLink(_ target: PushLink.Target?) {
         guard let target else { return }
         switch target.entity {
-        case "goal": segment = .goals; path = NavigationPath([GoalRef(id: target.id)])
+        case "goal":
+            segment = .goals
+            if sizeClass == .regular { selectedGoal = GoalRef(id: target.id) } else { path = NavigationPath([GoalRef(id: target.id)]) }
         case "reminder": segment = .reminders; detail = ReminderRef(id: target.id)
         default: return          // not ours; MainTabs clears anything unroutable
         }

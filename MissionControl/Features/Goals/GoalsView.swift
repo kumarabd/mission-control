@@ -6,6 +6,8 @@ struct GoalRef: Hashable, Identifiable { let id: String }
 /// the title and the add button, and a new goal starts as a conversation with the assistant.
 struct GoalsList: View {
     @Environment(Life.self) private var life
+    /// Set on iPad, where the list is a column and a tap selects the goal shown beside it; nil on iPhone, where a tap pushes it.
+    var selection: Binding<GoalRef?>?
     let onNew: () -> Void
 
     var body: some View {
@@ -21,9 +23,12 @@ struct GoalsList: View {
                            message: "Tell your assistant what you want to achieve and it will turn it into small steps and routines.",
                            actionTitle: "Tell your assistant", action: onNew)
             } else {
-                List {
+                List(selection: selection ?? .constant(nil)) {
                     Section {
-                        ForEach(life.goals) { g in NavigationLink(value: GoalRef(id: g.id)) { GoalRow(goal: g) } }
+                        ForEach(life.goals) { g in
+                            if selection != nil { GoalRow(goal: g).tag(GoalRef(id: g.id)) }
+                            else { NavigationLink(value: GoalRef(id: g.id)) { GoalRow(goal: g) } }
+                        }
                     } header: { Text("Goals").font(.mission(.subheadline, .medium)) }
                     .listRowBackground(Tok.surface)
                 }

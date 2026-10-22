@@ -11,61 +11,32 @@ struct MemoryView: View {
     @State private var query = ""
     @State private var model = MemoryModel()
     @State private var localRecords = false
+    @State private var selectedID: String?
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var service: MemoryService {
         MemoryService(baseURL: Config.routerBaseURL + "/brain", token: { [auth] in await auth.token() })
     }
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    Picker("Memory view", selection: $section) {
-                        ForEach(SemanticMemory.Section.allCases) { Text($0.title).tag($0) }
-                    }.pickerStyle(.segmented)
-                }.listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                if let failure = model.failure {
-                    Section {
-                        Text(failure).font(.mission(.body)).foregroundStyle(Tok.muted)
-                        Button("Try again") { Task { await reload() } }.frame(minHeight: 44)
-                    }.listRowBackground(Tok.surface)
-                }
-                if model.loading && model.items.isEmpty {
-                    Section { ProgressView("Loading memory…").frame(minHeight: 80).frame(maxWidth: .infinity) }.listRowBackground(Tok.surface)
-                } else if model.loaded && model.items.isEmpty && model.failure == nil {
-                    Section {
-                        VStack(alignment: .leading, spacing: Space.s) {
-                            Text(emptyTitle).font(.mission(.headline, .medium))
-                            Text(query.isEmpty ? "Your assistant's remembered context and understanding will appear here as it develops." : "Try another word or clear your search.")
-                                .font(.mission(.body)).foregroundStyle(Tok.muted)
-                            if query.isEmpty { Button("Talk with your assistant") { discuss() }.frame(minHeight: 44) }
-                        }.padding(.vertical, Space.s)
-                    }.listRowBackground(Tok.surface)
-                }
-                if !model.items.isEmpty {
-                    Section {
-                        ForEach(model.items) { item in
-                            NavigationLink { SemanticMemoryDetail(item: item, service: service, onDiscuss: { discuss(item) }) } label: {
-                                VStack(alignment: .leading, spacing: Space.s) {
-                                    Text(item.label).font(.missionMono(.caption)).foregroundStyle(Tok.accent)
-                                    Text(item.title).font(.mission(.headline, .medium))
-                                    if let content = item.content, !content.isEmpty { Text(content).font(.mission(.subheadline)).foregroundStyle(Tok.muted).lineLimit(3) }
-                                    else { Text("No summary is available yet.").font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
-                                    if let date = item.updatedAt { Text("Updated \(date.formatted(date: .abbreviated, time: .omitted))").font(.mission(.caption)).foregroundStyle(Tok.muted) }
-                                }.padding(.vertical, Space.s)
+            Group {
+                if sizeClass == .regular {
+                    HStack(spacing: 0) {
+                        memoryList.frame(width: 400)
+                        Divider()
+                        NavigationStack {
+                            if let item = model.items.first(where: { $0.id == selectedID }) {
+                                SemanticMemoryDetail(item: item, service: service, onDiscuss: { discuss(item) }).id(item.id)
+                            } else {
+                                ContentUnavailableView("Select an insight", systemImage: "brain.head.profile", description: Text("What your assistant remembers appears here."))
                             }
                         }
-                        if model.hasMore { Button(model.loading ? "Loading…" : "More insights") { Task { await reload(more: true) } }.frame(minHeight: 44).disabled(model.loading) }
-                    } footer: { Text("From your assistant's memory. Interpretations can change as more context is learned.").font(.mission(.footnote)) }
-                    .listRowBackground(Tok.surface)
-                }
-                if let retrievedAt = model.retrievedAt {
-                    Section { Text("Checked \(retrievedAt.formatted(date: .abbreviated, time: .shortened))").font(.mission(.caption)).foregroundStyle(Tok.muted) }.listRowBackground(Color.clear)
-                }
-                if !life.search("").isEmpty {
-                    Section { Button("Previously saved on this device") { localRecords = true }.frame(minHeight: 44) }.listRowBackground(Tok.surface)
+                    }
+                } else {
+                    memoryList.readableWidth()
                 }
             }
-            .scrollContentBackground(.hidden).readableWidth().screenBackground()
+            .screenBackground()
             .navigationTitle("Memory")
             .searchable(text: $query, prompt: "Search \(section.title.lowercased())")
             .toolbar {
@@ -83,6 +54,59 @@ struct MemoryView: View {
             }
             .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await reload() } } }
         }
+    }
+    private var memoryList: some View {
+        List(selection: $selectedID) {
+            Section {
+                Picker("Memory view", selection: $section) {
+                    ForEach(SemanticMemory.Section.allCases) { Text($0.title).tag($0) }
+                }.pickerStyle(.segmented)
+            }.listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            if let failure = model.failure {
+                Section {
+                    Text(failure).font(.mission(.body)).foregroundStyle(Tok.muted)
+                    Button("Try again") { Task { await reload() } }.frame(minHeight: 44)
+                }.listRowBackground(Tok.surface)
+            }
+            if model.loading && model.items.isEmpty {
+                Section { ProgressView("Loading memory…").frame(minHeight: 80).frame(maxWidth: .infinity) }.listRowBackground(Tok.surface)
+            } else if model.loaded && model.items.isEmpty && model.failure == nil {
+                Section {
+                    VStack(alignment: .leading, spacing: Space.s) {
+                        Text(emptyTitle).font(.mission(.headline, .medium))
+                        Text(query.isEmpty ? "Your assistant's remembered context and understanding will appear here as it develops." : "Try another word or clear your search.")
+                            .font(.mission(.body)).foregroundStyle(Tok.muted)
+                        if query.isEmpty { Button("Talk with your assistant") { discuss() }.frame(minHeight: 44) }
+                    }.padding(.vertical, Space.s)
+                }.listRowBackground(Tok.surface)
+            }
+            if !model.items.isEmpty {
+                Section {
+                    ForEach(model.items) { item in
+                        if sizeClass == .regular { itemRow(item).tag(item.id) }
+                        else { NavigationLink { SemanticMemoryDetail(item: item, service: service, onDiscuss: { discuss(item) }) } label: { itemRow(item) } }
+                    }
+                    if model.hasMore { Button(model.loading ? "Loading…" : "More insights") { Task { await reload(more: true) } }.frame(minHeight: 44).disabled(model.loading) }
+                } footer: { Text("From your assistant's memory. Interpretations can change as more context is learned.").font(.mission(.footnote)) }
+                .listRowBackground(Tok.surface)
+            }
+            if let retrievedAt = model.retrievedAt {
+                Section { Text("Checked \(retrievedAt.formatted(date: .abbreviated, time: .shortened))").font(.mission(.caption)).foregroundStyle(Tok.muted) }.listRowBackground(Color.clear)
+            }
+            if !life.search("").isEmpty {
+                Section { Button("Previously saved on this device") { localRecords = true }.frame(minHeight: 44) }.listRowBackground(Tok.surface)
+            }
+        }
+        .scrollContentBackground(.hidden)
+    }
+    private func itemRow(_ item: SemanticMemory.Item) -> some View {
+        VStack(alignment: .leading, spacing: Space.s) {
+            Text(item.label).font(.missionMono(.caption)).foregroundStyle(Tok.accent)
+            Text(item.title).font(.mission(.headline, .medium))
+            if let content = item.content, !content.isEmpty { Text(content).font(.mission(.subheadline)).foregroundStyle(Tok.muted).lineLimit(3) }
+            else { Text("No summary is available yet.").font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
+            if let date = item.updatedAt { Text("Updated \(date.formatted(date: .abbreviated, time: .omitted))").font(.mission(.caption)).foregroundStyle(Tok.muted) }
+        }.padding(.vertical, Space.s)
     }
     private var emptyTitle: String {
         if !query.isEmpty { return "No matching memory" }
