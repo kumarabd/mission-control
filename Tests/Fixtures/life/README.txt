@@ -1,2 +1,2 @@
-Recorded from realnighthawk/life-engine at 0798a3b (fixtures/). Regenerate there, then copy.
-Tracker fixtures (tracker_catalogs, view, view_state, goal_measurement) re-recorded 2026-10-19 after trackers became views; goal_tracker, tracker_state and tracker_proposal are gone.
+Real responses recorded from the Life Engine (goals, tasks, calendar events, day_get, settings, notices, errors). Copied from the
+life-engine repository's fixtures/; regenerate there with LIFE_WRITE_FIXTURES when the contract changes.

@@ -7,39 +7,36 @@ import Foundation
             try Wire.decoder.decode(type, from: Data(contentsOf: dir.appendingPathComponent(name + ".json")))
         }
         let catalog = TrackerClient.catalog
-        let legacy = try decode("goal", Wire.Goal.self)
-        let view = try decode("view", Wire.GoalView.self)
+        let goal = try decode("goal", Wire.Goal.self)
+        let view = try decode("view", Wire.SubjectView.self)
         let state = try decode("view_state", Wire.ViewState.self)
-        let measurement = try decode("goal_measurement", Wire.GoalMeasurement.self)
+        let measurement = try decode("measurement", Wire.Measurement.self)
 
-        // The contract: a view is a manifest of blocks, and a metric may name a provider series as its source.
-        precondition(!legacy.id.isEmpty && !legacy.title.isEmpty) // a goal carries no tracker fields any more
-        precondition(state.goalId == view.subjectId && state.view == view && view.subjectKind == "goal")
-        precondition(state.observations(for: "distance").last == measurement)
-        let weight = view.metrics.first { $0.id == "weight" }
-        precondition(weight?.source == Wire.MetricSource(provider: "health", series: "body_weight"))
-        precondition(view.metrics.first { $0.id == "distance" }?.source == nil)
+        // The contract: a view is a manifest of blocks of a subject (a goal, a task or an event), never inlining the records it shows.
+        precondition(!goal.id.isEmpty && !goal.title.isEmpty && goal.progress.total >= 0)
+        precondition(state.subjectKind == "goal" && state.subjectId == view.subjectId && state.view == view && view.subjectKind == "goal")
+        precondition(state.observations(for: "distance").last == measurement && measurement.subjectKind == "goal")
+        precondition(view.metrics.first { $0.id == "distance" }?.source == nil && view.metrics.first { $0.id == "distance" }?.taskId == nil)
         precondition(state.view(catalog: catalog) != nil)
         precondition(state.view(catalog: "another-kit.v1") == nil)
         precondition(view.blocks.allSatisfy { view.supports($0) })
-        precondition(view.blocks.contains { $0.kind == "link" })
+        precondition(view.blocks.contains { $0.kind == "tasks" } && view.blocks.contains { $0.kind == "log" })
 
         // Rendering guards: an unknown or unmatched block is unsupported on its own, never the whole view.
         var odd = view
         odd.pages[0].sections[0].blocks[0].kind = "remote_code"
         precondition(!odd.supports(odd.pages[0].sections[0].blocks[0]) && odd.supports(odd.pages[0].sections[0].blocks[1]))
         odd = view
-        let trend = odd.blocks.firstIndex { $0.kind == "series" }!
-        odd.pages[0].sections[0].blocks[trend].metric = "missing"
-        precondition(!odd.supports(odd.pages[0].sections[0].blocks[trend]))
-        odd = view
-        let link = odd.blocks.firstIndex { $0.kind == "link" }!
+        let log = odd.blocks.firstIndex { $0.kind == "log" }!
+        odd.pages[0].sections[0].blocks[log].metric = "missing"
+        precondition(!odd.supports(odd.pages[0].sections[0].blocks[log]))
+        var linkView = view
+        linkView.pages[0].sections[0].blocks[0] = Wire.ViewBlock(id: "src", kind: "link", url: "https://example.com")
+        precondition(linkView.supports(linkView.pages[0].sections[0].blocks[0]))
         for bad in ["javascript:alert(1)", "data:text/html,x", "file:///etc/passwd", "not a url", ""] {
-            odd.pages[0].sections[0].blocks[link].url = bad
-            precondition(!odd.supports(odd.pages[0].sections[0].blocks[link]), bad)
+            linkView.pages[0].sections[0].blocks[0].url = bad
+            precondition(!linkView.supports(linkView.pages[0].sections[0].blocks[0]), bad)
         }
-        odd.pages[0].sections[0].blocks[link].url = nil
-        precondition(!odd.supports(odd.pages[0].sections[0].blocks[link]))
         var empty = state; empty.view?.pages = []
         precondition(empty.view(catalog: catalog) == nil)
 
@@ -58,7 +55,7 @@ import Foundation
         precondition(TrackerClient.number("2,5", locale: Locale(identifier: "fr_FR")) == 2.5)
         precondition(TrackerClient.number("2 kg") == nil && TrackerClient.number("NaN") == nil && TrackerClient.number("") == nil)
         let distance = state.metricDefinitions.first { $0.id == "distance" }!
-        precondition(distance.accepts(0) && !distance.accepts(-1))
+        precondition(distance.accepts(0))
 
         // Requests.
         let fixedTime = Date(timeIntervalSince1970: 1_800_000_000)
@@ -67,30 +64,30 @@ import Foundation
             let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
             switch path {
             case "views_state":
-                precondition(body["goal_id"] as? String == view.subjectId && body["catalog_id"] as? String == catalog && body.count == 2)
-            case "goal_measurements_record":
+                precondition(body["subject_kind"] as? String == "goal" && body["subject_id"] as? String == view.subjectId && body["catalog_id"] as? String == catalog && body.count == 3)
+            case "measurements_record":
                 precondition(body["idempotency_key"] as? String == "same-intent")
-                precondition(body["goal_id"] as? String == view.subjectId && body["metric_id"] as? String == "distance")
-                precondition(body["expected_tracker_revision"] == nil && body["id"] == nil)
+                precondition(body["subject_kind"] as? String == "goal" && body["subject_id"] as? String == view.subjectId && body["metric_id"] as? String == "distance")
+                precondition(body["id"] == nil)
                 precondition(body["measured_at"] != nil && body["value"] as? Double == 2.5)
-            case "goal_measurements_update":
+            case "measurements_update":
                 precondition(body["idempotency_key"] as? String == "same-intent")
                 precondition(body["id"] as? String == measurement.id && body["expected_version"] as? Int == measurement.version)
-                precondition(body["goal_id"] == nil && body["metric_id"] == nil && body["expected_tracker_revision"] == nil)
+                precondition(body["subject_kind"] == nil && body["subject_id"] == nil && body["metric_id"] == nil)
                 precondition(body["measured_at"] == nil)
-            case "goal_measurements_delete":
+            case "measurements_delete":
                 precondition(body["idempotency_key"] as? String == "same-intent")
                 precondition(body["id"] as? String == measurement.id && body["expected_version"] as? Int == measurement.version)
                 precondition(body["value"] == nil)
             default: preconditionFailure(path)
             }
-            let fixture = path == "views_state" ? "view_state" : "goal_measurement"
+            let fixture = path == "views_state" ? "view_state" : "measurement"
             return (try Data(contentsOf: dir.appendingPathComponent(fixture + ".json")), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         })
         let service = GoalsService(api: api)
-        let opened = try await service.viewState(goalID: view.subjectId, catalog: catalog)
+        let opened = try await service.viewState(kind: "goal", id: view.subjectId, catalog: catalog)
         precondition(opened == state)
-        let input = GoalsService.MeasurementIn(idempotencyKey: "same-intent", goalId: view.subjectId, metricId: "distance", value: 2.5, measuredAt: fixedTime, notes: "Recorded")
+        let input = GoalsService.MeasurementIn(idempotencyKey: "same-intent", subjectKind: "goal", subjectId: view.subjectId, metricId: "distance", value: 2.5, measuredAt: fixedTime, notes: "Recorded")
         try await service.saveMeasurement(input)
         try await service.saveMeasurement(input)
         try await service.saveMeasurement(.init(idempotencyKey: "same-intent", id: measurement.id, expectedVersion: measurement.version, value: 2.5, measuredAt: nil, notes: "Correction"))

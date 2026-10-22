@@ -2,7 +2,7 @@ import Foundation
 
 enum CheckError: Error { case unavailable }
 // This test checks workspace refresh, not operating-system notification delivery.
-enum Notifier { static func sync(_ reminders: [Wire.Reminder]) async {} }
+final class PushRegistrar { static let shared = PushRegistrar(); func askToNotify() async {} }
 
 struct UnavailableLocalEngine: LifeEngine {
     func snapshot() async throws -> Store {
@@ -40,7 +40,8 @@ actor FixtureTransport {
         let operation = request.url!.lastPathComponent
         calls.append(operation)
         if offline { throw URLError(.notConnectedToInternet) }
-        let names = ["reminders_list": "reminders_page", "reminders_agenda": "reminders_agenda", "routines_status": "routines_status", "goals_list": "goals_page", "plan_get": "plan_day", "next_action": "next_action", "reminders_complete": "reminder_completed"]
+        let names = ["day_get": "day", "tasks_list": "tasks_page", "calendar_events_list": "events_page", "goals_list": "goals_page", "tasks_complete": "task_done",
+                     "tasks_create": "task", "calendar_events_create": "event"]
         var data = try Data(contentsOf: directory.appendingPathComponent(names[operation]! + ".json"))
         if edited, operation == "goals_list" {
             var page = try Wire.decoder.decode(Wire.Page<Wire.Goal>.self, from: data)
@@ -57,13 +58,26 @@ struct WorkspaceRefreshChecks {
         let transport = FixtureTransport(directory: URL(fileURLWithPath: CommandLine.arguments[1]))
         let api = LifeAPI(baseURL: "https://test.invalid", token: { "test" }, transport: { try await transport.send($0) })
         let life = Life(engine: UnavailableLocalEngine())
-        life.attachPlan(PlanService(api: api)); life.attachGoals(GoalsService(api: api))
-        life.attachRoutines(RoutinesService(api: api)); life.attachReminders(RemindersService(api: api))
-        precondition(!life.workspaceLoaded)
+        life.attachWorkspace(items: ItemsService(api: api), day: DayService(api: api), goals: GoalsService(api: api))
+        precondition(!life.workspaceLoaded && life.workspaceAvailable && life.goalsAvailable)
         await life.refreshWorkspace()
-        precondition(life.workspaceLoaded && life.plan != nil && !life.goals.isEmpty && !life.routines.isEmpty && !life.reminders.isEmpty)
+        precondition(life.workspaceLoaded && life.day != nil && !life.day!.entries.isEmpty && !life.goals.isEmpty && !life.openTasks.isEmpty && !life.upcomingEvents.isEmpty)
         let calls = await transport.calls
-        precondition(Set(calls) == Set(["reminders_list", "reminders_agenda", "routines_status", "goals_list", "plan_get", "next_action"]))
+        precondition(Set(calls) == Set(["day_get", "tasks_list", "calendar_events_list", "goals_list"]), "\(calls)")
+        precondition(life.item(life.openTasks[0].id) == life.openTasks[0] && life.item(life.upcomingEvents[0].id) != nil, "an item is found whichever list it came from")
+
+        // Doing something sends it and re-reads what the screens show.
+        await transport.reset()
+        let done = await life.complete(life.openTasks[0])
+        precondition(done?.isDone == true)
+        let afterComplete = await transport.calls
+        precondition(Set(afterComplete) == Set(["tasks_complete", "day_get", "tasks_list", "calendar_events_list", "goals_list"]))
+        await transport.reset()
+        var draft = ItemsService.Draft(); draft.title = "Call Sam"
+        let added = await life.add(.task, draft)
+        let afterAdd = await transport.calls
+        precondition(added && afterAdd.first == "tasks_create")
+
         let before = life.workspaceUpdates
         await transport.reset(edited: true)
         await life.refreshWorkspace()
@@ -76,8 +90,8 @@ struct WorkspaceRefreshChecks {
         let goalID = life.goals[0].id
         await transport.reset(offline: true)
         await life.refreshWorkspace()
-        precondition(life.planLoadError != nil && life.goalsLoadError != nil && life.remindersLoadError != nil && life.routinesLoadError != nil)
-        precondition(life.goals[0].id == goalID, "A failed refresh must keep previous data")
+        precondition(life.dayLoadError != nil && life.goalsLoadError != nil)
+        precondition(life.goals[0].id == goalID && !life.openTasks.isEmpty, "A failed refresh must keep previous data")
         print("WorkspaceRefreshChecks passed")
     }
 }

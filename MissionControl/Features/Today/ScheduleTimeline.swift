@@ -1,26 +1,25 @@
 import SwiftUI
 
 /// The day's timed items in one chronological rail, shown as a compact window a few rows tall with Now centred: the
-/// day scrolls inside the window instead of growing the page. Untimed work stays in Tasks — a routine is untimed work
-/// even when it has nudge times, because a nudge is the assistant's cue rather than a time the person is due at.
-/// Today's reminder cues sit on the rail at their time; the full list lives in Goals ▸ Reminders.
+/// day scrolls inside the window instead of growing the page. Events (the phone's calendar and the engine's), and tasks that
+/// have a time, sit on it at that time; each occurrence of a repeating one has its own row. Untimed and overdue tasks stay in
+/// Tasks.
 struct ScheduleSection: View {
     @Environment(Life.self) private var life
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let events: [DayEvent]
-    let openTask: (String) -> Void
+    let openItem: (ItemRef) -> Void
 
-    private enum Kind { case event, task, reminder }
+    private enum Kind { case calendar, event, task }
     private struct Entry: Identifiable {
         let id: String
         let kind: Kind
         let at: Date
         let title: String
         let detail: String
-        var task: Wire.PlanItem?
-        var cue: Wire.AgendaItem?
-        var cleared: Bool { task?.doneAt != nil || cue?.state == "acknowledged" }
+        var item: Wire.Item?
+        var cleared: Bool = false
     }
     private enum Row: Identifiable {
         case entry(Entry), now
@@ -31,16 +30,13 @@ struct ScheduleSection: View {
     @State private var centered: String? = ScheduleWindow.nowID
 
     private var entries: [Entry] {
-        var result = events.map { Entry(id: "e:" + $0.id, kind: .event, at: $0.start, title: $0.title, detail: "Calendar · \($0.minutes) min") }
-        result += life.tasks.compactMap { t in
-            guard let at = t.startAt else { return nil }
-            let goal = life.goals.first { $0.id == t.goalId }?.title
-            let detail = [t.kind == "event" ? "Event" : t.kind == "checkin" ? "Check-in" : "\(t.minutes) min", goal, t.isPriority ? "Priority" : nil].compactMap { $0 }.joined(separator: " · ")
-            return Entry(id: "t:" + t.id, kind: t.kind == "event" ? .event : .task, at: at, title: t.title, detail: detail, task: t)
-        }
-        result += life.agenda.map {
-            Entry(id: "r:" + $0.id, kind: .reminder, at: $0.at, title: $0.reminder.title,
-                  detail: $0.overdue ? "Reminder · Overdue" : "Reminder", cue: $0)
+        var result = events.map { Entry(id: "c:" + $0.id, kind: .calendar, at: $0.start, title: $0.title, detail: "Calendar · \($0.minutes) min") }
+        result += (life.day?.entries ?? []).filter { !$0.overdue }.map { e in
+            let item = e.item
+            let goal = life.goals.first { $0.id == item.goalId }?.title
+            let length = item.minutes.map { "\($0) min" }
+            let detail = [item.isEvent ? "Event" : "Task", length, goal, item.isPriority ? "Priority" : nil, item.repeats ? "Repeats" : nil].compactMap { $0 }.joined(separator: " · ")
+            return Entry(id: "i:" + e.id, kind: item.isEvent ? .event : .task, at: e.at, title: item.title, detail: detail, item: item, cleared: e.isDone)
         }
         return result.sorted { $0.at == $1.at ? $0.id < $1.id : $0.at < $1.at }
     }
@@ -130,7 +126,7 @@ struct ScheduleSection: View {
                 }
                 node(e)
             }.frame(width: 44)
-            if e.kind != .task {
+            if e.item == nil {
                 content(e)
             } else {
                 Button { open(e) } label: { content(e) }.buttonStyle(.borderless)
@@ -149,18 +145,12 @@ struct ScheduleSection: View {
     }
 
     @ViewBuilder private func node(_ e: Entry) -> some View {
-        if e.kind == .task, let t = e.task {
-            Button { Task { await life.completeTask(t, done: t.doneAt == nil) } } label: {
+        if e.kind == .task, let item = e.item {
+            Button { Task { await life.complete(item, at: item.repeats ? e.at : nil, done: !e.cleared) } } label: {
                 Image(systemName: e.cleared ? "checkmark.circle.fill" : "circle").font(.mission(.title2))
                     .frame(width: 44, height: 44).background(Tok.surface, in: Circle())
-            }.buttonStyle(.borderless).disabled(life.busyTasks.contains(t.id))
+            }.buttonStyle(.borderless).disabled(life.busyItems.contains(item.id))
                 .accessibilityLabel("Mark \(e.title) \(e.cleared ? "not done" : "done")")
-        } else if e.kind == .reminder, let cue = e.cue {
-            Button { Task { await life.ackCue(cue) } } label: {
-                Image(systemName: e.cleared ? "bell.fill" : "bell").font(.mission(.title2))
-                    .frame(width: 44, height: 44).background(Tok.surface, in: Circle())
-            }.buttonStyle(.borderless).disabled(e.cleared || life.busyReminders.contains(cue.reminder.id))
-                .accessibilityLabel(e.cleared ? "\(e.title) acknowledged" : "Got it: \(e.title)")
         } else {
             Image(systemName: "calendar")
                 .font(.mission(.body)).foregroundStyle(MissionTone.scheduled.color)
@@ -169,7 +159,7 @@ struct ScheduleSection: View {
     }
 
     private func open(_ e: Entry) {
-        if let t = e.task { openTask(t.id) }
+        if let item = e.item { openItem(ItemRef(id: item.id, at: item.repeats ? e.at : nil)) }
     }
 
     private func time(_ at: Date) -> String {

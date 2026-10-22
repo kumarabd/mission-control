@@ -1,40 +1,52 @@
 import Foundation
 
-/// Shared goal data and the native tracker contract: a goal's view, its recorded observations, and its data providers.
+/// Goals: the Life Engine's `goals_*` operations. A goal is made in conversation with the assistant; the app reads them,
+/// and archives one the person is done with.
 struct GoalsService {
     var api: LifeAPI
 
-    private struct ListIn: Encodable { var limit = 100 }
-    private struct StepDoneIn: Encodable { var idempotencyKey: String; var id: String; var expectedVersion: Int; var done: Bool }
+    private struct ListIn: Encodable { var limit = 200 }
+    private struct EditIn: Encodable { var idempotencyKey: String; var id: String; var expectedVersion: Int }
 
-    /// Active goals with their steps, progress and next step.
     func list() async throws -> [Wire.Goal] {
         let page: Wire.Page<Wire.Goal> = try await api.call("goals_list", ListIn())
         return page.items
     }
 
-    /// Finishes a one-off milestone from Today or an approved tracker module.
-    func completeStep(id: String, version: Int, key: String = UUID().uuidString) async throws {
-        let _: Wire.Step = try await api.call("steps_complete", StepDoneIn(idempotencyKey: key, id: id, expectedVersion: version, done: true))
+    func archive(_ goal: Wire.Goal) async throws {
+        let _: Wire.Goal = try await api.call("goals_archive", EditIn(idempotencyKey: UUID().uuidString, id: goal.id, expectedVersion: goal.version))
     }
+}
 
-    private struct ViewIn: Encodable { var goalId: String; var catalogId: String }
-    private struct EditIn: Encodable { var idempotencyKey: String; var id: String; var expectedVersion: Int }
+/// A day: the tasks and events that fall on it, one entry per occurrence, plus the open tasks still waiting from earlier days.
+struct DayService {
+    var api: LifeAPI
+
+    private struct Empty: Encodable {}
+
+    func today() async throws -> Wire.Day { try await api.call("day_get", Empty()) }
+}
+
+// MARK: Views. A view is its own construct, of a goal, a task or an event; the same calls serve all three.
+
+extension GoalsService {
+    private struct ViewIn: Encodable { var subjectKind: String; var subjectId: String; var catalogId: String }
+    private struct MeasureEditIn: Encodable { var idempotencyKey: String; var id: String; var expectedVersion: Int }
     struct MeasurementIn: Encodable {
         var idempotencyKey: String
-        var goalId: String?; var metricId: String?
+        var subjectKind: String?; var subjectId: String?; var metricId: String?
         var id: String?; var expectedVersion: Int?
         var value: Double; var measuredAt: Date?; var notes: String
     }
-    /// A goal's view for one client catalogue, with the observations recorded against its metrics.
-    func viewState(goalID: String, catalog: String) async throws -> Wire.ViewState {
-        try await api.call("views_state", ViewIn(goalId: goalID, catalogId: catalog))
+    /// A subject's view for one client catalogue, with the observations recorded against its metrics.
+    func viewState(kind: String, id: String, catalog: String) async throws -> Wire.ViewState {
+        try await api.call("views_state", ViewIn(subjectKind: kind, subjectId: id, catalogId: catalog))
     }
     func saveMeasurement(_ input: MeasurementIn) async throws {
-        let _: Wire.GoalMeasurement = try await api.call(input.id == nil ? "goal_measurements_record" : "goal_measurements_update", input)
+        let _: Wire.Measurement = try await api.call(input.id == nil ? "measurements_record" : "measurements_update", input)
     }
-    func deleteMeasurement(_ measurement: Wire.GoalMeasurement, key: String) async throws {
-        let _: Wire.GoalMeasurement = try await api.call("goal_measurements_delete", EditIn(idempotencyKey: key, id: measurement.id, expectedVersion: measurement.version))
+    func deleteMeasurement(_ measurement: Wire.Measurement, key: String) async throws {
+        let _: Wire.Measurement = try await api.call("measurements_delete", MeasureEditIn(idempotencyKey: key, id: measurement.id, expectedVersion: measurement.version))
     }
 }
 

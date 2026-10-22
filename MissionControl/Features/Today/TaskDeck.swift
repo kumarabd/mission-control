@@ -1,56 +1,28 @@
 import SwiftUI
 
-/// One thing to do today: a routine that is due, a one-off task, or the next milestone of a goal.
-enum TaskCard: Identifiable, Equatable {
-    case routine(Wire.RoutineStatus)
-    case task(Wire.PlanItem)
-    case step(Wire.Suggestion)
+/// One thing to do: a task with no time, or one that was due on an earlier day and is still waiting.
+struct TaskCard: Identifiable, Equatable {
+    let item: Wire.Item
+    /// The occurrence, for a repeating task; nil for a one-off.
+    var at: Date?
+    var overdue = false
 
-    var id: String {
-        switch self {
-        case .routine(let s): "r:" + s.id
-        case .task(let t): "t:" + t.id
-        case .step(let s): "s:" + (s.stepId ?? s.title)
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .routine(let s): s.routine.title
-        case .task(let t): t.title
-        case .step(let s): s.title
-        }
-    }
-
-    var kind: String {
-        switch self { case .routine: "Routine"; case .task: "Task"; case .step: "Milestone" }
-    }
-
-    var symbol: String {
-        switch self { case .routine: "repeat"; case .task: "checklist"; case .step: "flag" }
-    }
+    var id: String { item.id + (at.map { "@" + String(Int($0.timeIntervalSince1970)) } ?? "") }
+    var title: String { item.title }
+    var ref: ItemRef { ItemRef(id: item.id, at: item.repeats ? at : nil) }
 
     var detail: String {
-        switch self {
-        case .routine(let s):
-            let progress = s.count > 0 ? "\(s.count) of \(s.target) today" : (s.target > 1 ? "\(s.target) times today" : "Once today")
-            return [progress, s.nextNudgeText].compactMap { $0 }.joined(separator: " · ")
-        case .task(let t): return t.isPriority ? "\(t.minutes) min · Priority" : "\(t.minutes) min"
-        case .step(let s): return s.reason.isEmpty ? "\(s.minutes) min" : "\(s.minutes) min · \(s.reason)"
-        }
-    }
-}
-
-extension Wire.RoutineStatus {
-    /// "Next nudge 1:00 PM", or nil when the routine has none left today.
-    var nextNudgeText: String? {
-        RoutineSchedule.nextCue(cues: routine.cues, zone: routine.timeZone).map { "Next nudge \($0.formatted(date: .omitted, time: .shortened))" }
+        var parts: [String] = []
+        if overdue, let at { parts.append("Was due " + at.formatted(.dateTime.month(.abbreviated).day())) }
+        if let m = item.minutes { parts.append("\(m) min") }
+        if item.isPriority { parts.append("Priority") }
+        return parts.joined(separator: " · ")
     }
 }
 
 /// The day's tasks as plain list rows, the first one set larger because it is what to do now.
 ///
-/// The ring or circle on the left does the task (a routine records one more time). Swipe right does it too, swipe left leaves it for
+/// The circle on the left does the task. Swipe right does it too, swipe left leaves it for
 /// later (it goes to the end of the list). Both are VoiceOver actions as well, and the last one can be undone from the row at the end.
 struct TaskDeck: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -67,7 +39,7 @@ struct TaskDeck: View {
     @State private var undo: Undo?
 
     private enum Direction { case later, done }
-    private enum Undo { case unlog(routine: String, card: String), uncomplete(task: String, card: String), unskip(card: String) }
+    private enum Undo { case uncomplete(item: Wire.Item, at: Date?, card: String), unskip(card: String) }
 
     private var deck: [TaskCard] {
         let live = cards.filter { !departing.contains($0.id) }
@@ -88,9 +60,9 @@ struct TaskDeck: View {
 
     private func row(_ card: TaskCard, first: Bool) -> some View {
         HStack(spacing: Space.m) {
-            Button { commit(card, .done) } label: { mark(card).frame(minWidth: 44, minHeight: 44) }
+            Button { commit(card, .done) } label: { Image(systemName: "circle").font(.system(size: 26, weight: .light)).foregroundStyle(Tok.accent).frame(minWidth: 44, minHeight: 44) }
                 .buttonStyle(.borderless).disabled(busy)
-                .accessibilityLabel("\(card.doneActionName): \(card.title)")
+                .accessibilityLabel("Mark done: \(card.title)")
             Button { open(card) } label: {
                 HStack(spacing: Space.s) {
                     VStack(alignment: .leading, spacing: Space.xs) {
@@ -104,22 +76,16 @@ struct TaskDeck: View {
         }
         .padding(.vertical, first ? Space.s : 0)
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            Button { commit(card, .done) } label: { Label(card.doneActionName, systemImage: "checkmark") }.tint(Tok.accent)
+            Button { commit(card, .done) } label: { Label("Mark done", systemImage: "checkmark") }.tint(Tok.accent)
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             Button { commit(card, .later) } label: { Label("Move to bottom", systemImage: "forward.end.fill") }.tint(.gray)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityAction(named: Text(card.doneActionName)) { commit(card, .done) }
+        .accessibilityAction(named: Text("Mark done")) { commit(card, .done) }
         .accessibilityAction(named: Text("Move to bottom")) { commit(card, .later) }
         .accessibilityAction(named: Text("Show details")) { open(card) }
         .transition(.opacity)
-    }
-
-    /// A routine shows its progress for today; anything else is an empty circle that fills when done.
-    @ViewBuilder private func mark(_ card: TaskCard) -> some View {
-        if case .routine(let s) = card { LogRing(status: s, size: 32, interactive: false) }
-        else { Image(systemName: "circle").font(.system(size: 26, weight: .light)).foregroundStyle(Tok.accent) }
     }
 
     private var undoRow: some View {
@@ -139,14 +105,8 @@ struct TaskDeck: View {
     }
 
     private func detail(_ card: TaskCard) -> String {
-        let goalID: String?
-        switch card {
-        case .task(let t): goalID = t.goalId
-        case .step(let s): goalID = s.goalId
-        default: goalID = nil
-        }
-        let goal = life.goals.first { $0.id == goalID }?.title
-        return [card.detail, goal].compactMap { $0 }.joined(separator: " · ")
+        let goal = life.goals.first { $0.id == card.item.goalId }?.title
+        return [card.detail, goal ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
     // MARK: Acting
@@ -163,63 +123,32 @@ struct TaskDeck: View {
             case .done:
                 // Take it out of the list at once, then save; a failed save puts it back.
                 withAnimation(reduceMotion ? nil : .default) { _ = departing.insert(card.id) }
-                let outcome = await complete(card)
-                withAnimation(reduceMotion ? nil : .default) {
-                    if outcome == .progressed { backOfLine.removeAll { $0 == card.id }; backOfLine.append(card.id) }
-                    departing.remove(card.id)
-                }
+                _ = await complete(card)
+                withAnimation(reduceMotion ? nil : .default) { _ = departing.remove(card.id) }
             }
             busy = false
         }
     }
 
-    private enum Outcome { case finished, progressed, failed }
+    private enum Outcome { case finished, failed }
 
-    /// Does what "done" means for the card, and says how it went.
+    /// Marks the task done, and says how it went.
     private func complete(_ card: TaskCard) async -> Outcome {
-        switch card {
-        case .routine(let s):
-            await life.logRoutine(s.id)
-            guard let after = life.routines.first(where: { $0.id == s.id }), after.count > s.count else { return .failed }
-            undo = .unlog(routine: s.id, card: card.id); completions += 1
-            return after.done ? .finished : .progressed
-        case .task(let t):
-            await life.completeTask(t, done: true)
-            guard life.tasks.first(where: { $0.id == t.id })?.doneAt != nil else { return .failed }
-            undo = .uncomplete(task: t.id, card: card.id); completions += 1
-            return .finished
-        case .step(let s):
-            let before = life.nextSuggestion
-            await life.completeSuggestion(s)
-            guard life.nextSuggestion != before else { return .failed }
-            undo = nil; completions += 1
-            return .finished
-        }
+        guard let updated = await life.complete(card.item, at: card.item.repeats ? card.at : nil) else { return .failed }
+        undo = .uncomplete(item: updated, at: card.item.repeats ? card.at : nil, card: card.id); completions += 1
+        return .finished
     }
 
     private func performUndo() async {
         guard let action = undo, !busy else { return }
         busy = true; undo = nil
         switch action {
-        case .unlog(let routine, let card):
-            await life.logRoutine(routine, delta: -1)
-            withAnimation(reduceMotion ? nil : .default) { backOfLine.removeAll { $0 == card }; firstUp = card }
-        case .uncomplete(let task, let card):
-            if let item = life.tasks.first(where: { $0.id == task }) { await life.completeTask(item, done: false) }
+        case .uncomplete(let item, let at, let card):
+            await life.complete(item, at: at, done: false)
             withAnimation(reduceMotion ? nil : .default) { backOfLine.removeAll { $0 == card }; firstUp = card }
         case .unskip(let card):
             withAnimation(reduceMotion ? nil : .default) { backOfLine.removeAll { $0 == card }; firstUp = card }
         }
         busy = false
-    }
-}
-
-extension TaskCard {
-    /// What the check does on this card, for the button's label and VoiceOver.
-    var doneActionName: String {
-        switch self {
-        case .routine(let s): s.target > 1 ? "Record one" : "Mark done"
-        case .task, .step: "Mark done"
-        }
     }
 }

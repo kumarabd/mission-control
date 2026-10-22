@@ -103,9 +103,7 @@ struct ChatView: View {
             .sheet(item: $selectedUpdate) { item in
                 switch item.kind {
                 case .goal: NavigationStack { GoalDetail(goalID: item.entityID).toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selectedUpdate = nil } } } }
-                case .routine: NavigationStack { RoutineDetailView(id: item.entityID).toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { selectedUpdate = nil } } } }
-                case .reminder: ReminderDetailSheet(id: item.entityID)
-                case .task: PlanItemDetailSheet(id: item.entityID)
+                case .task, .event: ItemDetailSheet(ref: ItemRef(id: item.entityID))
                 }
             }
             .sheet(isPresented: $switching) {

@@ -20,7 +20,7 @@ struct GoalsList: View {
                 EmptyState(symbol: "wifi.exclamationmark", title: "Couldn't load goals", message: error, actionTitle: "Try again") { Task { await life.loadGoals() } }
             } else if life.goals.isEmpty {
                 EmptyState(symbol: "flag", title: "Start with one thing you care about",
-                           message: "Tell your assistant what you want to achieve and it will turn it into small steps and routines.",
+                           message: "Tell your assistant what you want to achieve, or a trip or an event to plan, and it will set up the tasks and dates.",
                            actionTitle: "Tell your assistant", action: onNew)
             } else {
                 List(selection: selection ?? .constant(nil)) {
@@ -42,97 +42,105 @@ struct GoalsList: View {
 
 struct GoalRow: View {
     let goal: Wire.Goal
-    private var routines: Int { (goal.routineIds ?? []).count }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
             Text(goal.title).font(.mission(.headline, .medium))
-            if let c = goal.consistency, c.last30.scheduled > 0 {
-                MissionProgressBar(fraction: Double(c.last30.done) / Double(c.last30.scheduled), label: "\(c.last30.done) of \(c.last30.scheduled) routine days kept")
-            } else if !goal.steps.isEmpty {
-                Text("\(goal.progress.done) of \(goal.progress.total) milestones completed").font(.mission(.subheadline)).foregroundStyle(Tok.muted)
+            if goal.progress.total > 0 {
+                MissionProgressBar(fraction: Double(goal.progress.done) / Double(goal.progress.total), label: "\(goal.progress.done) of \(goal.progress.total) tasks done")
             } else {
-                Text(routines == 0 ? "No routines yet" : "Just started").font(.mission(.subheadline)).foregroundStyle(Tok.muted)
+                Text("No tasks yet").font(.mission(.subheadline)).foregroundStyle(Tok.muted)
             }
-            if routines > 0 { Label("\(routines) \(routines == 1 ? "routine" : "routines")", systemImage: "repeat").font(.mission(.caption)).foregroundStyle(Tok.muted) }
+            if let ends = goal.endsOnText { Label(ends, systemImage: "calendar").font(.mission(.caption)).foregroundStyle(Tok.muted) }
         }
         .padding(.vertical, Space.xs)
         .accessibilityElement(children: .combine)
     }
 }
 
-/// A goal with no view for this device shows its basic review until the assistant adds one.
+/// A goal: its view if one has been composed, else its plain review.
+struct GoalDetail: View {
+    @Environment(Life.self) private var life
+    let goalID: String
+    var body: some View {
+        let goal = life.goals.first { $0.id == goalID }
+        KitScreen(subject: ViewSubject(kind: "goal", id: goalID), title: goal?.title ?? "Goal", notes: goal?.notes ?? "") { GoalReview(goalID: goalID) }
+    }
+}
+
+/// How far a goal is along, and the tasks and events that serve it: what shows until it has a view.
 struct GoalReview: View {
     @Environment(Life.self) private var life
     @Environment(ChatModel.self) private var chat
     let goalID: String
-    @State private var openRoutine: RoutineRef?
+    @State private var items: [Wire.Item] = []
+    @State private var loaded = false
+    @State private var detail: ItemRef?
+    @State private var adding: ItemsService.Kind?
+    @State private var confirmArchive = false
+    @Environment(\.dismiss) private var dismiss
 
     private var goal: Wire.Goal? { life.goals.first { $0.id == goalID } }
+    private var tasks: [Wire.Item] { items.filter(\.isTask) }
+    private var events: [Wire.Item] { items.filter(\.isEvent) }
 
     var body: some View {
         if let goal {
             List {
                 Section {
-                    MarkdownView(text: Overview.goal(goal))
-                    if let c = goal.consistency, c.last30.scheduled > 0 {
-                        MissionProgressBar(fraction: Double(c.last30.done) / Double(c.last30.scheduled), label: "Routines kept, last 30 days")
+                    if !goal.notes.isEmpty { Text(goal.notes).font(.mission(.body)) }
+                    if goal.progress.total > 0 {
+                        MissionProgressBar(fraction: Double(goal.progress.done) / Double(goal.progress.total), label: "\(goal.progress.done) of \(goal.progress.total) tasks done")
                     }
+                    if let ends = goal.endsOnText { Label(ends, systemImage: "calendar").foregroundStyle(Tok.muted) }
                 }
                 .listRowBackground(Tok.surface)
 
-                let routines = life.routines.filter { (goal.routineIds ?? []).contains($0.id) }
-                if !routines.isEmpty {
-                    Section {
-                        ForEach(routines) { r in RoutineRow(status: r, interactive: false) { openRoutine = RoutineRef(id: r.id) } }
-                    } header: { Text("Routines that serve it").font(.mission(.subheadline, .medium)) }
-                    footer: { Text("Record them from their own screen or from Today.").font(.mission(.footnote)) }
-                    .listRowBackground(Tok.surface)
-                }
-
-                if routines.isEmpty {
-                    Section {
-                        Button { chat.request(draft: "Link the routines I already have that serve \u{201C}\(goal.title)\u{201D}, add any that are missing, and replace repeating steps with routines.") } label: {
-                            Label("No routines serve this goal yet. Set them up with your assistant", systemImage: "repeat")
-                        }.frame(minHeight: 44)
-                    }
-                    .listRowBackground(Tok.surface)
-                }
-
-                if !goal.steps.isEmpty {
-                    Section {
-                        ForEach(goal.steps) { s in
-                            HStack(spacing: Space.m) {
-                                // A flag, not a checkbox: nothing here can be ticked.
-                                Image(systemName: s.doneAt != nil ? "flag.checkered" : "flag").font(.mission(.body))
-                                    .foregroundStyle(s.doneAt != nil ? Tok.accent : Tok.muted).frame(width: 24).accessibilityHidden(true)
-                                Text(s.title).font(.mission(.body)).foregroundStyle(s.doneAt != nil ? Tok.muted : Tok.text)
-                                Spacer()
-                                Text("\(s.minutes) min").font(.missionMono(.caption)).foregroundStyle(Tok.muted)
-                            }
-                            .frame(minHeight: 44).accessibilityElement(children: .combine)
-                            .accessibilityLabel("\(s.title), \(s.minutes) minutes, \(s.doneAt != nil ? "done" : "not done")")
-                        }
-                    } header: { Text("One-off steps").font(.mission(.subheadline, .medium)) }
-                    footer: { Text("Milestones done once. They come up under \u{201C}Do this next\u{201D} on Today.").font(.mission(.footnote)) }
-                    .listRowBackground(Tok.surface)
+                if !tasks.isEmpty { section("Tasks", tasks) }
+                if !events.isEmpty { section("Events", events) }
+                if loaded && items.isEmpty {
+                    Section { Text("Nothing is linked to this goal yet.").foregroundStyle(Tok.muted) }.listRowBackground(Tok.surface)
                 }
 
                 Section {
+                    Button("Add a task", systemImage: "checklist") { adding = .task }.frame(minHeight: 44)
+                    Button("Add an event", systemImage: "calendar.badge.plus") { adding = .event }.frame(minHeight: 44)
                     Button { chat.request(draft: "About my goal \u{201C}\(goal.title)\u{201D}: ") } label: {
                         Label("Change this with your assistant", systemImage: "bubble.left")
                     }.frame(minHeight: 44)
-                    Button { chat.request(draft: "I keep putting off \u{201C}\(goal.title)\u{201D}. Help me make it smaller. ") } label: {
-                        Label("I keep putting this off", systemImage: "hourglass")
-                    }.frame(minHeight: 44)
-                } footer: { Text("Routines, steps and the goal itself are set up and changed by your assistant, in Chat.").font(.mission(.footnote)) }
+                    Button("Archive this goal", systemImage: "archivebox", role: .destructive) { confirmArchive = true }.frame(minHeight: 44)
+                } footer: { Text("Your assistant can also plan a goal out, and move dates when something changes.").font(.mission(.footnote)) }
                 .listRowBackground(Tok.surface)
             }
             .scrollContentBackground(.hidden).screenBackground()
-            .navigationTitle(goal.title).navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(item: $openRoutine) { RoutineDetailView(id: $0.id) }
+            .task(id: goal.progress) { items = await life.items(forGoal: goalID); loaded = true }
+            .refreshable { await life.loadGoals(); items = await life.items(forGoal: goalID) }
+            .sheet(item: $detail) { ItemDetailSheet(ref: $0) }
+            .sheet(item: $adding) { ItemFormSheet(mode: .new(goalID: goalID), initialKind: $0).environment(life) }
+            .confirmationDialog("Archive this goal?", isPresented: $confirmArchive, titleVisibility: .visible) {
+                Button("Archive", role: .destructive) { Task { await life.archive(goal); dismiss() } }
+            } message: { Text("Its tasks and events stay. You can ask your assistant to bring it back.") }
         } else {
             ContentUnavailableView("This goal is gone", systemImage: "flag", description: Text("It was archived or removed."))
         }
+    }
+
+    private func section(_ title: String, _ list: [Wire.Item]) -> some View {
+        Section {
+            ForEach(list) { item in
+                Button { detail = ItemRef(id: item.id) } label: {
+                    HStack(spacing: Space.m) {
+                        Image(systemName: item.isEvent ? "calendar" : (item.isDone ? "checkmark.circle.fill" : "circle"))
+                            .foregroundStyle(item.isDone ? Tok.accent : Tok.muted).frame(width: 24).accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: Space.xs) {
+                            Text(item.title).font(.mission(.body)).foregroundStyle(item.isDone ? Tok.muted : Tok.text).strikethrough(item.isDone)
+                            if let at = item.at { Text(at.formatted(date: .abbreviated, time: .shortened)).font(.mission(.caption)).foregroundStyle(Tok.muted) }
+                        }
+                        Spacer(minLength: 0)
+                    }.frame(minHeight: 44).contentShape(Rectangle())
+                }.buttonStyle(.borderless)
+            }
+        } header: { Text(title).font(.mission(.subheadline, .medium)) }
+        .listRowBackground(Tok.surface)
     }
 }

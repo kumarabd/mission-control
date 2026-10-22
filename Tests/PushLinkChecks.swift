@@ -6,19 +6,21 @@ struct PushLinkChecks {
         precondition(PushLink.hex(Data([0x00, 0xab, 0x0f, 0xff])) == "00ab0fff")
         precondition(PushLink.hex(Data()) == "")
 
-        let reminder: [AnyHashable: Any] = ["aps": ["alert": "x"], "link": ["entity": "reminder", "id": "r1"]]
-        // A reminder opens Goals ▸ Reminders now, not Today.
-        precondition(PushLink.target(from: reminder) == .init(entity: "reminder", id: "r1", section: .goals))
-        for (entity, section) in [("plan_item", PushLink.Section.today), ("schedule", .today), ("routine", .today), ("monitor", .today), ("goal", .goals), ("step", .goals),
-                                  ("journal_entry", .memory), ("note", .memory), ("capture", .memory)] {
+        // A task or event opens on Today, a goal in Goals.
+        precondition(PushLink.target(from: ["aps": ["alert": "x"], "link": ["entity": "task", "id": "t1"]]) == .init(entity: "task", id: "t1", section: .today))
+        for (entity, section) in [("task", PushLink.Section.today), ("event", .today), ("goal", .goals), ("journal_entry", .memory), ("note", .memory), ("capture", .memory)] {
             precondition(PushLink.target(from: ["link": ["entity": entity, "id": "x"]])?.section == section, entity)
+        }
+        // The older model's records open nothing.
+        for gone in ["reminder", "plan_item", "routine", "schedule", "monitor", "step"] {
+            precondition(PushLink.target(from: ["link": ["entity": gone, "id": "x"]]) == nil, gone)
         }
         // Anything malformed or unknown opens nothing rather than crashing or opening the wrong place.
         precondition(PushLink.target(from: [:]) == nil)
-        precondition(PushLink.target(from: ["link": "reminder:r1"]) == nil)
+        precondition(PushLink.target(from: ["link": "task:t1"]) == nil)
         precondition(PushLink.target(from: ["link": ["entity": "pizza", "id": "1"]]) == nil)
-        precondition(PushLink.target(from: ["link": ["entity": "reminder", "id": ""]]) == nil)
-        precondition(PushLink.target(from: ["link": ["entity": "reminder"]]) == nil)
+        precondition(PushLink.target(from: ["link": ["entity": "task", "id": ""]]) == nil)
+        precondition(PushLink.target(from: ["link": ["entity": "task"]]) == nil)
         print("PushLinkChecks passed")
     }
 }

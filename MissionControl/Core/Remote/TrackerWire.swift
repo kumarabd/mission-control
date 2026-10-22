@@ -4,9 +4,9 @@ extension Wire {
     struct TrackerMetric: Codable, Equatable, Identifiable {
         var id: String; var label: String; var unit: String
         var target: Double?; var minimum: Double?; var maximum: Double?
-        /// Where the values come from: a provider's series, or a routine's logs. Neither: the person records them.
+        /// Where the values come from: a provider's series, or a repeating task's done occurrences. Neither: the person records them.
         var source: MetricSource?
-        var routineId: String?
+        var taskId: String?
         func accepts(_ value: Double) -> Bool {
             value.isFinite && (minimum.map { value >= $0 } ?? true) && (maximum.map { value <= $0 } ?? true)
         }
@@ -14,7 +14,7 @@ extension Wire {
     /// A data provider's series, read live: `provider` is the engine's router prefix (for example `finance`).
     struct MetricSource: Codable, Equatable, Hashable { var provider: String; var series: String; var granularity: String? }
 
-    /// The view kit. A view is composed from a finite set of blocks and calculations; none of it names a kind of goal.
+    /// The view kit. A view is composed from a finite set of blocks and calculations; none of it names a kind of goal, task or event.
     /// The engine validates a manifest and this client evaluates the calculations on live data, so no figure in a view
     /// was ever written by the model (docs: the engine's tracker_catalog_get).
     struct Window: Codable, Equatable { var period: String?; var days: Int? }
@@ -34,22 +34,22 @@ extension Wire {
         var value: Calc?; var of: Calc?; var markers: [Marker]?; var projection: Calc?
         var metric: String?; var style: String?; var window: Window?; var bucket: String?; var aggregate: String?
         var lines: [Marker]?; var band: Band?; var trendTo: Calc?; var layout: String?; var weeks: Int?
-        var source: String?; var thresholds: [Double]?
+        var thresholds: [Double]?
         var format: String?; var unit: String?; var decimals: Int?
         var body: String?; var points: [String]?; var url: String?
     }
     /// A view is pages of titled sections of blocks. The structure is the engine's; what fills it is the composer's.
     struct ViewSection: Codable, Equatable, Identifiable { var id: String; var title: String; var intro: String?; var blocks: [ViewBlock] }
     struct ViewPage: Codable, Equatable, Identifiable { var id: String; var title: String?; var sections: [ViewSection] }
-    /// A goal's view for one client catalogue: a manifest of blocks that refer to the goal and to metrics.
-    struct GoalView: Codable, Equatable, Identifiable {
+    /// A subject's (a goal's, task's or event's) view for one client catalogue: a manifest of blocks that refer to the subject and to metrics.
+    struct SubjectView: Codable, Equatable, Identifiable {
         var id: String; var subjectKind: String; var subjectId: String; var catalogId: String
         var metrics: [TrackerMetric]; var pages: [ViewPage]; var version: Int
         var createdAt: Date?; var updatedAt: Date?
         var blocks: [ViewBlock] { pages.flatMap { $0.sections.flatMap(\.blocks) } }
         /// A block this client can show. An unknown one is shown as unsupported on its own; it never hides the rest.
         func supports(_ block: ViewBlock) -> Bool {
-            let known = Set(["sentence", "bar", "series", "grid", "steps", "timeline", "routines", "reminders", "log", "text", "link"])
+            let known = Set(["sentence", "bar", "series", "grid", "steps", "timeline", "tasks", "events", "log", "text", "link"])
             guard known.contains(block.kind) else { return false }
             switch block.kind {
             case "series", "grid", "log": return metrics.contains { $0.id == block.metric }
@@ -58,21 +58,21 @@ extension Wire {
             }
         }
     }
-    struct GoalMeasurement: Codable, Equatable, Identifiable {
-        var id: String; var goalId: String; var metricId: String; var unit: String; var value: Double
+    struct Measurement: Codable, Equatable, Identifiable {
+        var id: String; var subjectKind: String; var subjectId: String; var metricId: String; var unit: String; var value: Double
         var measuredAt: Date; var notes: String; var version: Int
         var deletedAt: Date?; var createdAt: Date; var updatedAt: Date
     }
     struct ViewState: Codable, Equatable {
-        var goalId: String; var catalogId: String
-        var view: GoalView?; var measurements: [GoalMeasurement]
+        var subjectKind: String; var subjectId: String; var catalogId: String
+        var view: SubjectView?; var measurements: [Measurement]
         var metricDefinitions: [TrackerMetric] { view?.metrics ?? [] }
         /// The view for this catalogue, or nil: another app's view is never substituted.
-        func view(catalog: String) -> GoalView? {
+        func view(catalog: String) -> SubjectView? {
             guard catalogId == catalog, let view, view.catalogId == catalog, !view.blocks.isEmpty else { return nil }
             return view
         }
-        func observations(for metric: String) -> [GoalMeasurement] {
+        func observations(for metric: String) -> [Measurement] {
             measurements.filter { $0.metricId == metric && $0.deletedAt == nil }.sorted { $0.measuredAt < $1.measuredAt }
         }
     }
@@ -84,8 +84,22 @@ extension Wire {
 }
 
 /// One app/platform identity for native rendering.
+extension Wire {
+    struct HistoryDay: Codable, Equatable, Identifiable {
+        var day: String; var scheduled: Bool; var count: Int; var target: Int; var done: Bool
+        var id: String { day }
+    }
+    struct Consistency: Codable, Equatable { var done: Int; var scheduled: Int }
+    /// A repeating task's recent days, for a view's grid and series: how a habit is going.
+    struct TaskHistory: Codable, Equatable {
+        var task: Item; var days: [HistoryDay]
+        var last7: Consistency; var last30: Consistency
+        var streak: Int; var bestStreak: Int
+    }
+}
+
 enum TrackerClient {
-    /// The view kit this client draws. One manifest per goal serves every client; each draws it with its own components.
+    /// The view kit this client draws. One manifest per subject serves every client; each draws it with its own components.
     static let catalog = "view-kit.v1"
     static func number(_ text: String, locale: Locale = .current) -> Double? {
         let scanner = Scanner(string: text.trimmingCharacters(in: .whitespacesAndNewlines))

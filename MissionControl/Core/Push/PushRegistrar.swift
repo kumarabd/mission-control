@@ -22,6 +22,16 @@ final class PushRegistrar {
         Task { await start() }
     }
 
+    /// Asks for permission the first time something the person made will want to tell them (an alert), never at launch, then
+    /// registers for push. Alerts reach the phone as push from the gateway; the app schedules nothing locally.
+    func askToNotify() async {
+        let center = UNUserNotificationCenter.current()
+        if await center.notificationSettings().authorizationStatus == .notDetermined {
+            guard (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) == true else { return }
+        }
+        await start()
+    }
+
     /// Asks iOS for a device token if notifications are allowed. Safe to call repeatedly.
     func start() async {
         let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus

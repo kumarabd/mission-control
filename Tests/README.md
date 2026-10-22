@@ -71,34 +71,18 @@ xcrun swiftc -parse-as-library MissionControl/Core/Push/PushLink.swift Tests/Pus
 ## Life Engine contract (real recorded responses, request shapes, error classification)
 
 ```sh
-xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Remote/LifeAPI.swift MissionControl/Core/Remote/RemindersService.swift MissionControl/Core/Remote/RoutinesService.swift MissionControl/Core/Remote/GoalsService.swift MissionControl/Core/Remote/SettingsService.swift MissionControl/Core/Remote/PlanService.swift Tests/LifeContractChecks.swift -o /private/tmp/mission-life-contract-checks
+xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Remote/LifeAPI.swift MissionControl/Core/Remote/ItemsService.swift MissionControl/Core/Remote/GoalsService.swift MissionControl/Core/Remote/SettingsService.swift Tests/LifeContractChecks.swift -o /private/tmp/mission-life-contract-checks
 /private/tmp/mission-life-contract-checks Tests/Fixtures/life
 ```
 
-`Tests/Fixtures/life` is copied from the `life-engine` repository's `fixtures/`; regenerate there when the contract changes.
+`Tests/Fixtures/life` is copied from the `life-engine` repository's `fixtures/`; regenerate there when the contract changes. Covers goals, tasks, calendar events and
+the day (decoding, and the exact requests the services send), and how failures are classified.
 
-Reminder state (when a reminder shows as done, for how long, and which shelf of the
-Reminders list it lands on — overdue, coming, no time, done — with a snooze replacing
-the due time):
-
-    xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Domain/DayProgress.swift MissionControl/Core/Domain/ReminderSections.swift Tests/ReminderStateChecks.swift -o /private/tmp/reminder-state-checks && /private/tmp/reminder-state-checks
-
-Markdown blocks and the routine/goal overview text:
+Markdown blocks:
 
     xcrun swiftc -parse-as-library MissionControl/Core/Domain/Markdown.swift Tests/MarkdownChecks.swift -o /private/tmp/markdown-checks && /private/tmp/markdown-checks
-    xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Domain/Overview.swift Tests/OverviewChecks.swift -o /private/tmp/overview-checks && /private/tmp/overview-checks
 
-When a routine next applies:
-
-    xcrun swiftc -parse-as-library MissionControl/Core/Domain/RoutineSchedule.swift Tests/RoutineScheduleChecks.swift -o /private/tmp/routine-schedule-checks && /private/tmp/routine-schedule-checks
-
-## Today grouping and workspace refresh
-
-    xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Domain/TodayLayout.swift Tests/TodayLayoutChecks.swift -o /private/tmp/today-layout-checks
-    /private/tmp/today-layout-checks Tests/Fixtures/life
-
-Covers timed check-ins, a routine as untimed work (its nudge times never put it on
-the schedule) and routines that do not apply today.
+## Schedule window
 
 The schedule window (where the Now rule falls, how tall the window is):
 
@@ -124,10 +108,10 @@ ignored, a stopped turn keeping what was already seen, an empty frame leaving no
 bubble, and a whole connect replayed twice changing nothing. It does not prove what
 the gateway replays (that is the mobile WebSocket contract) or how the thread looks.
 
-    xcrun swiftc -parse-as-library MissionControl/Core/Domain/Models.swift MissionControl/Core/Domain/Planner.swift MissionControl/Core/Domain/WorkspaceUpdate.swift MissionControl/Core/Engine/LifeEngine.swift MissionControl/Core/Engine/Life.swift MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Remote/LifeAPI.swift MissionControl/Core/Remote/RemindersService.swift MissionControl/Core/Remote/RoutinesService.swift MissionControl/Core/Remote/GoalsService.swift MissionControl/Core/Remote/SettingsService.swift MissionControl/Core/Remote/PlanService.swift Tests/WorkspaceRefreshChecks.swift -o /private/tmp/workspace-refresh-checks
+    xcrun swiftc -parse-as-library MissionControl/Core/Domain/Models.swift MissionControl/Core/Domain/Planner.swift MissionControl/Core/Domain/WorkspaceUpdate.swift MissionControl/Core/Engine/LifeEngine.swift MissionControl/Core/Engine/Life.swift MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Remote/LifeAPI.swift MissionControl/Core/Remote/ItemsService.swift MissionControl/Core/Remote/GoalsService.swift MissionControl/Core/Remote/SettingsService.swift Tests/WorkspaceRefreshChecks.swift -o /private/tmp/workspace-refresh-checks
     /private/tmp/workspace-refresh-checks Tests/Fixtures/life
 
-Uses recorded service responses to verify all four remote collections refresh,
+Uses recorded service responses to verify the day, tasks, events and goals refresh, completing and adding re-read them,
 edited goals produce receipt data, load failures preserve previous records,
 failed memory writes report failure, and retained journal history is not surfaced.
 Notification delivery is stubbed; these checks do not contact a live workspace.
@@ -146,7 +130,7 @@ network call, pagination appending without duplicates, a failed refresh keeping 
 is already shown, and an unattached inbox reading as unavailable rather than broken.
 It does not contact a live gateway.
 
-## Goal trackers
+## Views (goal, task or event trackers)
 
     xcrun swiftc -parse-as-library MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Remote/LifeAPI.swift MissionControl/Core/Remote/GoalsService.swift Tests/TrackerContractChecks.swift -o /private/tmp/mission-tracker-checks
     /private/tmp/mission-tracker-checks Tests/Fixtures/life
@@ -156,7 +140,7 @@ The view kit's calculations (the figures of a spending limit, a weigh-in and a h
     xcrun swiftc -parse-as-library MissionControl/Core/Domain/ViewKit.swift MissionControl/Core/Remote/LifeWire.swift MissionControl/Core/Remote/TrackerWire.swift MissionControl/Core/Remote/LifeAPI.swift MissionControl/Core/Remote/GoalsService.swift Tests/ViewKitChecks.swift -o /private/tmp/mission-viewkit-checks
     /private/tmp/mission-viewkit-checks Tests/Fixtures/views
 
-Decodes engine-recorded definitions, proposals and observations; rejects wrong-client or unknown-module rendering; checks legacy goals, numeric locale handling and exact record/update/delete/approval requests. The engine integration suite covers actual idempotency, stale revisions, unit/history preservation and concurrent approval. These checks do not prove an agent turn, a live tenant rollout, or device appearance.
+Decodes engine-recorded views and observations; rejects wrong-client or unknown-module rendering; checks numeric locale handling and exact measurements_* and views_state requests. The engine integration suite covers actual idempotency, stale revisions, unit/history preservation and concurrent approval. These checks do not prove an agent turn, a live tenant rollout, or device appearance.
 
 ## Semantic Memory
 

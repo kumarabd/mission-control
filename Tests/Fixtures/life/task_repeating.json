@@ -1,0 +1,23 @@
+{
+  "id": "16d30957-1898-4480-b3f5-7bd6ab6822db",
+  "kind": "task",
+  "subject": "person",
+  "title": "Drink water",
+  "notes": "",
+  "goal_id": null,
+  "at": "2026-10-22T08:00:00Z",
+  "minutes": null,
+  "time_zone": "Europe/London",
+  "recurrence": {
+    "freq": "daily",
+    "interval": 1
+  },
+  "alert_before_minutes": 0,
+  "is_priority": false,
+  "snoozed_until": null,
+  "done_at": null,
+  "version": 1,
+  "deleted_at": null,
+  "created_at": "2026-10-22T05:13:11.845112Z",
+  "updated_at": "2026-10-22T05:13:11.845112Z"
+}

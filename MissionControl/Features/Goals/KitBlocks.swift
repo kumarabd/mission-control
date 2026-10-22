@@ -25,10 +25,9 @@ extension Wire.ViewBlock {
 
 /// What a block can do besides draw: every client-owned action a view's blocks reach.
 struct KitActions {
-    var checkIn: (Wire.TrackerMetric, Wire.GoalMeasurement?) -> Void
-    var step: (Wire.Step) -> Void
+    var checkIn: (Wire.TrackerMetric, Wire.Measurement?) -> Void
     var retry: () -> Void
-    /// Record (+1) or take back (-1) one on a day, for a metric that reads a routine's logs.
+    /// Record (+1) or take back (-1) one on a day, for a metric that reads a repeating task's done occurrences.
     var logDay: (Wire.TrackerMetric, Date, Int) -> Void
     /// Record one number for a metric the person logs by hand; returns a message when it could not be saved.
     var record: (Wire.TrackerMetric, Double) async -> String?
@@ -40,11 +39,11 @@ struct KitActions {
 /// motion has a still alternative.
 struct KitBlockView: View {
     let block: Wire.ViewBlock
-    let view: Wire.GoalView
+    let view: Wire.SubjectView
     let loads: [String: KitLoad]
     let data: ViewKit.Data
     let tracker: Wire.ViewState
-    let goal: Wire.Goal
+    let subject: ViewSubject
     var interactive: Bool
     var index = 0
     let actions: KitActions
@@ -102,10 +101,10 @@ struct KitBlockView: View {
                     case "bar": BarBlock(block: block, data: data)
                     case "series": SeriesBlock(block: block, data: data)
                     case "grid": GridBlock(block: block, data: data, metric: view.metrics.first { $0.id == block.metric }, actions: actions, interactive: interactive)
-                    case "steps": StepsBlock(block: block, data: data, goal: goal, interactive: interactive, onStep: actions.step)
+                    case "steps": StepsBlock(block: block, data: data)
                     case "timeline": TimelineBlock(block: block, data: data)
-                    case "routines": RoutinesBlock(goal: goal, interactive: interactive)
-                    case "reminders": RemindersBlock(goal: goal, interactive: interactive)
+                    case "tasks": TasksBlock(subject: subject, interactive: interactive)
+                    case "events": EventsBlock(subject: subject)
                     case "log": LogBlock(block: block, view: view, tracker: tracker, interactive: interactive, actions: actions)
                     case "link": LinkBlock(block: block)
                     default: EmptyView()
@@ -373,7 +372,7 @@ private struct SeriesBlock: View {
 
 // MARK: Grid
 
-/// Which days something happened. Tap a day of a routine to record it there; press and hold to take one back.
+/// Which days something happened. Tap a day of a repeating task to record it there; press and hold to take one back.
 private struct GridBlock: View {
     let block: Wire.ViewBlock
     let data: ViewKit.Data
@@ -388,7 +387,7 @@ private struct GridBlock: View {
         for p in data.series[block.metric ?? ""] ?? [] { out[data.calendar.startOfDay(for: p.date), default: 0] += p.value }
         return out
     }
-    private var logs: Bool { interactive && metric?.routineId != nil }
+    private var logs: Bool { interactive && metric?.taskId != nil }
     private var ring: Bool { block.layout == "week_row" }
     private var weekdays: [String] {
         let symbols = data.calendar.veryShortStandaloneWeekdaySymbols, first = data.calendar.firstWeekday - 1
@@ -466,18 +465,13 @@ private struct GridBlock: View {
 
 // MARK: Steps
 
-/// The goal's own one-off steps, or a ladder of thresholds a value climbs.
+/// A ladder of thresholds a value climbs.
 private struct StepsBlock: View {
     let block: Wire.ViewBlock
     let data: ViewKit.Data
-    let goal: Wire.Goal
-    var interactive: Bool
-    var onStep: (Wire.Step) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var grown = false
-    var body: some View {
-        if block.source == "goal_steps" { goalSteps } else { ladder }
-    }
+    var body: some View { ladder }
     @ViewBuilder private var ladder: some View {
         let marks = block.thresholds ?? []
         if let value = block.value.flatMap({ ViewKit.evaluate($0, data).number }), marks.count >= 2 {
@@ -506,34 +500,6 @@ private struct StepsBlock: View {
             .accessibilityElement().accessibilityLabel("\(marks.filter { value >= $0 }.count) of \(marks.count) steps reached")
         } else {
             Text("Waiting for the numbers this needs.").font(.mission(.body)).foregroundStyle(Tok.muted)
-        }
-    }
-    @ViewBuilder private var goalSteps: some View {
-        if goal.steps.isEmpty {
-            Label("No steps yet", systemImage: "flag").font(.mission(.body)).foregroundStyle(Tok.muted)
-        } else {
-            let done = goal.steps.filter { $0.doneAt != nil }.count
-            MissionProgressBar(fraction: Double(done) / Double(goal.steps.count), label: "\(done) of \(goal.steps.count) steps done")
-                .animation(reduceMotion ? nil : .spring(response: 0.6, dampingFraction: 0.85), value: done)
-            ForEach(goal.steps) { step in
-                let isDone = step.doneAt != nil
-                Button { onStep(step) } label: {
-                    HStack(spacing: Space.m) {
-                        ZStack {
-                            Circle().strokeBorder(isDone ? Color.clear : Tok.muted, lineWidth: 1.5)
-                            Circle().fill(Tok.accent).scaleEffect(isDone ? 1 : 0.3).opacity(isDone ? 1 : 0)
-                            Image(systemName: "checkmark").font(.mission(.caption, .bold)).foregroundStyle(Tok.onAccent).scaleEffect(isDone ? 1 : 0.3).opacity(isDone ? 1 : 0)
-                        }
-                        .frame(width: 26, height: 26)
-                        .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.6), value: isDone)
-                        Text(step.title).font(.mission(.body)).foregroundStyle(isDone ? Tok.muted : Tok.text).strikethrough(isDone, color: Tok.muted)
-                        Spacer(minLength: 0)
-                    }.frame(minHeight: 44).contentShape(Rectangle())
-                }
-                .buttonStyle(MissionPressStyle()).disabled(!interactive || isDone)
-                .sensoryFeedback(.success, trigger: isDone) { old, new in !old && new }
-                .accessibilityLabel("\(step.title), \(isDone ? "done" : "mark done")")
-            }
         }
     }
 }
@@ -586,71 +552,78 @@ private struct TimelineBlock: View {
     }
 }
 
-// MARK: Routines
+// MARK: Tasks and events
 
-/// The goal's own routines: tap a ring to record one for today; open one for its history.
-/// The reminders set for this goal, soonest first, each finished with one tap.
-private struct RemindersBlock: View {
+/// The subject's own tasks: for a goal, the tasks linked to it. Each is finished with one tap.
+private struct TasksBlock: View {
     @Environment(Life.self) private var life
-    let goal: Wire.Goal
+    let subject: ViewSubject
     var interactive: Bool
-    var body: some View {
-        let linked = life.reminders.filter { $0.link?.entity == "goal" && $0.link?.id == goal.id && $0.state == "pending" }
-        if linked.isEmpty {
-            Label("No reminders for this goal", systemImage: "bell").font(.mission(.body)).foregroundStyle(Tok.muted)
-        } else {
-            VStack(spacing: Space.xs) {
-                ForEach(linked) { reminder in
-                    HStack(spacing: Space.m) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(reminder.title).font(.mission(.body, .medium)).foregroundStyle(Tok.text)
-                            Text(when(reminder)).font(.mission(.caption)).foregroundStyle(Tok.muted)
-                        }.frame(maxWidth: .infinity, alignment: .leading)
-                        Button { Task { await life.completeReminder(reminder) } } label: {
-                            Image(systemName: "checkmark.circle").font(.title2).foregroundStyle(Tok.accent).frame(width: 44, height: 44)
-                        }
-                        .disabled(!interactive).accessibilityLabel("Mark \(reminder.title) done")
-                    }.frame(minHeight: 44)
-                }
-            }
-        }
-    }
-    private func when(_ r: Wire.Reminder) -> String {
-        guard let due = r.dueAt else { return "Whenever" }
-        let text = due.formatted(.relative(presentation: .named))
-        return r.recurrence == nil ? text : text + " · repeats"
-    }
-}
+    @State private var items: [Wire.Item] = []
+    @State private var loaded = false
 
-private struct RoutinesBlock: View {
-    @Environment(Life.self) private var life
-    let goal: Wire.Goal
-    var interactive: Bool
     var body: some View {
-        let linked = life.routines.filter { (goal.routineIds ?? []).contains($0.id) }
-        if linked.isEmpty {
-            Label("No routines serve this goal yet", systemImage: "repeat").font(.mission(.body)).foregroundStyle(Tok.muted)
-        } else {
-            VStack(spacing: Space.xs) {
-                ForEach(linked) { status in
-                    HStack(spacing: Space.m) {
-                        NavigationLink { RoutineDetailView(id: status.id) } label: {
+        let tasks = items.filter { $0.isTask && !$0.isDone }
+        Group {
+            if loaded && tasks.isEmpty {
+                Label("No open tasks", systemImage: "checklist").font(.mission(.body)).foregroundStyle(Tok.muted)
+            } else {
+                VStack(spacing: Space.xs) {
+                    ForEach(tasks) { task in
+                        HStack(spacing: Space.m) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(status.routine.title).font(.mission(.body, .medium)).foregroundStyle(Tok.text)
-                                Text(caption(status)).font(.mission(.caption)).foregroundStyle(Tok.muted)
+                                Text(task.title).font(.mission(.body, .medium)).foregroundStyle(Tok.text)
+                                Text(when(task)).font(.mission(.caption)).foregroundStyle(Tok.muted)
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                            Button { Task { await life.complete(task); await load() } } label: {
+                                Image(systemName: "checkmark.circle").font(.title2).foregroundStyle(Tok.accent).frame(width: 44, height: 44)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading).frame(minHeight: 44).contentShape(Rectangle())
-                        }.disabled(!interactive)
-                        LogRing(status: status, size: 44, interactive: interactive)
+                            .disabled(!interactive).accessibilityLabel("Mark \(task.title) done")
+                        }.frame(minHeight: 44)
                     }
                 }
             }
         }
+        .task { await load() }
     }
-    private func caption(_ s: Wire.RoutineStatus) -> String {
-        if !s.scheduled { return "Not today" }
-        let today = s.target > 1 ? "\(s.count) of \(s.target) today" : (s.done ? "Done today" : "Not yet today")
-        return s.streak > 1 ? "\(today) · \(s.streak)-day streak" : today
+    private func load() async {
+        items = subject.kind == "goal" ? await life.items(forGoal: subject.id) : (life.item(subject.id).map { [$0] } ?? [])
+        loaded = true
+    }
+    private func when(_ t: Wire.Item) -> String {
+        if let rule = t.repeatDescription { return rule }
+        guard let at = t.at else { return "Whenever" }
+        return at.formatted(.relative(presentation: .named))
+    }
+}
+
+/// The subject's own events, soonest first.
+private struct EventsBlock: View {
+    @Environment(Life.self) private var life
+    let subject: ViewSubject
+    @State private var items: [Wire.Item] = []
+    @State private var loaded = false
+
+    var body: some View {
+        let events = items.filter(\.isEvent).sorted { ($0.at ?? .distantFuture) < ($1.at ?? .distantFuture) }
+        Group {
+            if loaded && events.isEmpty {
+                Label("Nothing is scheduled", systemImage: "calendar").font(.mission(.body)).foregroundStyle(Tok.muted)
+            } else {
+                VStack(spacing: Space.xs) {
+                    ForEach(events) { event in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(event.title).font(.mission(.body, .medium)).foregroundStyle(Tok.text)
+                            Text(event.at?.formatted(date: .abbreviated, time: .shortened) ?? "").font(.mission(.caption)).foregroundStyle(Tok.muted)
+                        }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    }
+                }
+            }
+        }
+        .task {
+            items = subject.kind == "goal" ? await life.items(forGoal: subject.id) : (life.item(subject.id).map { [$0] } ?? [])
+            loaded = true
+        }
     }
 }
 
@@ -659,7 +632,7 @@ private struct RoutinesBlock: View {
 /// A quick way to record one number: type it here, or open a record to correct it.
 private struct LogBlock: View {
     let block: Wire.ViewBlock
-    let view: Wire.GoalView
+    let view: Wire.SubjectView
     let tracker: Wire.ViewState
     var interactive: Bool
     let actions: KitActions

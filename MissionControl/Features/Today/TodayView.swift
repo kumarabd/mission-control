@@ -7,31 +7,25 @@ struct TodayView: View {
     @Environment(NotificationsModel.self) private var notifications
     @State private var events: [DayEvent] = []
     @State private var sheet: Sheet?
-    @State private var openRoutine: RoutineRef?
     @State private var openGoal: GoalRef?
-    @State private var openTask: PlanItemRef?
+    @State private var openItem: ItemRef?
     @State private var showNotifications = false
     /// A record a notification pointed at, held until the inbox screen has gone, so it cannot fight Today's own sheets.
     @State private var deferred: PushLink.Target?
     @State private var loading = true
     @Environment(\.horizontalSizeClass) private var sizeClass
 
-    enum Sheet: Identifiable { case add, reminder; var id: Self { self } }
+    enum Sheet: Identifiable { case task, event; var id: Self { self } }
 
-    private var flexibleTasks: [Wire.PlanItem] { TodayLayout.untimedTasks(life.tasks) }
-    private var flexibleRoutines: [Wire.RoutineStatus] { TodayLayout.untimedRoutines(life.routines) }
-
+    /// Tasks with no time, and the ones still waiting from earlier days; priorities first.
     private var dueCards: [TaskCard] {
-        let open = flexibleTasks.filter { $0.doneAt == nil }
-        var cards = (open.filter(\.isPriority) + open.filter { !$0.isPriority }).map(TaskCard.task)
-        if let s = life.nextSuggestion, s.source == "goal_step", !life.tasks.contains(where: { $0.stepId == s.stepId }) { cards.append(.step(s)) }
-        cards += flexibleRoutines.filter { !$0.done }.map(TaskCard.routine)
-        return cards
+        let overdue = (life.day?.entries ?? []).filter(\.overdue).map { TaskCard(item: $0.item, at: $0.at, overdue: true) }
+        let untimed = life.openTasks.filter { $0.at == nil }.map { TaskCard(item: $0, at: nil) }
+        let cards = overdue + untimed
+        return cards.filter(\.item.isPriority) + cards.filter { !$0.item.isPriority }
     }
 
-    private var doneItems: Int {
-        flexibleTasks.filter { $0.doneAt != nil }.count + flexibleRoutines.filter(\.done).count
-    }
+    private var doneItems: Int { (life.day?.entries ?? []).filter { $0.item.isTask && $0.isDone }.count }
 
     var body: some View {
         NavigationStack {
@@ -72,21 +66,17 @@ struct TodayView: View {
                     }
                     .accessibilityLabel(notifications.unread == 0 ? "Notifications" : "Notifications, \(notifications.unread) unread")
                     Menu {
-                        Button("Add a task", systemImage: "checklist") { sheet = .add }
-                        Button("Add a reminder", systemImage: "bell") { sheet = .reminder }
+                        Button("Add a task", systemImage: "checklist") { sheet = .task }
+                        Button("Add an event", systemImage: "calendar.badge.plus") { sheet = .event }
                     } label: { Label("Add", systemImage: "square.and.pencil").frame(minWidth: 44, minHeight: 44) }
-                    .accessibilityLabel("Add a task or reminder")
+                    .accessibilityLabel("Add a task or event")
                     Button("Settings", systemImage: "person.crop.circle", action: onSettings).frame(minWidth: 44, minHeight: 44)
                 }
             }
             .sheet(item: $sheet) { s in
-                switch s {
-                case .add: AddPlanItemSheet()
-                case .reminder: AddReminderSheet()
-                }
+                ItemFormSheet(mode: .new(goalID: nil), initialKind: s == .event ? .event : .task)
             }
-            .sheet(item: $openTask) { PlanItemDetailSheet(id: $0.id) }
-            .navigationDestination(item: $openRoutine) { RoutineDetailView(id: $0.id) }
+            .sheet(item: $openItem) { ItemDetailSheet(ref: $0) }
             .navigationDestination(item: $openGoal) { GoalDetail(goalID: $0.id) }
             .navigationDestination(isPresented: $showNotifications) { NotificationsView(open: route) }
             .onAppear { openLink(DeepLink.shared.pending) }
@@ -117,17 +107,17 @@ struct TodayView: View {
         if loading {
             Section { Label("Loading your day…", systemImage: "clock").foregroundStyle(Tok.muted) }
         } else {
-            if !life.planAvailable && !life.routinesAvailable {
+            if !life.workspaceAvailable {
                 Section { Text("Connect your workspace to see today's schedule and tasks.").foregroundStyle(Tok.muted) }
             }
-            if let error = life.planLoadError ?? life.routinesLoadError {   // reminders are Goals ▸ Reminders' business
+            if let error = life.dayLoadError {
                 Section {
                     Label("Some items couldn't load", systemImage: "wifi.exclamationmark").font(.mission(.headline))
                     Text(error).font(.mission(.subheadline)).foregroundStyle(Tok.muted)
                     Button("Try again") { Task { await refresh() } }.frame(minHeight: 44)
                 }.listRowBackground(Tok.surface)
             }
-            ScheduleSection(events: events, openTask: { openTask = PlanItemRef(id: $0) })
+            ScheduleSection(events: events, openItem: { openItem = $0 })
         }
     }
 
@@ -158,9 +148,7 @@ struct TodayView: View {
     private func openLink(_ target: PushLink.Target?) {
         guard let target else { return }
         switch target.entity {
-        case "routine": openRoutine = RoutineRef(id: target.id)
-        case "plan_item": openTask = PlanItemRef(id: target.id)
-        // A reminder belongs to Goals ▸ Reminders now: leave it pending so that tab takes it.
+        case "task", "event": openItem = ItemRef(id: target.id)
         default: return
         }
         DeepLink.shared.pending = nil
@@ -168,54 +156,10 @@ struct TodayView: View {
 
     private var tasksSection: some View {
         Section {
-            TaskDeck(cards: dueCards, doneToday: doneItems) { card in
-                switch card {
-                case .routine(let s): openRoutine = RoutineRef(id: s.id)
-                case .task(let t): openTask = PlanItemRef(id: t.id)
-                case .step(let s): if let id = s.goalId { openGoal = GoalRef(id: id) }
-                }
-            }
+            TaskDeck(cards: dueCards, doneToday: doneItems) { openItem = $0.ref }
         } header: {
             Text("Tasks").font(.mission(.subheadline, .medium))
         } footer: { Text("Things to do without a set time.").font(.mission(.footnote)) }
         .listRowBackground(Tok.surface)
     }
 }
-
-struct AddPlanItemSheet: View {
-    @Environment(Life.self) private var life
-    @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var minutes = 25
-    @State private var priority = false
-    @State private var saving = false
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section { TextField("What will you do?", text: $title) }
-                Section {
-                    Stepper("\(minutes) minutes", value: $minutes, in: 5...240, step: 5)
-                    Toggle("One of today's priorities", isOn: $priority)
-                }
-                if let error = life.error { Section { Text(error).foregroundStyle(Tok.critical) } }
-            }
-            .scrollContentBackground(.hidden).screenBackground()
-            .navigationTitle("Add to today").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        saving = true
-                        Task {
-                            if await life.addTask(title: title.trimmed, minutes: minutes, priority: priority) { dismiss() }
-                            saving = false
-                        }
-                    }.disabled(title.trimmed.isEmpty || saving)
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-    }
-}
-

@@ -11,113 +11,60 @@ enum Wire {
         var weekdays: [Int]?
     }
 
-    struct Reminder: Codable, Equatable, Identifiable {
+    /// A task or an event: one record, told apart by `kind` (project-hub life-engine ADR 0008). A task waits for someone to do
+    /// it, so a time on it is a deadline or a cue; an event happens at its time. Either may repeat and either may alert; a
+    /// reminder is an alert, and a routine is a task that repeats.
+    struct Item: Codable, Equatable, Identifiable {
         var id: String
+        var kind: String             // task | event
+        var subject: String          // person | agent
         var title: String
         var notes: String
-        var dueAt: Date?
-        var snoozedUntil: Date?
+        var goalId: String?
+        var at: Date?
+        var minutes: Int?
         var timeZone: String
         var recurrence: Recurrence?
-        var source: String
-        var sessionId: String?
-        var turnSeq: Int?
-        var link: Link?
-        var state: String            // pending | done
-        var completedAt: Date?
-        var lastCompletedAt: Date?
+        var alertBeforeMinutes: Int?
+        var isPriority: Bool
+        var snoozedUntil: Date?
+        var doneAt: Date?
         var version: Int
         var deletedAt: Date?
         var createdAt: Date
         var updatedAt: Date
+        var isTask: Bool { kind == "task" }
+        var isEvent: Bool { kind == "event" }
+        var isDone: Bool { doneAt != nil }
+        var repeats: Bool { recurrence != nil }
+    }
+
+    struct Goal: Codable, Equatable, Identifiable {
+        struct Progress: Codable, Equatable { var done: Int; var total: Int }
+        var id: String
+        var subject: String
+        var title: String
+        var notes: String
+        var endsOn: String?          // YYYY-MM-DD
+        var progress: Progress
+        var next: Item?
+        var version: Int
+        var deletedAt: Date?
+    }
+
+    /// One occurrence of a task or event on a day. A repeating item appears once for each time it falls.
+    struct DayEntry: Codable, Equatable, Identifiable {
+        var item: Item
+        var at: Date
+        var state: String            // tasks: open | done. Events: upcoming | past
+        var overdue: Bool            // an open one-off task from an earlier day, carried onto today
+        var id: String { item.id + "@" + String(Int(at.timeIntervalSince1970)) }
         var isDone: Bool { state == "done" }
     }
 
-    /// A time the assistant may nudge about one routine. It belongs to the routine and is not a reminder (ADR 0007).
-    struct Nudge: Codable, Equatable, Hashable {
-        var at: String               // "HH:MM" local
-        var message: String?         // optional hint for the assistant's wording
-    }
-
-    struct Routine: Codable, Equatable, Identifiable {
-        var id: String
-        var title: String
-        var minutes: Int
-        var shortTitle: String
-        var shortMinutes: Int
-        var weekdays: [Int]          // 0 = Sunday ... 6; empty means every day
-        var targetPerDay: Int
-        var nudges: [Nudge]
-        var timeZone: String
-        var version: Int
-        var deletedAt: Date?
-        var createdAt: Date
-        var updatedAt: Date
-        /// The nudge times alone, for scheduling and display.
-        var cues: [String] {
-            get { nudges.map(\.at) }
-            set { nudges = newValue.map { Nudge(at: $0, message: nil) } }
-        }
-    }
-
-    /// One routine on one day: how many times so far against its target, and how it is going.
-    struct RoutineStatus: Codable, Equatable, Identifiable {
-        var routine: Routine
-        var scheduled: Bool
-        var target: Int
-        var count: Int
-        var done: Bool
-        var variant: String?
-        var streak: Int
-        var daysSinceLast: Int?
-        var gap: Bool
-        var hint: String
-        var id: String { routine.id }
-    }
-
-    struct RoutinesStatus: Codable, Equatable {
+    struct Day: Codable, Equatable {
         var day: String
-        var items: [RoutineStatus]
-    }
-
-    struct HistoryDay: Codable, Equatable, Identifiable {
-        var day: String
-        var scheduled: Bool
-        var count: Int
-        var target: Int
-        var done: Bool
-        var id: String { day }
-    }
-
-    struct Consistency: Codable, Equatable {
-        var done: Int
-        var scheduled: Int
-    }
-
-    /// What a tracker draws: recent days (oldest first, ending today), a rate over 7 and 30 days, and the best run.
-    struct RoutineHistory: Codable, Equatable {
-        var routine: Routine
-        var days: [HistoryDay]
-        var last7: Consistency
-        var last30: Consistency
-        var streak: Int
-        var bestStreak: Int
-    }
-
-    /// One occurrence of a reminder on a day. A repeating reminder appears once for each time it falls.
-    struct AgendaItem: Codable, Equatable, Identifiable {
-        var reminder: Reminder
-        var at: Date
-        var state: String            // upcoming | due | acknowledged
-        var overdue: Bool
-        var id: String { reminder.id + "@" + String(Int(at.timeIntervalSince1970)) }
-        /// A cue counts toward the day once it has fired: the point of it is that you were told.
-        var hasFired: Bool { state != "upcoming" }
-    }
-
-    struct Agenda: Codable, Equatable {
-        var day: String
-        var items: [AgendaItem]
+        var entries: [DayEntry]
     }
 
     struct Page<T: Codable & Equatable>: Codable, Equatable {
@@ -126,74 +73,8 @@ enum Wire {
         var nextOffset: Int?
     }
 
-    struct Step: Codable, Equatable, Identifiable {
-        var id: String; var goalId: String; var title: String; var minutes: Int; var position: Int
-        var doneAt: Date?; var version: Int
-    }
-
-    struct GoalConsistency: Codable, Equatable { var last7: Consistency; var last30: Consistency }
-
-    struct Goal: Codable, Equatable, Identifiable {
-        struct Progress: Codable, Equatable { var done: Int; var total: Int }
-        var id: String; var title: String; var why: String; var weeklyTarget: Int
-        var archivedAt: Date?; var version: Int
-        var steps: [Step]; var progress: Progress; var nextStep: Step?
-        /// Routines that serve this goal; tracked as routines, not as steps. Absent from an older engine.
-        var routineIds: [String]?
-        /// How well those routines were kept, summed over them. Keeping up, not how far the outcome has moved. Absent from an older engine.
-        var consistency: GoalConsistency?
-    }
-
-    struct PlanItem: Codable, Equatable, Identifiable {
-        var id: String; var day: String; var title: String
-        var kind: String          // task | event | prep | rest
-        var minutes: Int; var startAt: Date?; var isPriority: Bool
-        var goalId: String?; var stepId: String?
-        var doneAt: Date?; var version: Int; var deletedAt: Date?
-    }
-
-    struct ProposalChange: Codable, Equatable {
-        var action: String        // add | move | drop
-        var itemId: String?; var title: String?; var minutes: Int?; var kind: String?; var isPriority: Bool?; var day: String?
-    }
-
-    struct PlanProposal: Codable, Equatable, Identifiable {
-        var id: String; var day: String; var reason: String
-        var changes: [ProposalChange]
-        var state: String         // pending | applied | discarded
-        var version: Int
-    }
-
-    struct PlanDay: Codable, Equatable {
-        struct Summary: Codable, Equatable { var planned: Int; var done: Int; var minutesOpen: Int; var minutesDone: Int; var minutesEvents: Int }
-        var day: String; var items: [PlanItem]; var proposals: [PlanProposal]; var summary: Summary
-    }
-
-    struct Suggestion: Codable, Equatable {
-        var title: String; var minutes: Int; var reason: String
-        var source: String        // plan_item | goal_step
-        var planItemId: String?; var goalId: String?; var stepId: String?
-    }
-    struct NextAction: Codable, Equatable { var suggestion: Suggestion? }
-
-    struct DayCloseResult: Codable, Equatable {
-        var done: Int; var planned: Int; var carried: [PlanItem]
-        var summary: String; var tomorrowNote: String
-        var day: String; var nextDay: String
-    }
-
-    struct Replan: Codable, Equatable {
-        var keep: [PlanItem]; var moveToTomorrow: [PlanItem]; var minutesKept: Int
-    }
-
     struct Settings: Codable, Equatable {
         var id: String; var timeZone: String; var workStart: String; var workEnd: String; var version: Int
-    }
-
-    struct Capture: Codable, Equatable, Identifiable {
-        var id: String; var text: String; var capturedAt: Date; var source: String
-        var state: String         // open | resolved
-        var resolvedAs: String?; var resolvedId: String?; var version: Int
     }
 
     struct APIError: Codable, Equatable { var code: String; var message: String }
@@ -230,13 +111,7 @@ enum Wire {
 }
 
 
-extension Wire.Reminder {
-    /// Open reminders always; a finished one only for a day, so the list shows what you just did without keeping it forever.
-    func isShown(now: Date = Date()) -> Bool {
-        guard isDone else { return true }
-        return (completedAt ?? updatedAt) > now.addingTimeInterval(-24 * 3600)
-    }
-
+extension Wire.Item {
     /// "Every day", "Every 2 weeks on Mon, Wed", for the detail screen.
     var repeatDescription: String? {
         guard let rule = recurrence else { return nil }
@@ -249,24 +124,27 @@ extension Wire.Reminder {
         }
         return text
     }
-}
 
-extension Wire.Routine {
-    /// Reads `nudges`, or the older `cues` strings from an engine that has not shipped ADR 0007 yet.
-    // ponytail: drop the `cues` fallback once every engine sends nudges.
-    init(from decoder: Decoder) throws {
-        enum K: String, CodingKey {
-            case id, title, minutes, shortTitle, shortMinutes, weekdays, targetPerDay, cues, nudges, timeZone, version, deletedAt, createdAt, updatedAt
+    /// "At the time", "15 minutes before", "1 hour before", or nil when there is no alert.
+    var alertDescription: String? {
+        guard let m = alertBeforeMinutes else { return nil }
+        switch m {
+        case 0: return "At the time"
+        case 1..<60: return "\(m) minutes before"
+        case 60: return "1 hour before"
+        case let m where m % 1440 == 0: return m == 1440 ? "1 day before" : "\(m / 1440) days before"
+        case let m where m % 60 == 0: return "\(m / 60) hours before"
+        default: return "\(m) minutes before"
         }
-        let c = try decoder.container(keyedBy: K.self)
-        id = try c.decode(String.self, forKey: .id); title = try c.decode(String.self, forKey: .title)
-        minutes = try c.decode(Int.self, forKey: .minutes); shortTitle = try c.decode(String.self, forKey: .shortTitle)
-        shortMinutes = try c.decode(Int.self, forKey: .shortMinutes); weekdays = try c.decode([Int].self, forKey: .weekdays)
-        targetPerDay = try c.decode(Int.self, forKey: .targetPerDay)
-        if let n = try c.decodeIfPresent([Wire.Nudge].self, forKey: .nudges) { nudges = n }
-        else { nudges = try c.decode([String].self, forKey: .cues).map { Wire.Nudge(at: $0, message: nil) } }
-        timeZone = try c.decode(String.self, forKey: .timeZone); version = try c.decode(Int.self, forKey: .version)
-        deletedAt = try c.decodeIfPresent(Date.self, forKey: .deletedAt)
-        createdAt = try c.decode(Date.self, forKey: .createdAt); updatedAt = try c.decode(Date.self, forKey: .updatedAt)
     }
 }
+
+extension Wire.Goal {
+    /// "By Jun 10" for a goal with an end date.
+    var endsOnText: String? {
+        guard let endsOn else { return nil }
+        let parser = DateFormatter(); parser.locale = Locale(identifier: "en_US_POSIX"); parser.dateFormat = "yyyy-MM-dd"
+        return parser.date(from: endsOn).map { "By " + $0.formatted(.dateTime.month(.abbreviated).day()) }
+    }
+}
+

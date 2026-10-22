@@ -5,47 +5,28 @@ import Foundation
 /// Engine's operations, so the screens can be run and looked at without a workspace. It never ships.
 final class DevWorld: @unchecked Sendable {
     private let lock = NSLock()
-    private var routines: [Wire.RoutineStatus]
-    private var tasks: [Wire.PlanItem]
-    private var agenda: [Wire.AgendaItem]
-    private var undated: Wire.Reminder
-    private let goal: Wire.Goal
+    private var items: [Wire.Item]
+    private var goals: [Wire.Goal]
     private let now = Date()
 
     init() {
         let tz = TimeZone.current.identifier, now = Date()
-        func routine(_ id: String, _ title: String, target: Int, count: Int, cues: [String]) -> Wire.RoutineStatus {
-            let r = Wire.Routine(id: id, title: title, minutes: 5, shortTitle: "A smaller version", shortMinutes: 1, weekdays: [], targetPerDay: target, nudges: cues.map { Wire.Nudge(at: $0, message: nil) }, timeZone: tz,
-                                 version: 1, deletedAt: nil, createdAt: now.addingTimeInterval(-86_400 * 20), updatedAt: now)
-            return Wire.RoutineStatus(routine: r, scheduled: true, target: target, count: count, done: count >= target, variant: nil, streak: 2, daysSinceLast: 0, gap: false,
-                                      hint: count > 0 ? "\(count) of \(target) today so far." : "Today: \(title)")
+        func item(_ id: String, _ kind: String, _ title: String, at: Date?, minutes: Int? = nil, priority: Bool = false, goal: String? = nil,
+                  repeats: Bool = false, alert: Int? = nil, done: Bool = false) -> Wire.Item {
+            Wire.Item(id: id, kind: kind, subject: "person", title: title, notes: "", goalId: goal, at: at, minutes: minutes, timeZone: tz,
+                      recurrence: repeats ? .init(freq: "daily", interval: 1, weekdays: nil) : nil, alertBeforeMinutes: alert, isPriority: priority,
+                      snoozedUntil: nil, doneAt: done ? now : nil, version: 1, deletedAt: nil, createdAt: now.addingTimeInterval(-86_400), updatedAt: now)
         }
-        routines = [routine("r1", "Drink water", target: 3, count: 1, cues: ["09:00", "13:00", "17:00", "20:00"]),
-                    routine("r2", "Weekly weigh-in", target: 1, count: 0, cues: ["08:00"]),
-                    routine("r3", "Stretch", target: 1, count: 1, cues: [])]
-        let day = DevWorld.dayString(now)
-        func task(_ id: String, _ title: String, minutes: Int, priority: Bool, at: Date?, done: Bool = false) -> Wire.PlanItem {
-            Wire.PlanItem(id: id, day: day, title: title, kind: "task", minutes: minutes, startAt: at, isPriority: priority, goalId: nil, stepId: nil, doneAt: done ? now : nil, version: 1, deletedAt: nil)
-        }
-        tasks = [task("t1", "Book the dentist", minutes: 10, priority: true, at: nil),
-                 task("t2", "Reply to Sam about the trip", minutes: 15, priority: false, at: nil),
-                 task("t3", "Prepare the project review", minutes: 45, priority: false, at: now.addingTimeInterval(3 * 3600)),
-                 task("t4", "Pay the electricity bill", minutes: 5, priority: false, at: nil, done: true)]
-        func reminder(_ id: String, _ title: String, due: Date, repeats: Bool) -> Wire.Reminder {
-            Wire.Reminder(id: id, title: title, notes: "", dueAt: due, snoozedUntil: nil, timeZone: tz, recurrence: repeats ? .init(freq: "daily", interval: 1, weekdays: nil) : nil,
-                          source: "agent", sessionId: nil, turnSeq: nil, link: nil, state: "pending", completedAt: nil, lastCompletedAt: nil, version: 1, deletedAt: nil,
-                          createdAt: now.addingTimeInterval(-86_400), updatedAt: now)
-        }
-        agenda = [Wire.AgendaItem(reminder: reminder("c1", "Take vitamins", due: now.addingTimeInterval(-3 * 3600), repeats: true), at: now.addingTimeInterval(-3 * 3600), state: "acknowledged", overdue: false),
-                  Wire.AgendaItem(reminder: reminder("c2", "Call the bank", due: now.addingTimeInterval(-600), repeats: false), at: now.addingTimeInterval(-600), state: "due", overdue: false),
-                  Wire.AgendaItem(reminder: reminder("c3", "Water the plants", due: now.addingTimeInterval(2 * 3600), repeats: true), at: now.addingTimeInterval(2 * 3600), state: "upcoming", overdue: false)]
-        undated = Wire.Reminder(id: "u1", title: "Renew the library card", notes: "Bring ID", dueAt: nil, snoozedUntil: nil, timeZone: tz, recurrence: nil,
-                                source: "user", sessionId: nil, turnSeq: nil, link: nil, state: "pending", completedAt: nil, lastCompletedAt: nil,
-                                version: 1, deletedAt: nil, createdAt: now, updatedAt: now)
-        let steps = [Wire.Step(id: "s1", goalId: "g1", title: "Weigh in and record a starting weight", minutes: 5, position: 1, doneAt: nil, version: 1)]
-        goal = Wire.Goal(id: "g1", title: "Lose 5 kg", why: "Feel lighter and healthier.", weeklyTarget: 6, archivedAt: nil, version: 1, steps: steps,
-                         progress: .init(done: 0, total: 1), nextStep: steps[0], routineIds: ["r1", "r2"],
-                         consistency: .init(last7: .init(done: 9, scheduled: 14), last30: .init(done: 41, scheduled: 60)))
+        items = [item("t1", "task", "Book the dentist", at: nil, minutes: 10, priority: true),
+                 item("t2", "task", "Reply to Sam about the trip", at: nil, minutes: 15, goal: "g1"),
+                 item("t3", "task", "Prepare the project review", at: now.addingTimeInterval(3 * 3600), minutes: 45, alert: 15),
+                 item("t4", "task", "Pay the electricity bill", at: nil, minutes: 5, done: true),
+                 item("t5", "task", "Take vitamins", at: now.addingTimeInterval(-3 * 3600), repeats: true, alert: 0),
+                 item("t6", "task", "File the expense report", at: now.addingTimeInterval(-2 * 86_400)),
+                 item("e1", "event", "Team standup", at: now.addingTimeInterval(2 * 3600), minutes: 15, repeats: true),
+                 item("e2", "event", "Flight to Lisbon", at: now.addingTimeInterval(3 * 86_400), minutes: 150, goal: "g1", alert: 180)]
+        goals = [Wire.Goal(id: "g1", subject: "person", title: "Lisbon trip", notes: "Take the coolers", endsOn: DevWorld.dayString(now.addingTimeInterval(10 * 86_400)),
+                           progress: .init(done: 0, total: 1), next: nil, version: 1, deletedAt: nil)]
     }
 
     static func dayString(_ d: Date) -> String {
@@ -56,36 +37,63 @@ final class DevWorld: @unchecked Sendable {
     func respond(_ operation: String, body: [String: Any]) -> Data {
         lock.lock(); defer { lock.unlock() }
         func json<T: Encodable>(_ v: T) -> Data { (try? Wire.encoder.encode(v)) ?? Data("{}".utf8) }
+        let cal = Calendar.current
         switch operation {
         case "settings_get", "settings_set": return json(Wire.Settings(id: "s", timeZone: TimeZone.current.identifier, workStart: "09:00", workEnd: "17:00", version: 1))
-        case "routines_status": return json(Wire.RoutinesStatus(day: DevWorld.dayString(now), items: routines))
-        case "routines_log":
-            if let id = body["routine_id"] as? String, let i = routines.firstIndex(where: { $0.id == id }) {
-                var s = routines[i]; s.count = max(0, s.count + (body["delta"] as? Int ?? 1)); s.done = s.count >= s.target
-                s.hint = "\(s.count) of \(s.target) today so far."; routines[i] = s
-                return json(s)
+        case "day_get":
+            let entries = items.filter { $0.at != nil }.compactMap { i -> Wire.DayEntry? in
+                guard let at = i.at else { return nil }
+                if cal.isDateInToday(at) || i.repeats {
+                    let state = i.isEvent ? (at > now ? "upcoming" : "past") : (i.isDone ? "done" : "open")
+                    return Wire.DayEntry(item: i, at: at, state: state, overdue: false)
+                }
+                if i.isTask, !i.isDone, at < cal.startOfDay(for: now) { return Wire.DayEntry(item: i, at: at, state: "open", overdue: true) }
+                return nil
+            }.sorted { $0.at < $1.at }
+            return json(Wire.Day(day: DevWorld.dayString(now), entries: entries))
+        case "tasks_list":
+            let open = items.filter { $0.isTask && !$0.isDone }
+            return json(Wire.Page<Wire.Item>(items: open, total: open.count, nextOffset: nil))
+        case "calendar_events_list":
+            let events = items.filter(\.isEvent)
+            return json(Wire.Page<Wire.Item>(items: events, total: events.count, nextOffset: nil))
+        case "tasks_complete":
+            if let id = body["id"] as? String, let i = items.firstIndex(where: { $0.id == id }) {
+                if !items[i].repeats { items[i].doneAt = (body["done"] as? Bool ?? true) ? now : nil }
+                return json(items[i])
             }
             return Data("{}".utf8)
-        case "plan_get":
-            return json(Wire.PlanDay(day: DevWorld.dayString(now), items: tasks, proposals: [], summary: .init(planned: tasks.count, done: tasks.filter { $0.doneAt != nil }.count, minutesOpen: 60, minutesDone: 5, minutesEvents: 0)))
-        case "plan_items_complete":
-            if let id = body["id"] as? String, let i = tasks.firstIndex(where: { $0.id == id }) {
-                tasks[i].doneAt = (body["done"] as? Bool ?? true) ? now : nil
-                return json(tasks[i])
+        case "views_state":
+            // One sample view, for the goal, so the screen that draws a composed view can be run and looked at.
+            guard body["subject_kind"] as? String == "goal" else {
+                return Data("{\"subject_kind\":\"\(body["subject_kind"] as? String ?? "task")\",\"subject_id\":\"\(body["subject_id"] as? String ?? "")\",\"catalog_id\":\"view-kit.v1\",\"view\":null,\"measurements\":[]}".utf8)
             }
-            return Data("{}".utf8)
-        case "next_action": return json(Wire.NextAction(suggestion: .init(title: goal.steps[0].title, minutes: 5, reason: "Next step toward Lose 5 kg", source: "goal_step", planItemId: nil, goalId: "g1", stepId: "s1")))
-        case "reminders_agenda": return json(Wire.Agenda(day: DevWorld.dayString(now), items: agenda))
-        case "reminders_list": return json(Wire.Page<Wire.Reminder>(items: agenda.map(\.reminder) + [undated], total: agenda.count + 1, nextOffset: nil))
-        case "reminders_complete":
-            if body["id"] as? String == undated.id { undated.state = "done"; undated.completedAt = Date(); undated.version += 1; return json(undated) }
-            return Data("{}".utf8)
-        case "reminders_ack":
-            if let id = body["id"] as? String, let i = agenda.firstIndex(where: { $0.reminder.id == id }) { agenda[i].state = "acknowledged"; return json(agenda[i].reminder) }
-            return Data("{}".utf8)
-        case "goals_list": return json(Wire.Page<Wire.Goal>(items: [goal], total: 1, nextOffset: nil))
+            return Data(DevWorld.sampleViewState(subjectID: body["subject_id"] as? String ?? "g1", now: now).utf8)
+        case "goals_list": return json(Wire.Page<Wire.Goal>(items: goals, total: goals.count, nextOffset: nil))
         default: return Data("{}".utf8)
         }
+    }
+
+    static func sampleViewState(subjectID: String, now: Date) -> String {
+        let f = ISO8601DateFormatter()
+        func obs(_ i: Int, _ d: Int, _ v: Double) -> String {
+            "{\"id\":\"m\(i)\",\"subject_kind\":\"goal\",\"subject_id\":\"\(subjectID)\",\"metric_id\":\"saved\",\"unit\":\"EUR\",\"value\":\(v),\"measured_at\":\"\(f.string(from: now.addingTimeInterval(Double(-d) * 86_400)))\",\"notes\":\"\",\"version\":1,\"deleted_at\":null,\"created_at\":\"\(f.string(from: now))\",\"updated_at\":\"\(f.string(from: now))\"}"
+        }
+        let view = """
+        {"id":"v1","subject_kind":"goal","subject_id":"\(subjectID)","catalog_id":"view-kit.v1","version":1,
+         "metrics":[{"id":"saved","label":"Saved for the trip","unit":"EUR","target":2000}],
+         "pages":[{"id":"main","sections":[
+           {"id":"standing","title":"Where you stand","intro":"What you have put aside against the 2,000 you need.","blocks":[
+             {"id":"head","kind":"sentence","emphasis":"hero","text":"{saved} saved, {left} to go","slots":{
+               "saved":{"calc":{"fn":"latest","metric":"saved"},"format":"money","unit":"EUR"},
+               "left":{"calc":{"fn":"sub","args":[{"fn":"const","value":2000},{"fn":"latest","metric":"saved"}]},"format":"money","unit":"EUR"}}},
+             {"id":"bar","kind":"bar","value":{"fn":"latest","metric":"saved"},"of":{"fn":"const","value":2000},"format":"money","unit":"EUR"},
+             {"id":"trend","kind":"series","title":"Saved","metric":"saved","style":"line","window":{"days":30},"unit":"EUR"},
+             {"id":"log","kind":"log","metric":"saved"}]},
+           {"id":"plan","title":"The plan","blocks":[{"id":"todo","kind":"tasks","title":"Tasks"},{"id":"dates","kind":"events","title":"Coming up"}]}]}]}
+        """
+        let ms = [obs(1, 20, 300), obs(2, 12, 650), obs(3, 5, 1100)].joined(separator: ",")
+        return "{\"subject_kind\":\"goal\",\"subject_id\":\"\(subjectID)\",\"catalog_id\":\"view-kit.v1\",\"view\":\(view),\"measurements\":[\(ms)]}"
     }
 
     /// A Life Engine API whose transport is this world.

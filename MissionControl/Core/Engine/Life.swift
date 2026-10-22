@@ -13,133 +13,109 @@ final class Life {
 
     var today: Date { Planner.startOfDay(Date()) }
 
-    // MARK: Plan. Today's tasks are the Life Engine's, the same items the assistant adds, moves and completes.
+    // MARK: Workspace. The Life Engine's goals, tasks and events, the same records the assistant reads and changes.
 
     private(set) var workspaceLoaded = false
-    private(set) var planLoadError: String?
-    private(set) var remindersLoadError: String?
+    private(set) var day: Wire.Day?
+    /// Open tasks, soonest first, untimed last.
+    private(set) var openTasks: [Wire.Item] = []
+    /// Events from now on.
+    private(set) var upcomingEvents: [Wire.Item] = []
+    private(set) var goals: [Wire.Goal] = []
+    private(set) var dayLoadError: String?
     private(set) var goalsLoadError: String?
-    private(set) var routinesLoadError: String?
-    private(set) var plan: Wire.PlanDay?
-    /// The one thing to do next: a task, or the next step of a goal.
-    private(set) var nextSuggestion: Wire.Suggestion?
-    private var planService: PlanService?
-    private(set) var busyTasks: Set<String> = []
-    var planAvailable: Bool { planService != nil }
-    /// Today's tasks and events in order.
-    var tasks: [Wire.PlanItem] { (plan?.items ?? []).filter { $0.deletedAt == nil } }
+    /// Items with a change in flight; a second tap on the same one waits.
+    private(set) var busyItems: Set<String> = []
+    private var itemService: ItemsService?
+    private var dayService: DayService?
+    private var goalService: GoalsService?
+    var workspaceAvailable: Bool { itemService != nil }
+    var goalsAvailable: Bool { goalService != nil }
+
+    func attachWorkspace(items: ItemsService?, day: DayService?, goals: GoalsService?) {
+        itemService = items; dayService = day; goalService = goals
+    }
 
     func refreshWorkspace() async {
         error = nil
-        await loadReminders(); await loadRoutines(); await loadGoals(); await loadPlan()
+        await loadDay(); await loadGoals()
         workspaceLoaded = true
     }
 
-    func attachPlan(_ service: PlanService?) { planService = service }
-
-    func loadPlan() async {
-        guard let service = planService else { return }
+    /// Today's entries, with the open tasks and upcoming events the other screens list.
+    func loadDay() async {
+        guard let days = dayService, let items = itemService else { return }
         do {
-            plan = try await service.today()
-            planLoadError = nil
-            nextSuggestion = try await service.nextAction(minutes: 480)
-        } catch { planLoadError = Self.planMessage(error); self.error = planLoadError }
+            day = try await days.today()
+            openTasks = try await items.list(.task)
+            upcomingEvents = try await items.list(.event, status: "open").filter { ($0.at ?? .distantFuture) >= Date().addingTimeInterval(-3600) || $0.repeats }
+            dayLoadError = nil
+        } catch { dayLoadError = Self.message(error, "your day"); self.error = dayLoadError }
     }
-
-    func completeTask(_ item: Wire.PlanItem, done: Bool) async {
-        await taskAction(item.id) { _ = try await $0.complete(item, done: done) }
-        if item.goalId != nil { await loadGoals() }
-    }
-    func setTaskPriority(_ item: Wire.PlanItem, _ on: Bool) async { await taskAction(item.id) { _ = try await $0.setPriority(item, on) } }
-    func deleteTask(_ item: Wire.PlanItem) async { await taskAction(item.id) { try await $0.delete(item) } }
-
-    @discardableResult
-    func addTask(title: String, minutes: Int, priority: Bool) async -> Bool {
-        guard let service = planService else { error = "Tasks need your workspace, and it isn't reachable right now."; return false }
-        do { _ = try await service.add(title: title, minutes: minutes, priority: priority); error = nil; await loadPlan(); return true }
-        catch { self.error = Self.planMessage(error); return false }
-    }
-
-    /// Finishes what a suggestion points at: the task, or a one-off goal step.
-    func completeSuggestion(_ s: Wire.Suggestion) async {
-        if let id = s.planItemId, let item = tasks.first(where: { $0.id == id }) {
-            await completeTask(item, done: true)
-        } else if let goal = s.goalId, let stepId = s.stepId, let step = goals.first(where: { $0.id == goal })?.steps.first(where: { $0.id == stepId }),
-                  let service = goalService, !busySteps.contains(stepId) {
-            busySteps.insert(stepId); defer { busySteps.remove(stepId) }
-            do { try await service.completeStep(id: step.id, version: step.version); error = nil } catch { self.error = Self.goalMessage(error) }
-            await loadGoals(); await loadPlan()
-        }
-    }
-    private var busySteps: Set<String> = []
-
-    /// The one thing to do with this many minutes.
-    func suggestion(minutes: Int) async -> Wire.Suggestion? {
-        guard let service = planService else { return nil }
-        do { return try await service.nextAction(minutes: minutes) } catch { self.error = Self.planMessage(error); return nil }
-    }
-
-    func replanPreview(minutesLeft: Int) async -> Wire.Replan? {
-        guard let service = planService else { return nil }
-        do { return try await service.replan(minutesLeft: minutesLeft) } catch { self.error = Self.planMessage(error); return nil }
-    }
-
-    /// Moves what no longer fits to tomorrow.
-    func applyReplan(_ replan: Wire.Replan) async {
-        guard let service = planService, let tomorrow = PlanService.dayAfter(plan?.day) else { return }
-        do { for item in replan.moveToTomorrow { try await service.move(item, to: tomorrow) }; error = nil } catch { self.error = Self.planMessage(error) }
-        await loadPlan()
-    }
-
-    func closeDay(reflection: String?) async -> Wire.DayCloseResult? {
-        guard let service = planService else { return nil }
-        do { let r = try await service.closeDay(reflection: reflection); error = nil; await loadPlan(); return r } catch { self.error = Self.planMessage(error); return nil }
-    }
-
-    private func taskAction(_ id: String, _ body: (PlanService) async throws -> Void) async {
-        guard let service = planService, !busyTasks.contains(id) else { return }
-        busyTasks.insert(id); defer { busyTasks.remove(id) }
-        do { try await body(service); error = nil } catch { self.error = Self.planMessage(error) }
-        await loadPlan()
-    }
-
-    private static func planMessage(_ e: Error) -> String {
-        switch e as? LifeError {
-        case .unauthorized: "Please sign in again."
-        case .notProvisioned: "Your workspace isn't ready for tasks yet."
-        case .engine(let code, let message): code == "conflict" ? "That changed elsewhere. It has been refreshed." : message
-        case .retry: "You're offline, or the service is busy. Try again in a moment."
-        default: "Something went wrong with today's tasks."
-        }
-    }
-
-    // MARK: Settings. The phone says where the person is.
-
-    private var settingsService: SettingsService?
-    func attachSettings(_ service: SettingsService?) { settingsService = service }
-
-    /// Tell the engine the phone's time zone, so every "today" is today where you are. Quiet: a failure here must not block anything.
-    func syncTimeZone() async { _ = try? await settingsService?.matchTimeZone() }
-
-    // MARK: Goals. The Life Engine's, so a goal the assistant creates is the goal the screen shows.
-
-    private(set) var goals: [Wire.Goal] = []
-    private var goalService: GoalsService?
-    var goalsAvailable: Bool { goalService != nil }
-
-    func attachGoals(_ service: GoalsService?) { goalService = service }
 
     func loadGoals() async {
         guard let service = goalService else { return }
-        do { goals = try await service.list(); goalsLoadError = nil } catch { goalsLoadError = Self.goalMessage(error); self.error = goalsLoadError }
+        do { goals = try await service.list(); goalsLoadError = nil } catch { goalsLoadError = Self.message(error, "goals"); self.error = goalsLoadError }
     }
 
-    func loadView(goalID: String, catalog: String) async throws -> Wire.ViewState {
-        guard let service = goalService else { throw LifeError.notProvisioned }
-        return try await service.viewState(goalID: goalID, catalog: catalog)
+    /// The tasks and events serving a goal, for its screen: every one, done or not.
+    func items(forGoal goalID: String) async -> [Wire.Item] {
+        guard let service = itemService else { return [] }
+        do { return try await service.list(.task, status: "all", goalID: goalID) + service.list(.event, status: "all", goalID: goalID) }
+        catch { self.error = Self.message(error, "this goal"); return [] }
     }
+
+    /// An item the screens know about, whichever list it came from.
+    func item(_ id: String) -> Wire.Item? {
+        openTasks.first { $0.id == id } ?? upcomingEvents.first { $0.id == id } ?? day?.entries.first { $0.item.id == id }?.item
+    }
+
+    @discardableResult
+    func add(_ kind: ItemsService.Kind, _ draft: ItemsService.Draft) async -> Bool {
+        guard let service = itemService else { error = "This needs your workspace, and it isn't reachable right now."; return false }
+        do {
+            _ = try await service.create(kind, draft); error = nil
+            await loadDay(); await loadGoals()
+            if draft.alertBeforeMinutes != nil { await PushRegistrar.shared.askToNotify() }
+            return true
+        } catch { self.error = Self.message(error, "that"); return false }
+    }
+
+    @discardableResult
+    func save(_ item: Wire.Item, _ draft: ItemsService.Draft) async -> Bool {
+        let saved = await act(item.id) { _ = try await $0.update(item, draft) } != nil
+        if saved, draft.alertBeforeMinutes != nil { await PushRegistrar.shared.askToNotify() }
+        return saved
+    }
+
+    /// Done, or (`done: false`) not done after all; the item as the engine now has it, or nil if that failed. For a repeating
+    /// task, `at` names the occurrence.
+    @discardableResult
+    func complete(_ item: Wire.Item, at: Date? = nil, done: Bool = true) async -> Wire.Item? {
+        await act(item.id) { try await $0.complete(item, at: at, done: done) }
+    }
+
+    @discardableResult
+    func snooze(_ item: Wire.Item, until: Date) async -> Bool { await act(item.id) { _ = try await $0.snooze(item, until: until) } != nil }
+
+    @discardableResult
+    func delete(_ item: Wire.Item) async -> Bool { await act(item.id) { try await $0.delete(item) } != nil }
+
+    func archive(_ goal: Wire.Goal) async {
+        guard let service = goalService else { return }
+        do { try await service.archive(goal); error = nil } catch { self.error = Self.message(error, "goals") }
+        await loadGoals()
+    }
+
+    // MARK: Views. A view is its own construct, of a goal, a task or an event; its data is read through these.
+
     private var providerService: ProviderService?
     func attachProviders(_ service: ProviderService?) { providerService = service }
+
+    func loadView(kind: String, id: String, catalog: String) async throws -> Wire.ViewState {
+        guard let service = goalService else { throw LifeError.notProvisioned }
+        return try await service.viewState(kind: kind, id: id, catalog: catalog)
+    }
     /// A bound metric's recent values, read live from its data provider.
     func loadSeries(provider: String, series: String, granularity: String = "day") async throws -> Wire.SeriesData {
         guard let service = providerService else { throw LifeError.notProvisioned }
@@ -150,191 +126,68 @@ final class Life {
         guard let service = goalService else { throw LifeError.notProvisioned }
         try await service.saveMeasurement(input)
     }
-    func deleteMeasurement(_ measurement: Wire.GoalMeasurement, key: String) async throws {
+    func deleteMeasurement(_ measurement: Wire.Measurement, key: String) async throws {
         guard let service = goalService else { throw LifeError.notProvisioned }
         try await service.deleteMeasurement(measurement, key: key)
     }
-    func completeTrackerStep(_ step: Wire.Step, key: String) async throws {
-        guard let service = goalService else { throw LifeError.notProvisioned }
-        try await service.completeStep(id: step.id, version: step.version, key: key)
-        await loadGoals(); await loadPlan()
-    }
     static func trackerMessage(_ error: Error) -> String {
         if case LifeError.engine(let code, _) = error, code == "conflict" {
-            return "This changed elsewhere. Review the latest tracker and ask for a refreshed proposal if needed."
+            return "This changed elsewhere. Review the latest view and ask for a refreshed one if needed."
         }
-        return goalMessage(error)
+        return message(error, "this view")
     }
 
-    private static func goalMessage(_ e: Error) -> String {
+    /// A task by id: one the screens already hold, else read from the engine (a view may name a done or far-off one).
+    private func task(_ id: String) async -> Wire.Item? {
+        if let known = item(id) { return known }
+        return try? await itemService?.list(.task, status: "all").first { $0.id == id }
+    }
+
+    /// How a repeating task is going: its recent days, for a view's grid and series.
+    func taskHistory(_ id: String, days: Int) async -> Wire.TaskHistory? {
+        guard let service = itemService, let task = await task(id) else { return nil }
+        do { return try await service.history(task, days: days) } catch { self.error = Self.message(error, "this task"); return nil }
+    }
+
+    /// Records (or takes back) a repeating task's occurrence on a day: the same time of day, in the task's own zone.
+    func logOccurrence(_ id: String, on day: Date, done: Bool) async {
+        guard let task = await task(id), let anchor = task.at else { return }
+        var cal = Calendar.current
+        cal.timeZone = TimeZone(identifier: task.timeZone) ?? .current
+        let time = cal.dateComponents([.hour, .minute, .second], from: anchor)
+        let dayParts = cal.dateComponents([.year, .month, .day], from: day)
+        var parts = DateComponents(); parts.year = dayParts.year; parts.month = dayParts.month; parts.day = dayParts.day
+        parts.hour = time.hour; parts.minute = time.minute; parts.second = time.second
+        guard let at = cal.date(from: parts) else { return }
+        _ = await complete(task, at: at, done: done)
+    }
+
+    private func act<T>(_ id: String, _ body: (ItemsService) async throws -> T) async -> T? {
+        guard let service = itemService, !busyItems.contains(id) else { return nil }
+        busyItems.insert(id); defer { busyItems.remove(id) }
+        var result: T?
+        do { result = try await body(service); error = nil } catch { self.error = Self.message(error, "that") }
+        await loadDay(); await loadGoals()
+        return result
+    }
+
+    private static func message(_ e: Error, _ what: String) -> String {
         switch e as? LifeError {
         case .unauthorized: "Please sign in again."
-        case .notProvisioned: "Your workspace isn't ready for goals yet."
+        case .notProvisioned: "Your workspace isn't ready for \(what) yet."
         case .engine(let code, let message): code == "conflict" ? "That changed elsewhere. It has been refreshed." : message
         case .retry: "You're offline, or the service is busy. Try again in a moment."
-        default: "Something went wrong with goals."
+        default: "Something went wrong with \(what)."
         }
     }
 
-    // MARK: Routines. The Life Engine's, with today's count; the tracker reads history on demand.
+    // MARK: Settings. The phone says where the person is.
 
-    private(set) var routines: [Wire.RoutineStatus] = []
-    private var routineService: RoutinesService?
-    /// Routines with a change in flight; a second tap waits for the first.
-    private(set) var busyRoutines: Set<String> = []
-    var routinesAvailable: Bool { routineService != nil }
+    private var settingsService: SettingsService?
+    func attachSettings(_ service: SettingsService?) { settingsService = service }
 
-    func attachRoutines(_ service: RoutinesService?) { routineService = service }
-
-    func loadRoutines() async {
-        guard let service = routineService else { return }
-        do { routines = try await service.status(); routinesLoadError = nil } catch { routinesLoadError = Self.routineMessage(error); self.error = routinesLoadError }
-    }
-
-    /// Adds one (or takes one back with `-1`) and shows the new count at once from the engine's answer.
-    func logRoutine(_ id: String, delta: Int = 1, short: Bool = false, day: String? = nil) async {
-        guard let service = routineService, !busyRoutines.contains(id) else { return }
-        busyRoutines.insert(id); defer { busyRoutines.remove(id) }
-        do {
-            let updated = try await service.log(id, delta: delta, short: short, day: day)
-            if let i = routines.firstIndex(where: { $0.id == id }) { routines[i] = updated }
-            error = nil
-            if goals.contains(where: { ($0.routineIds ?? []).contains(id) }) { await loadGoals() }
-        } catch { self.error = Self.routineMessage(error); await loadRoutines() }
-    }
-
-    func history(for id: String, days: Int = 30) async -> Wire.RoutineHistory? {
-        guard let service = routineService else { return nil }
-        do { return try await service.history(id, days: days) } catch { self.error = Self.routineMessage(error); return nil }
-    }
-
-    @discardableResult
-    func addRoutine(title: String, targetPerDay: Int, cues: [String], weekdays: [Int], shortTitle: String, minutes: Int, shortMinutes: Int) async -> Bool {
-        guard let service = routineService else { error = "Routines need your workspace, and it isn't reachable right now."; return false }
-        do {
-            _ = try await service.create(title: title, targetPerDay: targetPerDay, nudgeTimes: cues, weekdays: weekdays,
-                                         shortTitle: shortTitle.isEmpty ? "A smaller version" : shortTitle, minutes: minutes, shortMinutes: shortMinutes)
-            error = nil; await loadRoutines(); return true
-        } catch { self.error = Self.routineMessage(error); return false }
-    }
-
-    /// Adds a nudge to a routine, or changes the wording of the one at that time; true when the engine took it.
-    @discardableResult
-    func setNudge(_ r: Wire.Routine, at: String, message: String) async -> Bool {
-        await changeNudges(r) { try await $0.setNudge(r, at: at, message: message) }
-    }
-
-    /// Saves a nudge, moving it when `replacing` is another time. The new one is set before the old is removed, so a failure never loses a nudge.
-    func saveNudge(_ r: Wire.Routine, replacing old: String?, at: String, message: String) async -> Bool {
-        func current() -> Wire.Routine { routines.first { $0.id == r.id }?.routine ?? r }
-        guard await setNudge(current(), at: at, message: message) else { return false }
-        if let old, old != at { await removeNudge(current(), at: old) }
-        return true
-    }
-
-    @discardableResult
-    func removeNudge(_ r: Wire.Routine, at: String) async -> Bool {
-        await changeNudges(r) { try await $0.removeNudge(r, at: at) }
-    }
-
-    private func changeNudges(_ r: Wire.Routine, _ call: (RoutinesService) async throws -> Wire.Routine) async -> Bool {
-        guard let service = routineService, !busyRoutines.contains(r.id) else { return false }
-        busyRoutines.insert(r.id); defer { busyRoutines.remove(r.id) }
-        do {
-            let updated = try await call(service)
-            if let i = routines.firstIndex(where: { $0.id == r.id }) { routines[i].routine = updated }
-            error = nil; return true
-        } catch { self.error = Self.routineMessage(error); await loadRoutines(); return false }
-    }
-
-    func deleteRoutine(_ r: Wire.Routine) async {
-        guard let service = routineService else { return }
-        do { try await service.delete(r); error = nil } catch { self.error = Self.routineMessage(error) }
-        await loadRoutines()
-    }
-
-    private static func routineMessage(_ e: Error) -> String {
-        switch e as? LifeError {
-        case .unauthorized: "Please sign in again."
-        case .notProvisioned: "Your workspace isn't ready for routines yet."
-        case .engine(_, let message): message
-        case .retry: "You're offline, or the service is busy. Try again in a moment."
-        default: "Something went wrong with routines."
-        }
-    }
-
-    // MARK: Reminders. Always the Life Engine, through the same operations the agent calls; never a local invention.
-
-    private(set) var reminders: [Wire.Reminder] = []
-    /// Today's cues, one per occurrence; what the Today screen shows and counts.
-    private(set) var agenda: [Wire.AgendaItem] = []
-    private var reminderService: RemindersService?
-    /// False when there is no workspace to talk to (developer mode, or no router configured).
-    var remindersAvailable: Bool { reminderService != nil }
-
-    func attachReminders(_ service: RemindersService?) { reminderService = service }
-
-    func loadReminders() async {
-        guard let service = reminderService else { return }
-        do {
-            reminders = try await service.list().filter { $0.isShown() }
-            agenda = try await service.agenda()
-            remindersLoadError = nil
-            await Notifier.sync(reminders)
-        } catch { remindersLoadError = Self.reminderMessage(error); self.error = remindersLoadError }
-    }
-
-    @discardableResult
-    func addReminder(title: String, notes: String? = nil, due: Date?, recurrence: Wire.Recurrence? = nil) async -> Bool {
-        await reminderAction { try await $0.create(title: title, notes: notes, due: due, recurrence: recurrence) }
-    }
-    /// Reminders with a change in flight. A second tap on the same one waits, so it cannot collide with its own first.
-    private(set) var busyReminders: Set<String> = []
-
-    /// "Got it" for one occurrence.
-    func ackCue(_ item: Wire.AgendaItem) async {
-        guard let service = reminderService, !busyReminders.contains(item.reminder.id) else { return }
-        busyReminders.insert(item.reminder.id); defer { busyReminders.remove(item.reminder.id) }
-        do { _ = try await service.ack(item); error = nil } catch { self.error = Self.reminderMessage(error) }
-        await loadReminders()
-    }
-    func completeReminder(_ r: Wire.Reminder) async {
-        guard !busyReminders.contains(r.id) else { return }
-        busyReminders.insert(r.id); defer { busyReminders.remove(r.id) }
-        _ = await reminderAction { _ = try await $0.complete(r) }
-    }
-
-    func snoozeReminder(_ r: Wire.Reminder, until: Date) async {
-        guard !busyReminders.contains(r.id) else { return }
-        busyReminders.insert(r.id); defer { busyReminders.remove(r.id) }
-        await reminderAction { try await $0.snooze(r, until: until) }
-    }
-    @discardableResult
-    func deleteReminder(_ r: Wire.Reminder) async -> Bool {
-        guard !busyReminders.contains(r.id) else { return false }
-        busyReminders.insert(r.id); defer { busyReminders.remove(r.id) }
-        return await reminderAction { try await $0.delete(r) }
-    }
-
-    /// Runs a change, then re-reads the list so the screen shows the server's truth (including a stale-version refusal).
-    @discardableResult
-    private func reminderAction<T>(_ body: (RemindersService) async throws -> T) async -> Bool {
-        guard let service = reminderService else { error = "Reminders need your workspace, and it isn't reachable right now."; return false }
-        var ok = true
-        do { _ = try await body(service); error = nil } catch { self.error = Self.reminderMessage(error); ok = false }
-        await loadReminders()
-        return ok
-    }
-
-    private static func reminderMessage(_ e: Error) -> String {
-        switch e as? LifeError {
-        case .unauthorized: "Please sign in again."
-        case .notProvisioned: "Your workspace isn't ready for reminders yet."
-        case .engine(let code, let message): code == "conflict" ? "That reminder changed elsewhere. It has been refreshed." : message
-        case .retry: "You're offline, or the service is busy. Try again in a moment."
-        default: "Something went wrong with reminders."
-        }
-    }
+    /// Tell the engine the phone's time zone, so every "today" is today where you are. Quiet: a failure here must not block anything.
+    func syncTimeZone() async { _ = try? await settingsService?.matchTimeZone() }
 
     func load() async { await run { try await self.engine.snapshot() } }
 
@@ -378,10 +231,8 @@ final class Life {
 
 extension Life {
     var workspaceUpdates: [WorkspaceUpdate] {
-        goals.map { WorkspaceUpdate(kind: .goal, entityID: $0.id, title: $0.title, detail: "Goal", version: $0.version) }
-        + routines.map { WorkspaceUpdate(kind: .routine, entityID: $0.id, title: $0.routine.title, detail: "Routine · \($0.count) of \($0.target) today", version: $0.routine.version) }
-        + reminders.map { WorkspaceUpdate(kind: .reminder, entityID: $0.id, title: $0.title,
-                                          detail: "Reminder · " + (($0.snoozedUntil ?? $0.dueAt).map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "No time set"), version: $0.version) }
-        + tasks.filter { $0.kind != "event" }.map { WorkspaceUpdate(kind: .task, entityID: $0.id, title: $0.title, detail: "Task · \($0.minutes) min", version: $0.version) }
+        goals.map { WorkspaceUpdate(kind: .goal, entityID: $0.id, title: $0.title, detail: "Goal · \($0.progress.done) of \($0.progress.total) done", version: $0.version) }
+        + openTasks.map { WorkspaceUpdate(kind: .task, entityID: $0.id, title: $0.title, detail: "Task" + ($0.at.map { " · " + $0.formatted(date: .abbreviated, time: .shortened) } ?? ""), version: $0.version) }
+        + upcomingEvents.map { WorkspaceUpdate(kind: .event, entityID: $0.id, title: $0.title, detail: "Event" + ($0.at.map { " · " + $0.formatted(date: .abbreviated, time: .shortened) } ?? ""), version: $0.version) }
     }
 }

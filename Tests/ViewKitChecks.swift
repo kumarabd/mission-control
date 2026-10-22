@@ -55,7 +55,7 @@ import Foundation
             let raw = try Data(contentsOf: dir.appendingPathComponent(name + ".json"))
             struct Manifest: Decodable { var metrics: [Wire.TrackerMetric]; var pages: [Wire.ViewPage] }
             let m = try Wire.decoder.decode(Manifest.self, from: raw)
-            let view = Wire.GoalView(id: "v", subjectKind: "goal", subjectId: "g", catalogId: TrackerClient.catalog,
+            let view = Wire.SubjectView(id: "v", subjectKind: "goal", subjectId: "g", catalogId: TrackerClient.catalog,
                                      metrics: m.metrics, pages: m.pages, version: 1)
             precondition(!view.blocks.isEmpty && view.blocks.allSatisfy { view.supports($0) }, name)
         }

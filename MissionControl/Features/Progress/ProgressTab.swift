@@ -1,21 +1,30 @@
 import SwiftUI
 
-/// Where the things you keep doing live: goals you are working toward, routines you keep up, and the reminders
-/// waiting to be told to you.
+/// Where what you are working toward lives: goals, the tasks that serve them (and the ones that stand alone), and what is coming
+/// up on the calendar.
 struct ProgressTab: View {
     var onSettings: () -> Void = {}
     @Environment(Life.self) private var life
     @Environment(ChatModel.self) private var chat
     @State private var segment = Segment.goals
-    @State private var sheet: Sheet?
-    @State private var detail: ReminderRef?
+    @State private var sheet: ItemsService.Kind?
+    @State private var detail: ItemRef?
     @State private var path = NavigationPath()
     @State private var selectedGoal: GoalRef?
     @Environment(\.horizontalSizeClass) private var sizeClass
     private var splitGoals: Bool { sizeClass == .regular && segment == .goals }
 
-    enum Segment: String, CaseIterable, Identifiable { case goals = "Goals", routines = "Routines", reminders = "Reminders"; var id: Self { self } }
-    enum Sheet: Identifiable { case routine, reminder; var id: Self { self } }
+    enum Segment: String, CaseIterable, Identifiable { case goals = "Goals", tasks = "Tasks", events = "Events"; var id: Self { self } }
+
+    init(onSettings: @escaping () -> Void = {}) {
+        self.onSettings = onSettings
+        #if DEBUG
+        // `-start-segment tasks` opens a developer build on that segment, like `-start-tab`.
+        if let name = UserDefaults.standard.string(forKey: "start-segment"), let s = Segment(rawValue: name.capitalized) { _segment = State(initialValue: s) }
+        // `-open-goal g1` opens that goal's screen.
+        if let id = UserDefaults.standard.string(forKey: "open-goal") { _path = State(initialValue: NavigationPath([GoalRef(id: id)])) }
+        #endif
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -25,9 +34,9 @@ struct ProgressTab: View {
                 }
                 .pickerStyle(.segmented).padding(.horizontal, Space.l).padding(.vertical, Space.s)
                 switch segment {
-                case .routines: RoutinesList { sheet = .routine }
                 case .goals: goals
-                case .reminders: RemindersList(detail: $detail) { sheet = .reminder }
+                case .tasks: TasksList(open: { detail = $0 }) { sheet = .task }
+                case .events: EventsList(open: { detail = $0 }) { sheet = .event }
                 }
             }
             .readableWidth(splitGoals ? .infinity : 720)
@@ -44,13 +53,8 @@ struct ProgressTab: View {
                     Button("Settings", systemImage: "person.crop.circle", action: onSettings).frame(minWidth: 44, minHeight: 44)
                 }
             }
-            .sheet(item: $sheet) { s in
-                switch s {
-                case .routine: NewRoutineSheet().environment(life)
-                case .reminder: AddReminderSheet().environment(life)
-                }
-            }
-            .sheet(item: $detail) { ReminderDetailSheet(id: $0.id) }
+            .sheet(item: $sheet) { ItemFormSheet(mode: .new(goalID: nil), initialKind: $0).environment(life) }
+            .sheet(item: $detail) { ItemDetailSheet(ref: $0) }
         }
     }
 
@@ -62,7 +66,7 @@ struct ProgressTab: View {
                 Divider()
                 NavigationStack {
                     if let selectedGoal { GoalDetail(goalID: selectedGoal.id).id(selectedGoal.id) }
-                    else { ContentUnavailableView("Select a goal", systemImage: "flag", description: Text("Its progress and routines appear here.")) }
+                    else { ContentUnavailableView("Select a goal", systemImage: "flag", description: Text("Its progress and tasks appear here.")) }
                 }
             }
         } else {
@@ -70,31 +74,33 @@ struct ProgressTab: View {
         }
     }
 
-    /// A goal is made in conversation; a routine or a reminder is a form.
+    /// A goal is made in conversation; a task or an event is a form.
     private func new() {
         switch segment {
         case .goals: startGoal()
-        case .routines: sheet = .routine
-        case .reminders: sheet = .reminder
+        case .tasks: sheet = .task
+        case .events: sheet = .event
         }
     }
 
     private func startGoal() { chat.request(draft: "I want to ") }
 
     private var newLabel: String {
-        switch segment { case .goals: "New goal"; case .routines: "New routine"; case .reminders: "New reminder" }
+        switch segment { case .goals: "New goal"; case .tasks: "New task"; case .events: "New event" }
     }
 
-    /// A tapped notification opens the record it is about: a reminder in this tab's Reminders segment, a goal in Goals.
+    /// A tapped notification opens the record it is about: a task or event in a sheet here, a goal in Goals.
     private func openLink(_ target: PushLink.Target?) {
         guard let target else { return }
         switch target.entity {
         case "goal":
             segment = .goals
             if sizeClass == .regular { selectedGoal = GoalRef(id: target.id) } else { path = NavigationPath([GoalRef(id: target.id)]) }
-        case "reminder": segment = .reminders; detail = ReminderRef(id: target.id)
+        case "task", "event": detail = ItemRef(id: target.id)
         default: return          // not ours; MainTabs clears anything unroutable
         }
         DeepLink.shared.pending = nil
     }
 }
+
+extension ItemsService.Kind: Identifiable { var id: String { rawValue } }

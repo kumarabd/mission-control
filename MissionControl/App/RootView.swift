@@ -105,8 +105,8 @@ struct MainTabs: View {
                 .onChange(of: DeepLink.shared.pending) { _, target in
                     guard let target else { return }
                     tab = switch target.section { case .today: .today; case .goals: .goals; case .memory: .memory }
-                    // A reminder, routine or goal is opened by its own screen, which clears the link; anything else stops at its tab.
-                    if !["reminder", "routine", "goal", "plan_item"].contains(target.entity) { DeepLink.shared.pending = nil }
+                    // A task, event or goal is opened by its own screen, which clears the link; anything else stops at its tab.
+                    if !["task", "event", "goal"].contains(target.entity) { DeepLink.shared.pending = nil }
                 }
                 // A finished turn may have changed the workspace, and Memory is the one tab that does not re-read on its own.
                 .onChange(of: chat.completedTurns) { _, _ in memoryRefreshToken += 1 }
@@ -118,14 +118,11 @@ struct MainTabs: View {
         }
         .task {
             let l = Life(engine: LocalEngine(owner: userId))
-            // Reminders live in the Life Engine; without a router (developer mode) there is nowhere to keep them.
+            // Goals, tasks and events live in the Life Engine; without a router (developer mode) there is nowhere to keep them.
             if !Config.devEngine, !Config.routerBaseURL.isEmpty {
                 let api = LifeAPI(baseURL: Config.routerBaseURL + "/life/api/v1", token: { [auth] in await auth.token() })
-                l.attachReminders(RemindersService(api: api))
-                l.attachRoutines(RoutinesService(api: api))
-                l.attachGoals(GoalsService(api: api))
+                l.attachWorkspace(items: ItemsService(api: api), day: DayService(api: api), goals: GoalsService(api: api))
                 l.attachProviders(ProviderService(routerBaseURL: Config.routerBaseURL, token: { [auth] in await auth.token() }))
-                l.attachPlan(PlanService(api: api))
                 l.attachSettings(SettingsService(api: api))
                 // The notification inbox is the gateway's, not the Life Engine's: it holds what the assistant sent.
                 notifications.attach(NotificationsAPI(baseURL: Config.routerBaseURL + "/gateway", token: { [auth] in await auth.token() }))
@@ -134,8 +131,8 @@ struct MainTabs: View {
             if Config.devEngine {
                 // Developer mode serves sample data in place of a workspace, so every screen can be run and looked at.
                 let api = DevWorld().api()
-                l.attachReminders(RemindersService(api: api)); l.attachRoutines(RoutinesService(api: api)); l.attachGoals(GoalsService(api: api))
-                l.attachPlan(PlanService(api: api)); l.attachSettings(SettingsService(api: api))
+                l.attachWorkspace(items: ItemsService(api: api), day: DayService(api: api), goals: GoalsService(api: api))
+                l.attachSettings(SettingsService(api: api))
             }
             #endif
             life = l
