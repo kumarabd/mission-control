@@ -7,6 +7,9 @@ enum Space {
 extension View {
     /// Every productivity screen sits on the canvas, edge to edge.
     func screenBackground() -> some View { background(Tok.background.ignoresSafeArea()) }
+    /// On a wide screen (iPad) a list or column of text reads best at a measure, centred on the canvas, not run edge to edge.
+    /// A no-op on iPhone, where the screen is already narrower than the cap.
+    func readableWidth(_ max: CGFloat = 720) -> some View { frame(maxWidth: max).frame(maxWidth: .infinity) }
 }
 
 struct SecondaryButtonStyle: ButtonStyle {

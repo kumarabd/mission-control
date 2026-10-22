@@ -25,6 +25,8 @@ struct NotificationsView: View {
                 list
             }
         }
+        .readableWidth()
+        .screenBackground()
         .navigationTitle("Notifications").navigationBarTitleDisplayMode(.inline)
         .task { if !model.loaded { await model.refresh() } }
         .toolbar {

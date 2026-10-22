@@ -69,7 +69,8 @@ struct ChatView: View {
                             .onDisappear { atBottom = false }
                     }
                     .padding(.horizontal, Space.l).padding(.vertical, Space.m)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: 760, alignment: .leading)
+                    .frame(maxWidth: .infinity)   // centred column on iPad; full width on iPhone
                 }
                 .defaultScrollAnchor(.bottom)
                 .scrollDismissesKeyboard(.interactively)
@@ -90,7 +91,7 @@ struct ChatView: View {
             .navigationTitle("Chat")
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .top) { if chat.showsOffline { offlineBanner } }
-            .safeAreaInset(edge: .bottom) { bottomBar }
+            .safeAreaInset(edge: .bottom) { bottomBar.readableWidth(760) }
             .sensoryFeedback(.impact(weight: .light), trigger: chat.transcript.items.count)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { AppMark() }

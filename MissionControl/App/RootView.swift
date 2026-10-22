@@ -87,6 +87,8 @@ struct MainTabs: View {
                 .task { await agents.load() }
                 .sheet(isPresented: $settings) { SettingsView() }
                 .task { await life.syncTimeZone(); await life.load(); await notifications.refresh() }
+                // iPad gets the tab bar with a toggle to a sidebar; iPhone is unchanged.
+                .tabViewStyle(.sidebarAdaptable)
                 .onAppear { chat.setForeground(scenePhase == .active) }
                 .onChange(of: scenePhase) { _, phase in
                     chat.setForeground(phase == .active)

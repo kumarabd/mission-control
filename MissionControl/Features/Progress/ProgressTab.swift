@@ -27,6 +27,7 @@ struct ProgressTab: View {
                 case .reminders: RemindersList(detail: $detail) { sheet = .reminder }
                 }
             }
+            .readableWidth()
             .screenBackground()
             .navigationTitle(segment.rawValue)
             .navigationDestination(for: GoalRef.self) { GoalDetail(goalID: $0.id) }

@@ -14,6 +14,7 @@ struct TodayView: View {
     /// A record a notification pointed at, held until the inbox screen has gone, so it cannot fight Today's own sheets.
     @State private var deferred: PushLink.Target?
     @State private var loading = true
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     enum Sheet: Identifiable { case add, reminder; var id: Self { self } }
 
@@ -35,39 +36,23 @@ struct TodayView: View {
     var body: some View {
         NavigationStack {
             TimelineView(.periodic(from: .now, by: 60)) { _ in
-                List {
-                    Section {
-                        Text(Date().formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                            .font(.mission(.subheadline)).foregroundStyle(Tok.muted)
-                    }.listRowBackground(Color.clear)
-                    if loading {
-                        Section { Label("Loading your day…", systemImage: "clock").foregroundStyle(Tok.muted) }
+                Group {
+                    if sizeClass == .regular {
+                        // iPad: the day's schedule beside what is still to do, instead of one long list.
+                        HStack(alignment: .top, spacing: Space.l) {
+                            List { schedule }.scrollContentBackground(.hidden)
+                            List { tasks }.scrollContentBackground(.hidden)
+                        }
+                        .readableWidth(1100)
                     } else {
-                        if !life.planAvailable && !life.routinesAvailable {
-                            Section { Text("Connect your workspace to see today's schedule and tasks.").foregroundStyle(Tok.muted) }
-                        }
-                        if let error = life.planLoadError ?? life.routinesLoadError {   // reminders are Goals ▸ Reminders' business
-                            Section {
-                                Label("Some items couldn't load", systemImage: "wifi.exclamationmark").font(.mission(.headline))
-                                Text(error).font(.mission(.subheadline)).foregroundStyle(Tok.muted)
-                                Button("Try again") { Task { await refresh() } }.frame(minHeight: 44)
-                            }.listRowBackground(Tok.surface)
-                        }
-                        ScheduleSection(events: events, openTask: { openTask = PlanItemRef(id: $0) })
-                        tasksSection
-                        if EKEventStore.authorizationStatus(for: .event) == .notDetermined {
-                            Section {
-                                Button("Include my calendar", systemImage: "calendar.badge.plus") {
-                                    Task { events = await DayEvents.today(requestAccess: true) }
-                                }.frame(minHeight: 44)
-                            }.listRowBackground(Tok.surface)
-                        }
+                        List { header; schedule; tasks }.scrollContentBackground(.hidden)
                     }
                 }
-                .scrollContentBackground(.hidden).screenBackground()
+                .screenBackground()
                 .refreshable { await refresh() }
             }
             .navigationTitle("Today")
+            .navigationSubtitle(sizeClass == .regular ? Date().formatted(.dateTime.weekday(.wide).month(.wide).day()) : "")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { AppMark() }
                 ToolbarItemGroup(placement: .primaryAction) {
@@ -118,6 +103,44 @@ struct TodayView: View {
             .alert("Couldn't update your day", isPresented: Binding(get: { life.error != nil }, set: { if !$0 { life.error = nil } })) {
                 Button("OK") { life.error = nil }
             } message: { Text(life.error ?? "") }
+        }
+    }
+
+    private var header: some View {
+        Section {
+            Text(Date().formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                .font(.mission(.subheadline)).foregroundStyle(Tok.muted)
+        }.listRowBackground(Color.clear)
+    }
+
+    @ViewBuilder private var schedule: some View {
+        if loading {
+            Section { Label("Loading your day…", systemImage: "clock").foregroundStyle(Tok.muted) }
+        } else {
+            if !life.planAvailable && !life.routinesAvailable {
+                Section { Text("Connect your workspace to see today's schedule and tasks.").foregroundStyle(Tok.muted) }
+            }
+            if let error = life.planLoadError ?? life.routinesLoadError {   // reminders are Goals ▸ Reminders' business
+                Section {
+                    Label("Some items couldn't load", systemImage: "wifi.exclamationmark").font(.mission(.headline))
+                    Text(error).font(.mission(.subheadline)).foregroundStyle(Tok.muted)
+                    Button("Try again") { Task { await refresh() } }.frame(minHeight: 44)
+                }.listRowBackground(Tok.surface)
+            }
+            ScheduleSection(events: events, openTask: { openTask = PlanItemRef(id: $0) })
+        }
+    }
+
+    @ViewBuilder private var tasks: some View {
+        if !loading {
+            tasksSection
+            if EKEventStore.authorizationStatus(for: .event) == .notDetermined {
+                Section {
+                    Button("Include my calendar", systemImage: "calendar.badge.plus") {
+                        Task { events = await DayEvents.today(requestAccess: true) }
+                    }.frame(minHeight: 44)
+                }.listRowBackground(Tok.surface)
+            }
         }
     }
 

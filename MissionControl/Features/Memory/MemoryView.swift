@@ -65,7 +65,7 @@ struct MemoryView: View {
                     Section { Button("Previously saved on this device") { localRecords = true }.frame(minHeight: 44) }.listRowBackground(Tok.surface)
                 }
             }
-            .scrollContentBackground(.hidden).screenBackground()
+            .scrollContentBackground(.hidden).readableWidth().screenBackground()
             .navigationTitle("Memory")
             .searchable(text: $query, prompt: "Search \(section.title.lowercased())")
             .toolbar {
