@@ -561,6 +561,7 @@ private struct TasksBlock: View {
     var interactive: Bool
     @State private var items: [Wire.Item] = []
     @State private var loaded = false
+    @State private var opened: ItemRef?
 
     var body: some View {
         let tasks = items.filter { $0.isTask && !$0.isDone }
@@ -571,10 +572,13 @@ private struct TasksBlock: View {
                 VStack(spacing: Space.xs) {
                     ForEach(tasks) { task in
                         HStack(spacing: Space.m) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(task.title).font(.mission(.body, .medium)).foregroundStyle(Tok.text)
-                                Text(when(task)).font(.mission(.caption)).foregroundStyle(Tok.muted)
-                            }.frame(maxWidth: .infinity, alignment: .leading)
+                            // The row is the app's own task: tapping it opens the same screen Today and Tasks open.
+                            Button { opened = ItemRef(id: task.id) } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(task.title).font(.mission(.body, .medium)).foregroundStyle(Tok.text)
+                                    Text(when(task)).font(.mission(.caption)).foregroundStyle(Tok.muted)
+                                }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+                            }.buttonStyle(.borderless).accessibilityHint("Shows the task")
                             Button { Task { await life.complete(task); await load() } } label: {
                                 Image(systemName: "checkmark.circle").font(.title2).foregroundStyle(Tok.accent).frame(width: 44, height: 44)
                             }
@@ -585,6 +589,7 @@ private struct TasksBlock: View {
             }
         }
         .task { await load() }
+        .sheet(item: $opened, onDismiss: { Task { await load() } }) { ItemDetailSheet(ref: $0) }
     }
     private func load() async {
         items = subject.kind == "goal" ? await life.items(forGoal: subject.id) : (life.item(subject.id).map { [$0] } ?? [])
@@ -603,6 +608,7 @@ private struct EventsBlock: View {
     let subject: ViewSubject
     @State private var items: [Wire.Item] = []
     @State private var loaded = false
+    @State private var opened: ItemRef?
 
     var body: some View {
         let events = items.filter(\.isEvent).sorted { ($0.at ?? .distantFuture) < ($1.at ?? .distantFuture) }
@@ -612,10 +618,12 @@ private struct EventsBlock: View {
             } else {
                 VStack(spacing: Space.xs) {
                     ForEach(events) { event in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(event.title).font(.mission(.body, .medium)).foregroundStyle(Tok.text)
-                            Text(event.at?.formatted(date: .abbreviated, time: .shortened) ?? "").font(.mission(.caption)).foregroundStyle(Tok.muted)
-                        }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        Button { opened = ItemRef(id: event.id) } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(event.title).font(.mission(.body, .medium)).foregroundStyle(Tok.text)
+                                Text(event.at?.formatted(date: .abbreviated, time: .shortened) ?? "").font(.mission(.caption)).foregroundStyle(Tok.muted)
+                            }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle())
+                        }.buttonStyle(.borderless).accessibilityHint("Shows the event")
                     }
                 }
             }
@@ -624,6 +632,7 @@ private struct EventsBlock: View {
             items = subject.kind == "goal" ? await life.items(forGoal: subject.id) : (life.item(subject.id).map { [$0] } ?? [])
             loaded = true
         }
+        .sheet(item: $opened) { ItemDetailSheet(ref: $0) }
     }
 }
 

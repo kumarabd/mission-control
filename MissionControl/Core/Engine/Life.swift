@@ -175,6 +175,7 @@ final class Life {
         switch e as? LifeError {
         case .unauthorized: "Please sign in again."
         case .notProvisioned: "Your workspace isn't ready for \(what) yet."
+        case .engine(_, "Unknown operation"): "Your workspace is on an older version than this app. It needs updating before \(what) can load."
         case .engine(let code, let message): code == "conflict" ? "That changed elsewhere. It has been refreshed." : message
         case .retry: "You're offline, or the service is busy. Try again in a moment."
         default: "Something went wrong with \(what)."
