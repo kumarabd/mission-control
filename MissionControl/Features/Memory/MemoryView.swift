@@ -12,23 +12,34 @@ struct MemoryView: View {
     @State private var model = MemoryModel()
     @State private var localRecords = false
     @State private var selectedID: String?
+    @State private var selectedLens: SemanticMemory.Lens?
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// A split view only while the list and detail both have room. At
+    /// accessibility text sizes the iPad falls back to the phone's single column.
+    private var usesSplit: Bool { sizeClass == .regular && !typeSize.isAccessibilitySize }
 
     private var service: MemoryService {
-        MemoryService(baseURL: Config.routerBaseURL + "/brain", token: { [auth] in await auth.token() })
+        #if DEBUG
+        if Config.devEngine { return .devSample }
+        #endif
+        return MemoryService(baseURL: Config.routerBaseURL + "/brain", token: { [auth] in await auth.token() })
     }
     var body: some View {
         NavigationStack {
             Group {
-                if sizeClass == .regular {
+                if usesSplit {
                     HStack(spacing: 0) {
                         memoryList.frame(width: 400)
                         Divider()
                         NavigationStack {
-                            if let item = model.items.first(where: { $0.id == selectedID }) {
+                            if let lens = selectedLens {
+                                WorldLensDetail(lens: lens, service: service, initialItem: model.lensState(lens).item, onDiscuss: { discuss(lens) }).id(lens.id)
+                            } else if let item = model.items.first(where: { $0.id == selectedID }) {
                                 SemanticMemoryDetail(item: item, service: service, onDiscuss: { discuss(item) }).id(item.id)
                             } else {
-                                ContentUnavailableView("Select an insight", systemImage: "brain.head.profile", description: Text("What your assistant remembers appears here."))
+                                ContentUnavailableView("Select a lens or insight", systemImage: "brain.head.profile", description: Text("The standing lenses and what your assistant remembers appear here."))
                             }
                         }
                     }
@@ -47,16 +58,40 @@ struct MemoryView: View {
                 }
             }
             .navigationDestination(isPresented: $localRecords) { LocalMemoryRecords() }
-            .refreshable { await reload() }
+            .refreshable {
+                await reload()
+                await model.loadLenses(service: service, force: true)
+            }
+            .task { await model.loadLenses(service: service) }
             .task(id: "\(section.rawValue):\(query):\(refreshToken)") {
                 if !query.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
                 guard !Task.isCancelled else { return }; await reload()
             }
-            .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await reload() } } }
+            .task(id: refreshToken) { if refreshToken > 0 { await model.loadLenses(service: service, force: true) } }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    Task {
+                        await reload()
+                        await model.loadLenses(service: service, force: true)
+                    }
+                }
+            }
+            .onChange(of: selectedID) { _, id in if id != nil { selectedLens = nil } }
         }
     }
     private var memoryList: some View {
         List(selection: $selectedID) {
+            Section {
+                ForEach(Array(SemanticMemory.Lens.allCases.enumerated()), id: \.element.id) { index, lens in
+                    lensRow(lens, index: index)
+                }
+            } header: {
+                SectionHeading("Your world", detail: "Kept current")
+            } footer: {
+                Text("Three standing views your assistant keeps up to date. They change as it learns more.")
+                    .font(.mission(.footnote))
+            }
+            .listRowBackground(Tok.surface)
             Section {
                 Picker("Memory view", selection: $section) {
                     ForEach(SemanticMemory.Section.allCases) { Text($0.title).tag($0) }
@@ -83,7 +118,7 @@ struct MemoryView: View {
             if !model.items.isEmpty {
                 Section {
                     ForEach(model.items) { item in
-                        if sizeClass == .regular { itemRow(item).tag(item.id) }
+                        if usesSplit { itemRow(item).tag(item.id) }
                         else { NavigationLink { SemanticMemoryDetail(item: item, service: service, onDiscuss: { discuss(item) }) } label: { itemRow(item) } }
                     }
                     if model.hasMore { Button(model.loading ? "Loading…" : "More insights") { Task { await reload(more: true) } }.frame(minHeight: 44).disabled(model.loading) }
@@ -98,6 +133,22 @@ struct MemoryView: View {
             }
         }
         .scrollContentBackground(.hidden)
+    }
+    @ViewBuilder
+    private func lensRow(_ lens: SemanticMemory.Lens, index: Int) -> some View {
+        let row = WorldLensRow(lens: lens, state: model.lensState(lens), index: index, showsChevron: usesSplit)
+        if usesSplit {
+            Button {
+                selectedID = nil
+                selectedLens = lens
+            } label: { row }
+            .buttonStyle(MissionPressStyle())
+            .listRowBackground(selectedLens == lens ? Tok.accent.opacity(0.08) : Tok.surface)
+        } else {
+            NavigationLink {
+                WorldLensDetail(lens: lens, service: service, initialItem: model.lensState(lens).item, onDiscuss: { discuss(lens) })
+            } label: { row }
+        }
     }
     private func itemRow(_ item: SemanticMemory.Item) -> some View {
         VStack(alignment: .leading, spacing: Space.s) {
@@ -119,6 +170,9 @@ struct MemoryView: View {
         let context = item.map { "About memory item \($0.id), ‘\($0.title)’: " } ?? "About what you remember and understand about me: "
         chat.request(draft: context)
     }
+    private func discuss(_ lens: SemanticMemory.Lens) {
+        chat.request(draft: "About what you remember and understand about my \(lens.title.lowercased()): ")
+    }
 }
 private struct SemanticMemoryDetail: View {
     let item: SemanticMemory.Item
@@ -129,38 +183,12 @@ private struct SemanticMemoryDetail: View {
             VStack(alignment: .leading, spacing: Space.l) {
                 Text(item.label).font(.missionMono(.caption)).foregroundStyle(Tok.accent)
                 if let date = item.updatedAt { Text("Updated \(date.formatted(date: .abbreviated, time: .shortened))").font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
-                if let content = item.content { MarkdownView(text: content) }
-                else { Text("A summary isn't available yet. Your assistant updates understanding as new context is retained.").font(.mission(.body)) }
-                if item.truncated { Text("This is a shortened view of this item.").font(.mission(.footnote)).foregroundStyle(Tok.muted) }
-                if !item.entities.isEmpty {
-                    Text("Related context").font(.mission(.headline, .medium)).accessibilityAddTraits(.isHeader)
-                    ForEach(item.entities) { entity in
-                        NavigationLink { EntityMemoryDetail(entity: entity, service: service) } label: {
-                            Text(entity.name).font(.mission(.body))
-                        }.frame(minHeight: 44)
-                    }
-                }
-                DisclosureGroup("About this insight") {
-                    Text(item.sourceStatus == "not_recorded" ? "Source links weren't saved with this insight. Related context names describe associations, not supporting evidence." : "These memories informed the document. They aren't citations for individual claims.")
-                        .font(.mission(.footnote)).foregroundStyle(Tok.muted).padding(.top, Space.s)
-                }.font(.mission(.subheadline))
-                if let sources = item.sources, !sources.isEmpty {
-                    Text("Supporting memory").font(.mission(.headline, .medium)).accessibilityAddTraits(.isHeader)
-                    ForEach(sources) { source in
-                        if source.available {
-                            NavigationLink { SemanticSourceDetail(parent: item.id, source: source, service: service) } label: {
-                                Label(source.title, systemImage: "doc.text").frame(minHeight: 44)
-                            }
-                        } else { Text("Source unavailable").font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
-                    }
-                }
-                Button(action: onDiscuss) { Label("Discuss or correct this", systemImage: "bubble.left") }.frame(minHeight: 44)
-                Text("Requests go to your assistant. This view updates when memory has actually refreshed.").font(.mission(.footnote)).foregroundStyle(Tok.muted)
+                SemanticItemBody(item: item, service: service, onDiscuss: onDiscuss)
             }.padding(Space.l).frame(maxWidth: 720).frame(maxWidth: .infinity, alignment: .leading)
         }.screenBackground().navigationTitle(item.title).navigationBarTitleDisplayMode(.inline)
     }
 }
-private struct EntityMemoryDetail: View {
+struct EntityMemoryDetail: View {
     var entity: SemanticMemory.Entity
     var service: MemoryService
     @State private var page: EntityMemory.Page?
@@ -219,7 +247,7 @@ private struct LocalMemoryRecords: View {
     }
 }
 
-private struct SemanticSourceDetail: View {
+struct SemanticSourceDetail: View {
     var parent: String
     var source: SemanticMemory.Source
     var service: MemoryService

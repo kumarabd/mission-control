@@ -11,6 +11,7 @@ import Foundation
         let dir = URL(fileURLWithPath: CommandLine.arguments[1])
         let reflections = try Data(contentsOf: dir.appendingPathComponent("reflections.json"))
         let profile = try Data(contentsOf: dir.appendingPathComponent("profile.json"))
+        let profilePage = try Wire.decoder.decode(SemanticMemory.Page.self, from: profile)
         let source = try Data(contentsOf: dir.appendingPathComponent("source.json"))
         func response(_ request: URLRequest, _ code: Int = 200) -> HTTPURLResponse {
             HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: nil, headerFields: nil)!
@@ -73,6 +74,43 @@ import Foundation
         precondition(!model.loading)
         let pending = try Wire.decoder.decode(SemanticMemory.Page.self, from: Data(contentsOf:dir.appendingPathComponent("profile_not_ready.json")))
         precondition(pending.items[0].availability == "not_ready")
-        print("Memory contract, auth, source, cache and request ordering checks passed")
+
+        // The three standing lenses read through the same page route, one pinned
+        // mental-model id at a time, and load together in the model.
+        let lensAPI = MemoryService(baseURL: api.baseURL, token: { "t" }, transport: { request in
+            let q = Dictionary(uniqueKeysWithValues: URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name,$0.value!) })
+            let section = q["section"]!
+            precondition(q["limit"] == "1", "\(q)")
+            var page = profilePage
+            page.section = section
+            return (try Wire.encoder.encode(page), response(request))
+        })
+        let persona = try await lensAPI.lens(SemanticMemory.Lens.persona)
+        precondition(persona.section == SemanticMemory.Lens.persona.rawValue && persona.items.count == 1)
+        let lensModel = MemoryModel()
+        await lensModel.loadLenses(service: lensAPI)
+        precondition(lensModel.lensesLoaded)
+        for lens in SemanticMemory.Lens.allCases {
+            precondition(lensModel.lensState(lens).item?.title == "About you", lens.rawValue)
+        }
+        let failingLenses = MemoryModel()
+        await failingLenses.loadLenses(service: offline)
+        for lens in SemanticMemory.Lens.allCases {
+            if case .failed = failingLenses.lensState(lens) {} else { preconditionFailure("expected \(lens.rawValue) to fail") }
+        }
+        var empty = profilePage
+        empty.items = []
+        let emptyAPI = MemoryService(baseURL: api.baseURL, token: { "t" }, transport: { request in
+            let section = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "section" }!.value!
+            var page = empty
+            page.section = section
+            return (try Wire.encoder.encode(page), response(request))
+        })
+        let emptyModel = MemoryModel()
+        await emptyModel.loadLenses(service: emptyAPI)
+        for lens in SemanticMemory.Lens.allCases {
+            precondition(emptyModel.lensState(lens) == .empty, lens.rawValue)
+        }
+        print("Memory contract, auth, source, lens, cache and request ordering checks passed")
     }
 }
