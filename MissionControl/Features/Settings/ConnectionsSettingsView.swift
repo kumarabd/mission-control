@@ -8,7 +8,10 @@ struct ConnectionsSettingsView: View {
     @State private var items: [GatewayConnectionsAPI.CatalogItem] = []
     @State private var loading = true
     @State private var loadError: String?
-    @State private var detail: GatewayConnectionsAPI.CatalogItem?
+    @State private var detailName: String?
+    private var detail: Binding<GatewayConnectionsAPI.CatalogItem?> {
+        Binding(get: { items.first { $0.name == detailName } }, set: { detailName = $0?.name })
+    }
     @Environment(\.scenePhase) private var scenePhase
 
     private let api = GatewayConnectionsAPI(
@@ -47,7 +50,7 @@ struct ConnectionsSettingsView: View {
                     ForEach(groups, id: \.0) { status, groupItems in
                         Section {
                             ForEach(groupItems) { item in
-                                Button { detail = item } label: { ConnectionRow(item: item, status: status) }
+                                Button { detailName = item.name } label: { ConnectionRow(item: item, status: status) }
                                     .buttonStyle(.plain)
                             }
                         } header: { Text(status.rawValue).font(.mission(.subheadline, .medium)) }
@@ -63,7 +66,7 @@ struct ConnectionsSettingsView: View {
         .task { await load() }
         .task { await pollWhileVisible() }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await load() } } }
-        .sheet(item: $detail) { item in
+        .sheet(item: detail) { item in
             ConnectionDetailSheet(api: api, item: item, status: status(for: item)) { await load() }
         }
     }
@@ -96,6 +99,32 @@ struct ConnectionsSettingsView: View {
         switch error {
         case .unauthorized: return "Sign in again to continue."
         case .server(_, let message): return message.isEmpty ? "The server couldn't complete this request." : message
+        }
+    }
+}
+
+/// Backends that ship their own iOS app reuse that app's name and icon (asset `Conn*`).
+private extension GatewayConnectionsAPI.CatalogItem {
+    var brand: (name: String, asset: String)? {
+        switch name {
+        case "maps-engine": return ("Garage", "ConnGarage")
+        case "finance": return ("Treasure", "ConnTreasure")
+        case "retro": return ("Retro", "ConnRetro")
+        default: return nil
+        }
+    }
+    var shownName: String { brand?.name ?? displayName }
+}
+
+private struct ConnectionIcon: View {
+    let item: GatewayConnectionsAPI.CatalogItem
+    let symbol: String
+    var body: some View {
+        if let asset = item.brand?.asset {
+            Image(asset).resizable().frame(width: 32, height: 32).clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        } else {
+            Image(systemName: symbol).font(.mission(.body)).foregroundStyle(Tok.accent)
+                .frame(width: 32, height: 32).background(Tok.raised, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
     }
 }
@@ -138,15 +167,14 @@ private struct ConnectionRow: View {
     var body: some View {
         HStack(spacing: Space.m) {
             ZStack(alignment: .bottomTrailing) {
-                Image(systemName: symbol).font(.mission(.body)).foregroundStyle(Tok.accent)
-                    .frame(width: 32, height: 32).background(Tok.raised, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                ConnectionIcon(item: item, symbol: symbol)
                 if item.origin == "in-house" {
                     Image(systemName: "house.fill").font(.system(size: 8)).foregroundStyle(Tok.muted)
                         .padding(2).background(Tok.surface, in: Circle()).offset(x: 3, y: 3)
                 }
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.displayName).font(.mission(.headline, .medium)).foregroundStyle(Tok.text)
+                Text(item.shownName).font(.mission(.headline, .medium)).foregroundStyle(Tok.text)
                 HStack(spacing: Space.xs) {
                     Circle().fill(tone).frame(width: 6, height: 6)
                     Text(label).font(.mission(.caption)).foregroundStyle(Tok.muted)
@@ -226,9 +254,9 @@ private struct ConnectionDetailSheet: View {
                     }
                 }
             }
-            .navigationTitle(item.displayName).navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(item.shownName).navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
-            .confirmationDialog("Disconnect \(item.displayName)? Your assistant will lose access to its tools. Provider access is not revoked.",
+            .confirmationDialog("Disconnect \(item.shownName)? Your assistant will lose access to its tools. Provider access is not revoked.",
                                  isPresented: $confirmingDisconnect, titleVisibility: .visible) {
                 Button("Disconnect", role: .destructive) { Task { await disconnect() } }
             }
@@ -267,13 +295,26 @@ private struct ConnectionDetailSheet: View {
                 oauthClientSecret: isMachineOAuth ? clientSecret.trimmingCharacters(in: .whitespaces) : nil,
                 oauthScopes: isMachineOAuth ? scopes.trimmingCharacters(in: .whitespaces) : nil
             )
-            _ = try await api.connect(name: item.name, secrets: secrets)
+            try await api.connect(name: item.name, secrets: secrets)
+            if item.authKind == "oauth" && !isMachineOAuth {
+                // Browser OAuth: hand off right away instead of leaving the item in "Needs attention".
+                // mcp-hub flips to needs_authorization asynchronously, so retry briefly.
+                var url: URL?
+                for _ in 0..<6 where url == nil {
+                    url = try? await api.authorize(name: item.name)
+                    if url == nil { try? await Task.sleep(for: .seconds(1)) }
+                }
+                await onChanged()
+                if let url { openURL(url); dismiss() }
+                else { error = "Connected, but authorization isn't ready yet. Tap Authorize in a moment." }
+                return
+            }
             await onChanged()
             dismiss()
         } catch let gatewayError as GatewayConnectionsError {
             error = ConnectionsSettingsView.message(for: gatewayError)
         } catch {
-            self.error = "The connection could not be saved. Check your access and try again."
+            self.error = "The connection could not be saved. Check your access and try again."; await onChanged()
         }
     }
 
@@ -287,7 +328,7 @@ private struct ConnectionDetailSheet: View {
         } catch let gatewayError as GatewayConnectionsError {
             error = ConnectionsSettingsView.message(for: gatewayError)
         } catch {
-            self.error = "Authorization is not available yet. Try again."
+            self.error = "Authorization is not available yet. Try again."; await onChanged()
         }
     }
 
@@ -301,7 +342,7 @@ private struct ConnectionDetailSheet: View {
         } catch let gatewayError as GatewayConnectionsError {
             error = ConnectionsSettingsView.message(for: gatewayError)
         } catch {
-            self.error = "The connection could not be removed. Try again."
+            self.error = "The connection could not be removed. Try again."; await onChanged()
         }
     }
 }

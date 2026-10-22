@@ -61,7 +61,7 @@ struct GatewayConnectionsAPI {
 
     /// Re-connecting without re-supplying a secret keeps whatever is already stored (mcp-hub's own
     /// merge-on-update behavior) — callers don't need to re-enter a token/client_secret just to retry.
-    func connect(name: String, secrets: ConnectSecrets? = nil) async throws -> CatalogItem {
+    func connect(name: String, secrets: ConnectSecrets? = nil) async throws {
         struct OAuthBody: Encodable { var clientID: String; var clientSecret: String; var scopes: String?
             enum CodingKeys: String, CodingKey { case clientID = "client_id", clientSecret = "client_secret", scopes } }
         struct Body: Encodable { var name: String; var token: String?; var oauth: OAuthBody? }
@@ -70,8 +70,9 @@ struct GatewayConnectionsAPI {
             return OAuthBody(clientID: id, clientSecret: secret, scopes: secrets?.oauthScopes?.isEmpty == false ? secrets?.oauthScopes : nil)
         }()
         let body = Body(name: name, token: (secrets?.token?.isEmpty == false) ? secrets?.token : nil, oauth: oauth)
-        let data = try await request("POST", "/api/connections", body: try JSONEncoder().encode(body))
-        return try JSONDecoder().decode(CatalogItem.self, from: data)
+        // The response is a partial record (no display_name/connected), not a CatalogItem — decoding it threw
+        // after the server had already saved the connection. The list's own refresh is the source of truth.
+        _ = try await request("POST", "/api/connections", body: try JSONEncoder().encode(body))
     }
 
     func disconnect(name: String) async throws {

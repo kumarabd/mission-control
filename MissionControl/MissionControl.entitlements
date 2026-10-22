@@ -4,9 +4,13 @@
 <dict>
 	<key>aps-environment</key>
 	<string>development</string>
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>webcredentials:primary-jay-21.clerk.accounts.dev</string>
+		<string>webcredentials:clerk.nighthawklabs.org</string>
 	</array>
 	<key>com.apple.developer.carplay-voice-based-conversation</key>
 	<true/>

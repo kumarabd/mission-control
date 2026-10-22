@@ -2,8 +2,8 @@ import SwiftUI
 
 /// The day's timed items in one chronological rail, shown as a compact window a few rows tall with Now centred: the
 /// day scrolls inside the window instead of growing the page. Untimed work stays in Tasks — a routine is untimed work
-/// even when it has nudge times, because a nudge is the assistant's cue rather than a time the person is due at — and
-/// reminders live in Goals ▸ Reminders.
+/// even when it has nudge times, because a nudge is the assistant's cue rather than a time the person is due at.
+/// Today's reminder cues sit on the rail at their time; the full list lives in Goals ▸ Reminders.
 struct ScheduleSection: View {
     @Environment(Life.self) private var life
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -11,7 +11,7 @@ struct ScheduleSection: View {
     let events: [DayEvent]
     let openTask: (String) -> Void
 
-    private enum Kind { case event, task }
+    private enum Kind { case event, task, reminder }
     private struct Entry: Identifiable {
         let id: String
         let kind: Kind
@@ -19,7 +19,8 @@ struct ScheduleSection: View {
         let title: String
         let detail: String
         var task: Wire.PlanItem?
-        var cleared: Bool { task?.doneAt != nil }
+        var cue: Wire.AgendaItem?
+        var cleared: Bool { task?.doneAt != nil || cue?.state == "acknowledged" }
     }
     private enum Row: Identifiable {
         case entry(Entry), now
@@ -36,6 +37,10 @@ struct ScheduleSection: View {
             let goal = life.goals.first { $0.id == t.goalId }?.title
             let detail = [t.kind == "event" ? "Event" : t.kind == "checkin" ? "Check-in" : "\(t.minutes) min", goal, t.isPriority ? "Priority" : nil].compactMap { $0 }.joined(separator: " · ")
             return Entry(id: "t:" + t.id, kind: t.kind == "event" ? .event : .task, at: at, title: t.title, detail: detail, task: t)
+        }
+        result += life.agenda.map {
+            Entry(id: "r:" + $0.id, kind: .reminder, at: $0.at, title: $0.reminder.title,
+                  detail: $0.overdue ? "Reminder · Overdue" : "Reminder", cue: $0)
         }
         return result.sorted { $0.at == $1.at ? $0.id < $1.id : $0.at < $1.at }
     }
@@ -125,7 +130,7 @@ struct ScheduleSection: View {
                 }
                 node(e)
             }.frame(width: 44)
-            if e.kind == .event {
+            if e.kind != .task {
                 content(e)
             } else {
                 Button { open(e) } label: { content(e) }.buttonStyle(.borderless)
@@ -150,6 +155,12 @@ struct ScheduleSection: View {
                     .frame(width: 44, height: 44).background(Tok.surface, in: Circle())
             }.buttonStyle(.borderless).disabled(life.busyTasks.contains(t.id))
                 .accessibilityLabel("Mark \(e.title) \(e.cleared ? "not done" : "done")")
+        } else if e.kind == .reminder, let cue = e.cue {
+            Button { Task { await life.ackCue(cue) } } label: {
+                Image(systemName: e.cleared ? "bell.fill" : "bell").font(.mission(.title2))
+                    .frame(width: 44, height: 44).background(Tok.surface, in: Circle())
+            }.buttonStyle(.borderless).disabled(e.cleared || life.busyReminders.contains(cue.reminder.id))
+                .accessibilityLabel(e.cleared ? "\(e.title) acknowledged" : "Got it: \(e.title)")
         } else {
             Image(systemName: "calendar")
                 .font(.mission(.body)).foregroundStyle(MissionTone.scheduled.color)

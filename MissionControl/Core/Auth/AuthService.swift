@@ -47,11 +47,37 @@ final class AuthService {
         }
     }
 
+    /// Opens Sign in with Apple (Clerk). Returns an error message to show, or nil on success.
+    func signInWithApple() async -> String? {
+        do {
+            try await Clerk.shared.auth.signInWithApple()
+            return nil
+        } catch {
+            if error is CancellationError || (error as? ASAuthorizationError)?.code == .canceled { return nil }
+            if let clerkError = error as? ClerkError, let message = clerkError.message { return "Apple sign-in failed: \(message)" }
+            return "Apple sign-in failed: \(error.localizedDescription)"
+        }
+    }
+
     /// Signing out clears everything the app kept on this phone for this person.
     func signOut() async {
         await PushRegistrar.shared.unregister()   // while the session is still valid
         LocalState.wipe(owner: userId ?? "")
         try? await Clerk.shared.auth.signOut()
+    }
+
+    /// Deletes the Clerk account, then clears this phone. Returns an error message to show, or nil on success.
+    func deleteAccount() async -> String? {
+        guard let user = Clerk.shared.user else { return "You are not signed in." }
+        await PushRegistrar.shared.unregister()   // while the session is still valid
+        do {
+            _ = try await user.delete()
+        } catch {
+            return "Couldn't delete your account: \(error.localizedDescription)"
+        }
+        LocalState.wipe(owner: user.id)
+        try? await Clerk.shared.auth.signOut()
+        return nil
     }
 
     /// A session token for the router, or nil when not signed in or offline. [skipCache] forces a fresh one.

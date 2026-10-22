@@ -38,6 +38,13 @@ struct WelcomeView: View {
                 if busy { ProgressView().tint(Tok.onAccent) } else { Text("Continue with Google") }
             }
             .buttonStyle(PrimaryButtonStyle()).disabled(busy)
+            Button {
+                busy = true
+                Task { error = await auth.signInWithApple(); busy = false }
+            } label: {
+                Label("Continue with Apple", systemImage: "apple.logo").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered).controlSize(.large).tint(Tok.accent).disabled(busy).padding(.top, 10)
         }
         .padding(24)
         .background(Tok.background.ignoresSafeArea())
@@ -80,6 +87,8 @@ struct MainTabs: View {
                     ChatView(onSettings: { settings = true }).tabItem { Label("Chat", systemImage: "bubble.left") }.badge(chat.unread).tag(Tab.chat)
                     MemoryView(onSettings: { settings = true }, refreshToken: memoryRefreshToken).tabItem { Label("Memory", systemImage: "brain.head.profile") }.tag(Tab.memory)
                 }
+                // iPad gets the tab bar with a toggle to a sidebar; iPhone is unchanged.
+                .tabViewStyle(.sidebarAdaptable)
                 .environment(life)
                 .environment(notifications)
                 .environment(chat)
@@ -87,8 +96,6 @@ struct MainTabs: View {
                 .task { await agents.load() }
                 .sheet(isPresented: $settings) { SettingsView() }
                 .task { await life.syncTimeZone(); await life.load(); await notifications.refresh() }
-                // iPad gets the tab bar with a toggle to a sidebar; iPhone is unchanged.
-                .tabViewStyle(.sidebarAdaptable)
                 .onAppear { chat.setForeground(scenePhase == .active) }
                 .onChange(of: scenePhase) { _, phase in
                     chat.setForeground(phase == .active)
