@@ -24,9 +24,18 @@ struct ChatView: View {
     @FocusState private var focused: Bool
 
     private var voiceOn: Bool { voice.state != .idle && voice.state != .unavailable }
+    /// DEBUG only: draw the voice overlay without starting the microphone, so the artwork can be reviewed in a
+    /// simulator, where on-device speech is unavailable.
+    private static var showsVoicePreview: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-dev-voice-overlay")
+        #else
+        false
+        #endif
+    }
     /// The assistant is busy with a turn, typed or spoken.
     private var busy: Bool { chat.transcript.isWorking || voice.state == .processing }
-    private var agent: ChatParty { ChatParty(name: directory.name(chat.agentID), imageURL: directory.avatarURL(chat.agentID)) }
+    private var agent: ChatParty { ChatParty(name: directory.name(chat.agentID), imageURL: directory.avatarURL(chat.agentID), isAgent: true) }
     private var you: ChatParty { ChatParty(name: AgentsDirectory.profileName, imageURL: AgentsDirectory.profileImageURL) }
 
     var body: some View {
@@ -57,7 +66,11 @@ struct ChatView: View {
                         }
                         if busy { working }
                         if !receipts.isEmpty { receiptsBlock }
-                        if let question = chat.question { askBlock(question) }
+                        if let question = chat.question {
+                            AskBubble(question: question, agent: agent, showsPrompt: !questionRepeatsLastReply,
+                                      onOption: { q, option in chat.answer(q, optionID: option.id) },
+                                      onText: { q, text in chat.answer(q, text: text) })
+                        }
                         if voice.state == .unavailable, !voice.message.isEmpty {
                             Text(voice.message).font(.mission(.callout)).foregroundStyle(Tok.critical)
                         }
@@ -88,6 +101,22 @@ struct ChatView: View {
                 }
             }
             .screenBackground()
+            .overlay {
+                // Talking takes the screen: the assistant's live mark over a dimmed thread, the same voice screen
+                // CarPlay shows, until the session ends.
+                if voiceOn {
+                    VoiceOverlay(state: voice.state,
+                                 userWords: voice.conversationText.displayedUserText,
+                                 reply: voice.conversationText.assistantText,
+                                 onEnd: endVoice)
+                } else if Self.showsVoicePreview {
+                    VoiceOverlay(state: .listening,
+                                 userWords: "Take the bins out before seven.",
+                                 reply: "Done — it’s on today, and I’ll nudge you at half six.",
+                                 onEnd: {})
+                }
+            }
+            .animation(.spring(response: 0.36, dampingFraction: 0.86), value: voiceOn)
             .navigationTitle("Chat")
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .top) { if chat.showsOffline { offlineBanner } }
@@ -179,7 +208,7 @@ struct ChatView: View {
     /// the text connection is not the one working.
     private var working: some View {
         HStack(alignment: .bottom, spacing: Space.s) {
-            AvatarView(name: agent.name, url: agent.imageURL, size: ChatBubble.avatarSize)
+            AvatarView(name: agent.name, url: agent.imageURL, size: ChatBubble.avatarSize, agent: true)
             VStack(alignment: .leading, spacing: Space.xs) {
                 TypingDots()
                 if !chat.transcript.progress.isEmpty, chat.transcript.isWorking {
@@ -195,7 +224,7 @@ struct ChatView: View {
     private var agentChip: some View {
         Button { focused = false; switching = true } label: {
             HStack(spacing: Space.s) {
-                AvatarView(name: agent.name, url: agent.imageURL, size: 26)
+                AvatarView(name: agent.name, url: agent.imageURL, size: 26, agent: true)
                 Text(agent.name).font(.mission(.headline, .medium)).foregroundStyle(Tok.text).lineLimit(1)
                 if directory.agents.count > 1 || !directory.loaded {
                     Image(systemName: "chevron.down").font(.mission(.caption2, .semibold)).foregroundStyle(Tok.muted)
@@ -209,15 +238,13 @@ struct ChatView: View {
         .accessibilityLabel("Talking to \(agent.name). Change agent")
     }
 
-    /// A question the assistant needs answered, with its suggested answers as buttons.
-    private func askBlock(_ q: ChatModel.Question) -> some View {
-        VStack(alignment: .leading, spacing: Space.s) {
-            MarkdownView(text: q.prompt)
-            ForEach(q.options, id: \.id) { option in
-                Button(option.label) { chat.answer(q, optionID: option.id) }
-                    .buttonStyle(SecondaryButtonStyle())
-            }
-        }
+    /// The gateway sometimes asks with a prompt it has already said in its last reply; the ask card then keeps the
+    /// answer controls and drops the repeated text.
+    private var questionRepeatsLastReply: Bool {
+        guard let question = chat.question else { return false }
+        let prompt = ToolCallText.stripped(question.prompt).trimmed
+        return chat.transcript.items.last(where: { $0.role == .assistant })
+            .map { ToolCallText.stripped($0.text).trimmed == prompt } ?? false
     }
 
     private var receiptsBlock: some View {
@@ -400,7 +427,7 @@ private struct AgentSwitcher: View {
             dismiss()
         } label: {
             HStack(spacing: Space.m) {
-                AvatarView(name: agent.displayName, url: agent.avatarURL, size: 48)
+                AvatarView(name: agent.displayName, url: agent.avatarURL, size: 48, agent: true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(agent.displayName).font(.mission(.headline, .medium)).foregroundStyle(Tok.text)
                     if !agent.description.isEmpty {

@@ -781,7 +781,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
             sendAnswer(to: question, transcript: payload)
             pendingQuestion = nil
         } else {
-            pendingUserMessages.insert(gateway.sendMessage(payload))
+            pendingUserMessages.insert(gateway.sendMessage(payload, mode: "voice"))
         }
         log("final submitted characters=\(payload.count)")
         Task { await restartRecognition() }
@@ -805,7 +805,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
         case .status(let turn, _): return turn == activeTurnSequence
         case .turnEnded(let turn, _): return turn == activeTurnSequence
         case .askUser: return true
-        case .synchronizing, .offline, .historyLoaded, .error, .history, .retract: return false
+        case .accepted, .synchronizing, .offline, .historyLoaded, .error, .history, .retract: return false
         }
     }
 
@@ -836,7 +836,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
             historyLoaded = false
         case .historyLoaded:
             historyLoaded = true
-        case .history, .retract, .offline:
+        case .history, .retract, .offline, .accepted:
             break    // the text chat's: it pages through older messages and asks for only what is for the person
         case .turnStarted(let turn):
             // While a new user frame is pending, accept only its canonical
@@ -1293,9 +1293,12 @@ private enum SpeechTranscriptCleaner {
         guard let expression = try? NSRegularExpression(pattern: standaloneFillers) else { return text }
         let range = NSRange(text.startIndex..., in: text)
         let withoutFillers = expression.stringByReplacingMatches(in: text, range: range, withTemplate: " ")
-        return withoutFillers
+        let cleaned = withoutFillers
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .replacingOccurrences(of: #"\s+([,;:.!?])"#, with: "$1", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        // Recognizers finalize a bare "," or "." for background noise. With no
+        // letters or digits there is no spoken turn, so send nothing at all.
+        return cleaned.rangeOfCharacter(from: .alphanumerics) == nil ? "" : cleaned
     }
 }

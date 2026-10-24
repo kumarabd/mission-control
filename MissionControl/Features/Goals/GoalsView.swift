@@ -23,7 +23,9 @@ struct GoalsList: View {
                            message: "Tell your assistant what you want to achieve, or a trip or an event to plan, and it will set up the tasks and dates.",
                            actionTitle: "Tell your assistant", action: onNew)
             } else {
-                List(selection: selection ?? .constant(nil)) {
+                // Nil on iPhone: a plain list, so the value-based NavigationLinks push. Passing a
+                // selection binding here turns rows into selection targets and taps do nothing.
+                List(selection: selection) {
                     Section {
                         ForEach(life.goals) { g in
                             if selection != nil { GoalRow(goal: g).tag(GoalRef(id: g.id)) }

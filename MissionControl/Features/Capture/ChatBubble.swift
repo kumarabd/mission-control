@@ -5,6 +5,8 @@ import UIKit
 struct ChatParty: Equatable {
     var name: String
     var imageURL: String?
+    /// Agents without a picture show the assistant's mark; people fall back to their initials.
+    var isAgent: Bool = false
 }
 
 /// One message of the thread: yours on the right, the assistant's (set as markdown) on the left, each with the sender's
@@ -26,7 +28,7 @@ struct ChatBubble: View {
                 if item.role == .you { Spacer(minLength: 24) }
                 else { avatar(agent) }
                 Group {
-                    if item.role == .assistant { MarkdownView(text: item.text) }
+                    if item.role == .assistant { MarkdownView(text: shown) }
                     else { Text(item.text).font(.mission(.body)).foregroundStyle(Tok.text) }
                 }
                 .textSelection(.enabled)
@@ -35,7 +37,7 @@ struct ChatBubble: View {
                 .overlay { MissionTheme.cardShape.strokeBorder(item.delivery == .failed ? Tok.critical.opacity(0.6) : Tok.hairline) }
                 .opacity(item.delivery == .sending ? 0.6 : 1)
                 .contextMenu {
-                    Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = item.text }
+                    Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = shown }
                     if item.delivery == .failed { Button("Send again", systemImage: "arrow.clockwise", action: onRetry) }
                 }
                 if item.role == .assistant { Spacer(minLength: 24) }
@@ -45,13 +47,16 @@ struct ChatBubble: View {
         }
         .padding(.top, groupedAbove ? -Space.s + 2 : 0)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel((item.role == .you ? "You: " : "\(agent.name): ") + item.text + (item.delivery == .failed ? ". Not delivered." : ""))
+        .accessibilityLabel((item.role == .you ? "You: " : "\(agent.name): ") + shown + (item.delivery == .failed ? ". Not delivered." : ""))
         .accessibilityAction(named: "Send again") { if item.delivery == .failed { onRetry() } }
     }
 
+    /// The assistant's text without the tool-call transport it may be carrying.
+    private var shown: String { item.role == .assistant ? ToolCallText.stripped(item.text) : item.text }
+
     /// The picture at the end of a run; the rest of the run keeps the same gap so the bubbles stay in line.
     @ViewBuilder private func avatar(_ party: ChatParty) -> some View {
-        if showsAvatar { AvatarView(name: party.name, url: party.imageURL, size: Self.avatarSize).transition(.scale.combined(with: .opacity)) }
+        if showsAvatar { AvatarView(name: party.name, url: party.imageURL, size: Self.avatarSize, agent: party.isAgent).transition(.scale.combined(with: .opacity)) }
         else { Color.clear.frame(width: Self.avatarSize, height: Self.avatarSize) }
     }
     static let avatarSize: CGFloat = 30

@@ -51,7 +51,7 @@ struct WelcomeView: View {
     }
 }
 
-/// Signed-in shell: Today, Goals and Memory; Classic is available from Settings. Owns the per-person model so it is
+/// Signed-in shell: Today, Goals, Chat and Memory. Owns the per-person model so it is
 /// rebuilt on sign-out. Capture floats over the productivity tabs.
 struct MainTabs: View {
     let userId: String

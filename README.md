@@ -1,81 +1,100 @@
 # Mission Control
 
-Mission Control is a calm, native iOS dashboard for the work that matters today.
+Mission Control is a calm, native assistant for iPhone and iPad: one chat with your agent, next to the day, goals and
+memory it keeps for you.
 
-## V1 scope
+## What it is
 
-- A live current time and date header.
-- Local, SwiftData-backed tasks: add and complete tasks.
-- Project cards backed by mock GitHub repository data, showing repository name, description, and activity derived from `pushed_at`.
+- **Today** — the day's tasks and events, read from the Life Engine through the router.
+- **Goals** — goals, their steps and the views the agent composes from them.
+- **Chat** — one conversation with the assistant, by typing or talking. It behaves like a messaging app: delivery
+  states, a recent window kept on the phone, and replies that arrive while you are on another tab.
+- **Memory** — what the assistant remembers, read from Agent Brain.
+
+Nothing about the workspace is decided on the phone: the assistant writes through the Life Engine, the same operations
+the screens use.
+
+## Voice
+
+Tap the microphone in Chat to speak instead of typing. Speech is transcribed on-device with iOS 26
+`SpeechTranscriber`; only text reaches the gateway. Replies stream back and are spoken sentence by sentence through the
+system voice. Talking takes over the conversation until you end voice, then the thread replays so the spoken turns sit
+in the chat with everything typed.
+
+While a session runs, the chat dims behind a semi-transparent card carrying the assistant's ring/waveform mark, alive
+in the matching state (getting ready, listening, thinking, speaking), with the live words and an End voice button.
+CarPlay shows the same mark as its voice screen and on the assistant, Today and goal templates.
+
+The assistant's replies are styled for how the message was said: voice turns ask the gateway for spoken prose, typed
+turns for text. `MobileGateway.sendMessage` requires its `mode`, so no caller can send the wrong one by default.
+
+Audio is not saved or transmitted by the app.
+
+## CarPlay
+
+Mission Control is a voice-based conversation app on CarPlay (`com.apple.developer.carplay-voice-based-conversation`).
+The assistant is the root screen — the mark is the talk control — with the last exchange, the next items of today and
+the open goals beneath; Today opens the full day, and an item or goal opens read-only details with Mark done and
+Snooze. Template depth stays within the category's three-screen limit. Nothing starts recording until the driver taps
+the mark.
 
 ## Architecture
 
-The app intentionally uses a lightweight, feature-oriented layout:
-
 ```
 MissionControl/
-├── App/                 App entry point and SwiftData container
-├── Models/              MissionTask and GitHubRepository
+├── App/                 App entry point, root and tabs
+├── Core/
+│   ├── Auth/            Clerk sign-in and gateway token
+│   ├── Domain/          Chat transcript, models, planner, view kit
+│   ├── Engine/          Life Engine client and local state
+│   ├── Onboarding/      Provisioning gate
+│   ├── Push/            APNs registration and links
+│   └── Remote/          Life, gateway, memory and model APIs (incl. MobileGateway)
 ├── Features/
-│   ├── Dashboard/       Screen composition and clock
-│   ├── Tasks/           Task list, row, and task creation
-│   └── Projects/        Repository cards
-└── Services/            Repository data provider (mock in V1)
+│   ├── Capture/         Chat: model, view, bubbles — and Voice/ (speech, mark, overlay, gateway turns)
+│   ├── CarPlay/         Voice-first assistant, today and details as CarPlay templates
+│   ├── Goals/           Goals, kit screens
+│   ├── Memory/          Memory
+│   ├── Notifications/   Inbox
+│   ├── Progress/        Goal progress
+│   ├── Settings/        Account, agents, models, connections
+│   └── Today/           Today and item sheets
+└── UI/                  Theme and shared components
 ```
 
-`MockGitHubService` is the seam for a future authenticated GitHub API client. Tasks are persisted locally via SwiftData; repository data remains read-only in this version.
+The same target supports iPhone and iPad; iPad adapts the tab bar to a sidebar and uses two-column layouts.
 
 ## Run
 
-Open `MissionControl.xcodeproj` in Xcode 26 or later, select an iOS 26+ simulator or device, and run the **MissionControl** scheme.
+Open `MissionControl.xcodeproj` in Xcode 26 or later, select an iOS 26+ simulator or device, and run the
+**MissionControl** scheme.
 
-## iPhone and iPad
-
-The same target supports both devices. Home centers a large assistant presence beneath a horizontal time/date and sample-weather strip. Six labeled icons spread around it: Tasks, Projects, Garage, Devices, Pantry, and Wardrobe. iPad uses a wide constellation; iPhone uses a compact edge constellation with the same center, message area, and control order. The larger message area sits directly below the assistant between the lower icons, and grows into scrolling content for longer messages. Larger accessibility text uses a two-column grid. Phone details use native push navigation; iPad details open in large sheets.
-
-Tap **Tasks** to open the full adaptive day timeline, or **Devices** to inspect the sample device information. The quiet update at the bottom uses your next timed task, earlier unfinished work, or current focus; tapping it opens Tasks. Only real task timings drive the Tasks attention badge. The top ellipsis menu contains Add Task and appearance controls.
-
-Tap the assistant to speak to the remote assistant: tap again to finish, and the app transcribes your words on-device with iOS 26 SpeechTranscriber before sending text to the authenticated gateway. The required Apple language model installs on first use and then runs locally. Response text streams back and is spoken sentence-by-sentence through the system voice while it is still being generated. The live response and state appear below the assistant. Tapping while the assistant is responding stops local playback and begins a new spoken request; the gateway treats that message as an interrupt. iOS asks only for microphone access. Audio is not saved or transmitted by the app.
-
-The camera and paperclip controls attached to the assistant support live VisionKit text/QR scanning, camera-photo OCR, and image/PDF imports or drops. Recognition runs on-device and the extracted payload appears under the assistant as a temporary stand-in for the future backend. Attachments are not persisted or transmitted by this V1.
-
-Choose Graphite, Pearl, or Follow system from the dashboard settings. Reduce Motion is respected; assistant animation pauses when a space opens or the app enters the background.
-
-On iPhone, selecting a task makes it the current focus. That selection persists on the device and falls back to the next open task when completed or deleted. Completing from Today supports Undo. Existing tasks are retained when the optional task timing field is added; signing settings are unchanged.
-
-Weather, attention reminders, system readings, and repositories are explicitly sample data. Calendar and personal services are not connected. Tasks remain local to each device; no server synchronization or offline command queue is implemented yet.
-
-### My day timeline
-
-The shared My day timeline uses sage for focus, blue for scheduled information, amber for action, terracotta for reminders, and grey for completed tasks. Icons and short labels accompany colour throughout the app, including space lists and details; the palette adapts to light/dark and increased contrast. A visual-language key is available in Settings.
-
-Tasks with an explicit time appear chronologically under **At a time**, around a live **Now** marker. Earlier unfinished tasks remain visible with their time (and date for previous days). Items beyond today are available through the calendar button. Focus highlights a task within its timing group.
-
-Untimed tasks and day-level attention examples appear under **For today**, with icons and no connecting clock line. Untimed tasks carry forward until completed and have no deadline. Example reminders are marked Sample. Completed tasks collapse into a disclosure; they are not claimed to have been completed today because completion dates are not stored. Sparse items share the available height; crowded days retain readable text and scroll.
-
-To schedule a task, turn on **Specific time** when adding it. Use the task's ellipsis menu on the dashboard, or its long-press menu in the task list, to set, change, or remove that time. Times are stored locally; they do not trigger notifications. Calendar integration is not connected.
-
-### Local checks (no simulator)
+## Local checks (no simulator)
 
 From the repository root on a Mac with Xcode installed:
 
 ```sh
-xcrun swiftc -parse-as-library MissionControl/Legacy/Models/MissionTask.swift MissionControl/Legacy/Services/TaskFocusSelection.swift Tests/TaskFocusSelectionChecks.swift -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker Tests/FocusChecks-Info.plist -o /tmp/mission-focus-checks
-/tmp/mission-focus-checks
+xcrun swiftc -parse-as-library MissionControl/Core/Domain/ChatTranscript.swift MissionControl/Core/Domain/ChatStore.swift Tests/ChatTranscriptChecks.swift -o /private/tmp/chat-transcript-checks
+/private/tmp/chat-transcript-checks
+
+xcrun swiftc -parse-as-library MissionControl/Features/Capture/Voice/VoiceInteractionPolicy.swift MissionControl/Features/Capture/Voice/VoiceConversationText.swift Tests/VoiceInteractionChecks.swift -o /private/tmp/mission-voice-interaction-checks
+/private/tmp/mission-voice-interaction-checks
 ```
 
-Checks cover empty/stale selections, completion, undo, deletion, and persisted identity after reopening the local store.
+The rest — Life contract, views, notifications, memory, gateway agents, model tiers, planner, markdown, schedule — is
+documented in [Tests/README.md](Tests/README.md).
 
-Timing and schema-upgrade checks are documented in [Tests/README.md](Tests/README.md).
 ## Clerk authentication setup
 
-The iOS target includes Clerk's `ClerkKit` package and exposes **Continue with Google** in Dashboard → Account.
+The iOS target includes Clerk's `ClerkKit` package and signs in from the welcome screen.
 
 Before signing in, configure the following outside source control:
 
 1. In Clerk, enable the Native API, add the `com.kumarabd.MissionControl` native application, and enable Google in SSO connections.
 2. Set the `CLERK_PUBLISHABLE_KEY` build setting for both Debug and Release (or provide it through an uncommitted `.xcconfig`).
-3. The target already declares `webcredentials:primary-jay-21.clerk.accounts.dev` as an Associated Domain. Enable the Associated Domains capability for this App ID in Apple Developer, then regenerate/download any affected provisioning profile.
+3. The target declares `webcredentials:clerk.nighthawklabs.org` as an Associated Domain (the shared production Clerk instance — the same one the web chat and gateway use). Enable the Associated Domains capability for this App ID in Apple Developer, then regenerate/download any affected provisioning profile.
 4. In Clerk Native Applications, allowlist `com.kumarabd.MissionControl://callback` for mobile SSO redirects.
 
-The persistent gateway client sends a freshly acquired Clerk session token in its required first WebSocket frame, then exchanges text turns and streamed response deltas with `wss://abishekk-gateway.nighthawklabs.org/ws`. It keeps voice I/O on-device, reconnects with a completed-turn cursor, and never speaks replayed history.
+The gateway client sends a freshly acquired Clerk session token in its required first WebSocket frame, then exchanges
+text turns and streamed response deltas over `wss://harness-router.nighthawklabs.org/gateway/ios/ws`. Voice I/O stays
+on-device.

@@ -21,6 +21,8 @@ struct ChatTranscript {
     enum Event {
         /// A message just typed here, before the gateway has echoed it.
         case sent(clientID: String, text: String, at: Date = Date())
+        /// The gateway took the message durably, even if its own message frame (the echo) is still on the way.
+        case delivered(clientID: String)
         /// A message that was not delivered, shown as failed with a way to send it again.
         case deliveryFailed(clientID: String)
         /// The person sent a failed message again; it keeps its place and its id, so the gateway's dedupe makes it safe.
@@ -96,6 +98,10 @@ struct ChatTranscript {
             pendingSend = true
             waitingOnYou = false
             failure = nil
+
+        case .delivered(let clientID):
+            if let index = items.firstIndex(where: { $0.id == "u:" + clientID && $0.delivery == .sending }) { items[index].delivery = .sent }
+            pendingSend = items.contains { $0.delivery == .sending }
 
         case .deliveryFailed(let clientID):
             if let index = items.firstIndex(where: { $0.id == "u:" + clientID && $0.delivery == .sending }) { items[index].delivery = .failed }
@@ -231,6 +237,15 @@ struct ChatTranscript {
         return turn <= floorTurn
     }
 
+    /// Whether what was kept belongs to a conversation the gateway no longer has. Turn numbers only move forward
+    /// within one conversation, so a floor beyond the gateway's newest turn means its history was reset (wiped, and
+    /// numbering started again from 1). The floor would then swallow the whole replay — every new turn looks already
+    /// passed — so the thread has to start over from what the gateway holds. The kept messages are only a cache.
+    func isStale(serverThrough: Int) -> Bool {
+        guard let floorTurn else { return false }
+        return floorTurn > serverThrough
+    }
+
     /// The turn a history request should ask before, or nil when there is nothing to ask or one is already out. The
     /// first request starts one past the oldest turn held, so a turn the window cut in half comes back whole.
     mutating func beginLoadEarlier() -> Int? {
@@ -325,5 +340,27 @@ struct ChatTranscript {
         guard a.role == b.role else { return false }
         guard let x = a.at, let y = b.at else { return true }
         return abs(y.timeIntervalSince(x)) <= runGap
+    }
+}
+
+/// The model can carry a tool call in its text stream: `<tool_call>`, then `<function=…>` and `<parameter=…>`
+/// inside. That is the call's transport, not something the assistant said, so no screen draws it. The call is
+/// removed whole when closed; when its opener is still arriving, or came before the text kept (a question prompt
+/// sliced out of a call), everything from the first leftover marker on is dropped.
+enum ToolCallText {
+    private static let markers = [
+        "<tool_call", "</tool_call", "<function", "</function", "<parameter", "</parameter",
+    ]
+
+    static func stripped(_ text: String) -> String {
+        guard markers.contains(where: { text.contains($0) }) else { return text }
+        var value = text
+        if let block = try? NSRegularExpression(pattern: "<tool_call[^>]*>[\\s\\S]*?</tool_call>") {
+            value = block.stringByReplacingMatches(in: value, range: NSRange(value.startIndex..., in: value), withTemplate: "")
+        }
+        if let cut = markers.compactMap({ value.range(of: $0)?.lowerBound }).min() {
+            value = String(value[..<cut])
+        }
+        return value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

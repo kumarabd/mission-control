@@ -30,6 +30,7 @@ struct ProvisionGate: View {
 
     private func check() async {
         #if DEBUG
+        if Config.devEngine { stage = .ready; return }
         if ProcessInfo.processInfo.arguments.contains("-dev-onboarding") {
             let fail = ProcessInfo.processInfo.arguments.contains("-dev-onboarding-fail")
             stage = .onboarding(OnboardingModel(api: FakeOnboardingAPI(fail: fail), owner: userId, defaults: UserDefaults(suiteName: "onboarding-dev") ?? .standard, pollInterval: .milliseconds(600)))

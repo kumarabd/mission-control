@@ -56,11 +56,8 @@ final class ChatModel {
     private var open = false
     private var inForeground = false
     private var voiceHasIt = false
-    private var deliveryTimers: [String: Task<Void, Never>] = [:]
     private var saveTask: Task<Void, Never>?
     private var offlineTask: Task<Void, Never>?
-    /// How long a sent message may go unechoed before it is shown as failed.
-    private static let deliveryTimeout: Duration = .seconds(20)
 
     init(owner: String) {
         self.owner = owner
@@ -87,8 +84,6 @@ final class ChatModel {
         saveTask?.cancel()
         do { try ChatStore.save(transcript.saved, owner: owner, agent: agentID) }
         catch { Self.log.error("could not save the chat: \(error.localizedDescription, privacy: .public)") }
-        deliveryTimers.values.forEach { $0.cancel() }
-        deliveryTimers = [:]
         UserDefaults.standard.set(id == ChatStore.defaultAgent ? "" : id, forKey: Self.selectionKey)
         agentID = id
         transcript = ChatTranscript()
@@ -149,7 +144,6 @@ final class ChatModel {
         question = nil
         let id = gateway.sendMessage(trimmed, mode: "text")
         apply(.sent(clientID: id, text: trimmed))
-        expectEcho(of: id)
     }
 
     /// Sends a failed message again, in the same place and with the same id, so the gateway cannot take it twice.
@@ -159,7 +153,6 @@ final class ChatModel {
         beginInteraction()
         apply(.resending(clientID: id))
         _ = gateway.sendMessage(item.text, mode: "text", clientMessageID: id)
-        expectEcho(of: id)
     }
 
     func answer(_ question: Question, optionID: String? = nil, text: String? = nil) {
@@ -195,20 +188,6 @@ final class ChatModel {
     func consumeDraft() -> String? {
         defer { pendingDraft = nil }
         return pendingDraft
-    }
-
-    // MARK: Delivery
-
-    /// A sent message that the gateway has not echoed within a while did not get there: it is marked failed. If the echo
-    /// arrives after all (a queued frame sent once the connection returned) it settles the message as sent.
-    private func expectEcho(of clientID: String) {
-        deliveryTimers[clientID]?.cancel()
-        deliveryTimers[clientID] = Task { [weak self] in
-            try? await Task.sleep(for: Self.deliveryTimeout)
-            guard !Task.isCancelled, let self else { return }
-            deliveryTimers[clientID] = nil
-            apply(.deliveryFailed(clientID: clientID))
-        }
     }
 
     // MARK: Events
@@ -250,8 +229,10 @@ final class ChatModel {
         switch event {
         case .turnStarted(let turn):
             apply(.started(turn: turn))
+        case .accepted(let clientMessageID):
+            // Taken durably. Its echo can lag behind a long-running turn, so stop treating it as unsent now.
+            apply(.delivered(clientID: clientMessageID))
         case .message(let turn, let seq, let role, let content, let clientMessageID, let at):
-            if let clientMessageID { deliveryTimers[clientMessageID]?.cancel(); deliveryTimers[clientMessageID] = nil }
             apply(.message(turn: turn, seq: seq, role: role, content: content, clientMessageID: clientMessageID, at: at))
         case .delta(let turn, let text, let replace, let progress):
             apply(.delta(turn: turn, text: text, replace: replace, progress: progress))
@@ -278,7 +259,16 @@ final class ChatModel {
             } else {
                 apply(page)
             }
-        case .historyLoaded:
+        case .historyLoaded(let through):
+            // The conversation kept on the phone can be gone from the gateway (its history was wiped and turns number
+            // from 1 again). Its floor would then swallow the whole replay — every new turn looks already passed — so
+            // start over from the gateway's own history; the kept window is only a cache of what it holds.
+            if transcript.isStale(serverThrough: through) {
+                transcript = ChatTranscript()
+                scheduleSave()
+                gateway.restart()
+                return
+            }
             setLink(.live)
         case .synchronizing:
             if link != .offline { setLink(.connecting) }

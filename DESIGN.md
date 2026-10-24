@@ -67,4 +67,18 @@ Journal and the local weekly-review screen are removed. Memory preserves browsin
 
 The agent selects approved modules and headings; the client owns the presentation. Use the existing continuous card shape, hairlines, semantic palette and scalable fonts. iPhone presents purpose, a pending proposal review and up to four modules in a stack before More; iPad uses two columns except at accessibility sizes. Charts show recorded outcomes and desired targets separately. Check-ins use labeled native forms and disclosure for recent observations; revisions show a reason and preview before acceptance. Legacy goals and unsupported presentations retain basic review. Canonical contract and decisions live in Project Hub: `projects/life-engine/specs/goal-trackers.md` and `projects/mission-control/adr/0008-agent-composed-native-goal-trackers.md`.
 
-Memory is a read surface. Reflections/About you are semantic projections of agent-brain; the harness retains ownership of memory reasoning and updates. Today, routine and tracker actions retain their existing native controls.
+Memory is a read surface. Its three standing lenses and Reflections/About you are semantic projections of agent-brain; the harness retains ownership of memory reasoning and updates. Today, routine and tracker actions retain their existing native controls.
+
+## Memory
+
+Memory opens with **Your world**, three read-time lenses served by the memory API (`persona`, `intent`, `constraints`). They are projections over existing memory, not stored constructs: each lens lists the matching memories with dates, related entities and supporting-memory links. The lens catalog lives in the API layer; the client only reads it.
+
+| Lens | Symbol | Says |
+|---|---|---|
+| Persona | `person.text.rectangle` | Who you are, what you know, and how you like to work. |
+| Intent | `target` | What you're trying to move forward right now. |
+| Constraints | `square.dashed` | The limits, commitments, and conditions around your choices. |
+
+Each row shows the lens's current summary and refresh date. A lens with no content says "Not formed" and its detail says "Not formed yet", with Chat as the next step. Reflections and About you remain below the lenses in the existing segmented view. Tapping a lens opens its document: icon, title, current content, related context and supporting memory. iPhone pushes; iPad keeps the list at 400pt and shows the lens in the right pane, falling back to one column at accessibility text sizes.
+
+Motion is one authored reveal, not a loop: the three rows arrive together in a 60ms stagger over 350ms ease-out, and the detail hero springs in once. Reduce Motion shows both immediately. Rows use `MissionPressStyle` for press feedback, and status is carried by text and shape, never colour alone.

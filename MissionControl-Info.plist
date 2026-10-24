@@ -41,14 +41,8 @@
     <string>$(CLERK_PUBLISHABLE_KEY)</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Mission Control shows today's appointments next to your plan. Events stay on this device.</string>
-    <key>NSCameraUsageDescription</key>
-    <string>Mission Control uses the camera to scan text and codes or read a photo you choose.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Mission Control uses the microphone while you talk with the assistant. Speech is transcribed on this device.</string>
-	<key>NSHealthShareUsageDescription</key>
-	<string>Mission Control reads selected Apple Health data to show your personal health summary on this device.</string>
-	<key>NSHealthUpdateUsageDescription</key>
-	<string>Mission Control only reads Apple Health data. It does not write to Health.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
@@ -65,7 +59,7 @@
                     <key>UISceneClassName</key>
                     <string>CPTemplateApplicationScene</string>
                     <key>UISceneConfigurationName</key>
-                    <string>Mission Control CarPlay</string>
+                    <string>Mission Control</string>
                     <key>UISceneDelegateClassName</key>
                     <string>$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate</string>
                 </dict>

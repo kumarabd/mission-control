@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 import ClerkKit
 
 @main
@@ -8,12 +7,6 @@ struct MissionControlApp: App {
     @State private var auth = AuthService()
     @State private var lock = AppLock()
     @Environment(\.scenePhase) private var phase
-
-    private let modelContainer: ModelContainer = {
-        let schema = Schema([MissionTask.self])
-        let configuration = ModelConfiguration(schema: schema)
-        return try! ModelContainer(for: schema, configurations: [configuration])
-    }()
 
     var body: some Scene {
         WindowGroup {
@@ -33,7 +26,6 @@ struct MissionControlApp: App {
                     if new == .active { Task { await lock.unlock() } }
                 }
         }
-        .modelContainer(modelContainer)
     }
 }
 

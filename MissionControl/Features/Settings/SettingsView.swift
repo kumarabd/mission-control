@@ -4,8 +4,6 @@ struct SettingsView: View {
     @Environment(AuthService.self) private var auth
     @Environment(AppLock.self) private var lock
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("dashboardAppearance") private var appearance = "system"
-    @AppStorage("dashboardAmbientMotion") private var ambientMotion = true
     @State private var error: String?
     @State private var locking = false
     @State private var signOut = false
@@ -32,8 +30,6 @@ struct SettingsView: View {
                     NavigationLink("Agents") { AgentsSettingsView() }
                     NavigationLink("Models") { ModelsSettingsView() }
                     NavigationLink("Connections") { ConnectionsSettingsView() }
-                    NavigationLink("Voice and appearance") { DashboardSettings(appearance: $appearance, ambientMotion: $ambientMotion) }
-                    NavigationLink("Classic dashboard") { DashboardView().navigationTitle("Classic").navigationBarTitleDisplayMode(.inline) }
                 }
             }
             .scrollContentBackground(.hidden).screenBackground()

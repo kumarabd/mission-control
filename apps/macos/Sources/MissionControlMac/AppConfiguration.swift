@@ -2,7 +2,7 @@ import Foundation
 import ClerkKit
 
 enum AppConfiguration {
-    private static let defaultClerkPublishableKey = "pk_test_cHJpbWFyeS1qYXktMjEuY2xlcmsuYWNjb3VudHMuZGV2JA"
+    private static let defaultClerkPublishableKey = "pk_live_Y2xlcmsubmlnaHRoYXdrbGFicy5vcmck"
     private static let defaultRouterBaseURL = "https://harness-router.nighthawklabs.org"
 
     static var clerkPublishableKey: String {

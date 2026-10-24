@@ -13,6 +13,9 @@ final class MobileGateway {
         /// The text streamed for this turn so far was narration between tool calls: take it back.
         case retract(turnSequence: Int)
         case message(turnSequence: Int, sequence: Int, role: String, content: String, clientMessageID: String?, at: Date?)
+        /// The gateway took this message durably. A message sent mid-turn is folded into that turn, so this can
+        /// arrive well before its own `message` frame.
+        case accepted(clientMessageID: String)
         case status(turnSequence: Int, text: String)
         case askUser(GatewayQuestion)
         case turnEnded(Int, status: String)
@@ -21,7 +24,9 @@ final class MobileGateway {
         case synchronizing
         /// The connection dropped; it is being reopened.
         case offline
-        case historyLoaded
+        /// The replay is done and live updates follow. `throughTurn` is the gateway's newest turn, which tells a
+        /// client with kept messages whether it is still looking at the same conversation.
+        case historyLoaded(throughTurn: Int)
         case error(String)
     }
 
@@ -125,6 +130,14 @@ final class MobileGateway {
         connectIfNeeded()
     }
 
+    /// Reopens the socket for a clean replay. The chat uses it when the conversation it kept is gone from the
+    /// gateway: its kept turns would outrank the replay's, so the thread starts again from what the gateway holds.
+    func restart() {
+        guard shouldMaintainConnection else { return }
+        closeTransport()
+        connectIfNeeded()
+    }
+
     func endInteraction() {
         interactionIsActive = false
         interactionGeneration &+= 1
@@ -154,7 +167,9 @@ final class MobileGateway {
     }
 
     /// `clientMessageID` is given to send a message again: the gateway dedupes on it, so a retry cannot double a message.
-    func sendMessage(_ text: String, mode: String = "voice", clientMessageID: String = UUID().uuidString) -> String {
+    /// `mode` says how the message was said — the turn's reply is styled for it — so every caller states it: "voice" for
+    /// what the microphone heard, "text" for what was typed.
+    func sendMessage(_ text: String, mode: String, clientMessageID: String = UUID().uuidString) -> String {
         // The message goes as typed: no clock stamp, no client-capabilities preamble. The agent's own context about
         // the person and their device belongs on the engine/harness side, not glued to their words — it was showing
         // up in the transcript, and it was being stored as part of what they said.
@@ -292,6 +307,8 @@ final class MobileGateway {
             if let turn = frame.turnSequence, let sequence = frame.sequence, let role = frame.role, let content = frame.content {
                 onEvent?(.message(turnSequence: turn, sequence: sequence, role: role, content: content, clientMessageID: frame.clientMessageID, at: frame.createdAt))
             }
+        case "accepted":
+            if let id = frame.clientMessageID { onEvent?(.accepted(clientMessageID: id)) }
         case "status":
             if let turn = frame.turnSequence { onEvent?(.status(turnSequence: turn, text: frame.text ?? "")) }
         case "history":
@@ -309,7 +326,7 @@ final class MobileGateway {
                 onEvent?(.turnEnded(turn, status: frame.status ?? "completed"))
             }
         case "resumed":
-            isLive = true; backoff = 1; onEvent?(.historyLoaded); flushPendingFrames()
+            isLive = true; backoff = 1; onEvent?(.historyLoaded(throughTurn: frame.throughTurnSeq ?? 0)); flushPendingFrames()
         case "error":
             onEvent?(.error(frame.message ?? "The assistant connection failed."))
             if frame.message == "invalid token" { scheduleReconnect() }
@@ -369,12 +386,14 @@ private struct ServerFrame: Decodable {
     let prompt: String?; let options: [MobileGateway.GatewayQuestion.Option]?; let allowsFreeText: Bool?
     let status: String?; let message: String?
     let beforeTurnSeq: Int?; let oldestTurnSeq: Int?; let hasMore: Bool?; let messages: [MobileGateway.HistoryMessage]?
+    let throughTurnSeq: Int?
     let retract: Bool?
     let createdAt: Date?
     enum CodingKeys: String, CodingKey {
         case type, role, content, text, replace, progress, kind, prompt, options, status, message, messages, retract
         case createdAt = "created_at"
         case beforeTurnSeq = "before_turn_seq"; case oldestTurnSeq = "oldest_turn_seq"; case hasMore = "has_more"
+        case throughTurnSeq = "through_turn_seq"
         case turnSequence = "turn_seq"; case sequence = "seq"; case clientMessageID = "client_msg_id"
         case requestID = "request_id"; case allowsFreeText = "allow_free_text"
     }

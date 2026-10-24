@@ -220,8 +220,8 @@ struct ChatTranscriptChecks {
         precondition(failed.failure == "You're offline." && !failed.isRunning)
 
 
-        // Delivery: a message is sending until the gateway echoes it; if it never does, it fails and can be sent again
-        // in the same place, and the echo of that second try (or the first, arriving late) settles it.
+        // Delivery: a message is sending until the gateway accepts it; an error fails it, and it can be sent again in
+        // the same place. The echo of that second try (or the first, arriving late) still settles it.
         var dv = ChatTranscript()
         dv.apply(.sent(clientID: "d1", text: "first"))
         precondition(dv.items[0].delivery == .sending && dv.pendingSend)
@@ -245,6 +245,16 @@ struct ChatTranscriptChecks {
         noop.apply(.deliveryFailed(clientID: "d4"))
         precondition(noop.items[0].delivery == .sent)
 
+        // A message that barges into a running turn is accepted durably straight away; its own echo can lag behind
+        // the turn, so acceptance alone settles it as sent.
+        var accepted = ChatTranscript()
+        accepted.apply(.sent(clientID: "d5", text: "interrupt"))
+        precondition(accepted.items[0].delivery == .sending && accepted.isRunning)
+        accepted.apply(.delivered(clientID: "d5"))
+        precondition(accepted.items[0].delivery == .sent && !accepted.pendingSend && !accepted.isRunning)
+        accepted.apply(.delivered(clientID: "d5"))                        // repeated acceptance changes nothing
+        precondition(accepted.items[0].delivery == .sent)
+
         // What is kept on the phone comes back as the recent window: a message still sending is failed, a half-written
         // stream is gone, and the replay that follows fills in only what is newer, in order.
         var kept = ChatTranscript()
@@ -261,6 +271,18 @@ struct ChatTranscriptChecks {
         precondition(back.items.map(\.id) == beforeReplay, "a replay must not reorder or repeat: \(back.items.map(\.id))")
         turn(5, in: &back)
         precondition(back.items.map(\.id).contains("a:5:2") && back.items.count == ChatTranscript.window)
+
+        // The conversation the phone kept can be gone from the gateway: its history was wiped and turns number from 1
+        // again. A floor above the gateway's newest turn is that reset — not something to replay against — and an
+        // echo landing below it (a message sent after the reset) does not make the floor true again.
+        var wiped = ChatTranscript()
+        for t in 220...228 { turn(t, in: &wiped) }
+        precondition(wiped.isStale(serverThrough: 8), "kept turns outranking the gateway's newest turn is a reset")
+        wiped.apply(.sent(clientID: "w1", text: "hello"))
+        wiped.apply(.message(turn: 7, seq: 1, role: "user", content: "hello", clientMessageID: "w1"))
+        precondition(wiped.items.last?.id == "u:7:1" && wiped.isStale(serverThrough: 8))
+        precondition(!wiped.isStale(serverThrough: 300), "the same window is fine against a conversation that has it")
+        precondition(!ChatTranscript().isStale(serverThrough: 0), "nothing kept can be stale")
 
         // Rows: a heading for each day, runs of the same speaker close together with one time under the last.
         var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
@@ -291,6 +313,34 @@ struct ChatTranscriptChecks {
         precondition((try? ChatStore.load(owner: "user_a", in: dir)) == nil, "an unreadable file is reported, not read as empty")
         ChatStore.remove(owner: "user_a", in: dir)
         precondition(try! ChatStore.load(owner: "user_a", in: dir).isEmpty)
+
+        // A tool call carried in the text is transport, not an answer: it never reaches the bubble or the question.
+        precondition(ToolCallText.stripped("Bring the bins out.") == "Bring the bins out.", "plain text is untouched")
+        precondition(ToolCallText.stripped("""
+        Done.
+        <tool_call>
+        <function=shell_exec>
+        <parameter=command>ls</parameter>
+        </function>
+        </tool_call>
+        """) == "Done.", "a closed call is removed whole")
+        precondition(ToolCallText.stripped("""
+        Which date in March is your 10k race day?</parameter>
+        </function>
+        </tool_call>
+        <tool_call>
+        <function=shell_exec>
+        <parameter=command>ls</parameter>
+        """) == "Which date in March is your 10k race day?", "a call whose opener was cut off leaves the text before it")
+        precondition(ToolCallText.stripped("""
+        <tool_call>
+        <function=shell_exec>
+        <parameter=command>ls</parameter>
+        </function>
+        </tool_call>
+        Here it is.
+        """) == "Here it is.", "the answer after a closed call survives")
+
         print("ChatTranscriptChecks passed")
     }
 }
