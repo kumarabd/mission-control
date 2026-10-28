@@ -53,12 +53,12 @@ helm upgrade --install agent-web ./apps/web/charts/agent-web \
 ```
 
 **Custom image:** the image is built outside this repository; the chart only references it. Build a local variant with
-the Clerk key for your environment:
+the Clerk key for your environment (from the repository root; context is `apps/web`):
 
 ```bash
-docker build -f apps/web/Dockerfile \
+docker build \
   --build-arg VITE_CLERK_PUBLISHABLE_KEY=pk_live_... \
-  -t ghcr.io/kumarabd/mission-control-web:custom .
+  -t ghcr.io/kumarabd/mission-control-web:custom apps/web
 ```
 
 API/MCP/install URLs are **baked in `Dockerfile`** for `agent-memory.nighthawklabs.org`.

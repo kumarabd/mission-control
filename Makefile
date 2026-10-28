@@ -2,11 +2,13 @@
 
 JAVA_HOME ?= /Applications/Android Studio.app/Contents/jbr/Contents/Home
 
-.PHONY: help web-dev web-check android-check apple-check ios-build macos-build foundations tokens fonts check
+.PHONY: help web-dev web-check web-lock web-image android-check apple-check ios-build macos-build foundations tokens fonts check
 
 help:
 	@echo "web-dev       Start the web console (http://localhost:5173)"
 	@echo "web-check     Lint, typecheck, test and build the web console"
+	@echo "web-lock      Regenerate apps/web/package-lock.json for the image build"
+	@echo "web-image     Build the web image from the apps/web context"
 	@echo "android-check Unit tests and debug build for Android"
 	@echo "apple-check   Swift package build and tests for macOS"
 	@echo "ios-build     Build the iOS app for the simulator (unsigned)"
@@ -15,6 +17,12 @@ help:
 	@echo "fonts         Sync the canonical fonts into the native bundles"
 	@echo "foundations   Check generated tokens and font copies for drift"
 	@echo "check         foundations + web-check + android-check + apple-check"
+
+web-lock:
+	cd apps/web && npm install --package-lock-only --workspaces=false --ignore-scripts
+
+web-image:
+	docker build -t mission-control-web:local apps/web
 
 tokens:
 	node scripts/tokens.mjs

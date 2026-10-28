@@ -26,8 +26,8 @@ The web console and the Android app now live with the Apple clients in `mission-
 - `Makefile` for web, Android and Apple checks.
 - Path-scoped GitHub workflows: `.github/workflows/web.yml`, `.github/workflows/android.yml`.
 - `docs/architecture.md`, `docs/parity.md`, and a root README that points at every client.
-- The web Dockerfile now builds from the repository root; compose uses the root context. Container images are built
-  and pushed by the deployment pipeline, not this repository.
+- The web Dockerfile builds from the `apps/web` context using `apps/web/package-lock.json`; the deployment builder uses
+  that directory as its context. Container images are built and pushed by the deployment pipeline, not this repository.
 - The standalone web chart publishes from `.github/workflows/web-chart.yml` to `oci://ghcr.io/kumarabd/charts` on
   `web-v*` tags; its default image tag is `Chart.appVersion` (`0.1.0`).
 - The production web deployment is the `agentWeb` template in

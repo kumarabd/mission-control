@@ -1,5 +1,8 @@
 node_modules
 dist
+coverage
+.tsbuildinfo
+.tsbuildinfo/
 .git
 .gitignore
 .env

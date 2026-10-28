@@ -40,7 +40,8 @@ on-device on Apple and Android.
 
 ## Build systems
 
-- Web: npm workspaces at the repository root; one lockfile. `npm ci` then the workspace scripts.
+- Web: npm workspaces at the repository root with the root lockfile for development. The deployment image builds from
+  the `apps/web` context with its app-scoped `package-lock.json`; `make web-lock` regenerates it.
 - Android: one Gradle build in `apps/android`, wrapper-pinned, JDK 21.
 - Apple: one iOS Xcode project in `apps/ios` plus the macOS Swift package/Xcode project in `apps/macos`.
   The macOS package symlinks the shared iOS sources, so both must move together if the Apple layout changes.

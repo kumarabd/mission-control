@@ -1,15 +1,16 @@
 # syntax=docker/dockerfile:1
-# Build from the repository root so the workspace lockfile is authoritative:
-#   docker build -f apps/web/Dockerfile .
+# Build from the web app directory, which is the deployment builder's context:
+#   docker build -t mission-control-web:local apps/web
+# apps/web/package-lock.json is the app-scoped lock for this build; the root
+# workspace lock remains the source for local development.
 FROM docker.io/node:22-alpine AS build
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-COPY apps/web/package.json ./apps/web/package.json
-RUN npm ci --workspace=@mission-control/web --include-workspace-root
+RUN npm ci
 
-COPY apps/web ./apps/web
+COPY . .
 
 # Production defaults (override locally via --build-arg). Only Clerk key is set in CI (GitHub var).
 ARG VITE_BASE_PATH=/
@@ -41,18 +42,18 @@ ENV VITE_BASE_PATH=$VITE_BASE_PATH \
     VITE_MAPS_BASE_URL=$VITE_MAPS_BASE_URL \
     VITE_GOOGLE_MAPS_API_KEY=$VITE_GOOGLE_MAPS_API_KEY
 
-RUN npm run build --workspace=@mission-control/web
+RUN npm run build
 
 FROM docker.io/nginx:1.27-alpine
 
 RUN apk add --no-cache gettext
 
-COPY apps/web/docker/nginx.conf.template /etc/nginx/templates/default.conf.template
-COPY apps/web/docker/runtime-config.js.template /etc/nginx/templates/runtime-config.js.template
-COPY apps/web/docker/docker-entrypoint.sh /docker-entrypoint.sh
+COPY docker/nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY docker/runtime-config.js.template /etc/nginx/templates/runtime-config.js.template
+COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
-COPY --from=build /app/apps/web/dist /usr/share/nginx/html
+COPY --from=build /app/dist /usr/share/nginx/html
 
 # 2026-09-24: AGENT_BRAIN_API_URL/GATEWAY_API_URL removed — nginx no longer
 # proxies to either; ROUTER_PUBLIC_URL (rendered into runtime-config.js,

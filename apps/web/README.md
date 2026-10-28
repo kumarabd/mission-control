@@ -53,10 +53,11 @@ Artifacts land in `apps/web/dist/`. For a subpath deploy (legacy `/explorer/`), 
 
 ## Docker
 
-From the repository root (the workspace lockfile is the build input):
+The image build uses `apps/web` as its context and the app-scoped `apps/web/package-lock.json`:
 
 ```bash
-docker build -f apps/web/Dockerfile -t mission-control-web:local .
+# from the repository root
+docker build -t mission-control-web:local apps/web
 docker run --rm -p 3000:8080 \
   -e AGENT_BRAIN_API_URL=http://host.docker.internal:8080 \
   mission-control-web:local

@@ -33,6 +33,11 @@ jobs:
           cache: npm
 
       - run: npm ci
+      - name: App-scoped lockfile is current
+        working-directory: apps/web
+        run: |
+          npm install --package-lock-only --workspaces=false --ignore-scripts
+          git diff --exit-code -- package-lock.json
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
