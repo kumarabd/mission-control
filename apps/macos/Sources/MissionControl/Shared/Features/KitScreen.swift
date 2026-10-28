@@ -1,1 +1,1 @@
-../../../../../../MissionControl/Features/Goals/KitScreen.swift
+../../../../../../apps/ios/MissionControl/Features/Goals/KitScreen.swift

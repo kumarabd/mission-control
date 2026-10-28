@@ -4,10 +4,10 @@
 
 - Documentation datastore: `kumarabd/project-hub`
 - Project: `mission-control`
-- Components implemented here: `webapp`
+- Components implemented here: `web`, `ios`, `macos`, `android`
 - Project record in the datastore: `projects/mission-control/`
 - Implementation repository: `kumarabd/mission-control`
-- Component source locations: `webapp: apps/webapp/`
+- Component source locations: `web: apps/web/`, `ios: apps/ios/`, `macos: apps/macos/`, `android: apps/android/`
 
 ## Project Hub is the documentation datastore
 

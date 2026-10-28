@@ -1,0 +1,53 @@
+# MissionControl — the console for agent data (nginx + static SPA).
+#
+#   helm upgrade --install agent-web ./charts/agent-web \
+#     --namespace agent-brain --create-namespace
+#
+# Two API modes:
+#   proxy (default) — browser calls same-origin /v1; nginx proxies to agentBrain.apiUrl.
+#   direct — build image with frontend.apiBaseUrl (public agent-brain URL); set agent-brain cors.allowedOrigins.
+
+image:
+  registry: ghcr.io
+  repository: realnighthawk/agent-web
+  # Defaults to Chart.appVersion when empty.
+  tag: "7d6c7e1"
+  pullPolicy: IfNotPresent
+  # Official image: URLs baked in Dockerfile. Rebuild with viteClerkPublishableKey or GitHub var VITE_CLERK_PUBLISHABLE_KEY.
+  buildArgs:
+    viteClerkPublishableKey: ""
+
+# nginx upstream when frontend.apiMode=proxy (cluster DNS of agent-brain Service).
+agentBrain:
+  apiUrl: "http://hippocampus-agent-brain-server:8080"
+
+# SPA: production URLs are baked in the published image (Dockerfile). Clerk key from CI var at build.
+frontend:
+  apiMode: direct
+  apiBaseUrl: "https://agent-memory.nighthawklabs.org"
+  clerkPublishableKey: ""
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: explorer.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+nameOverride: ""
+fullnameOverride: ""

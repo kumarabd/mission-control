@@ -1,1 +1,1 @@
-../../../../../../../MissionControl/Features/Memory/SemanticItemBody.swift
+../../../../../../../apps/ios/MissionControl/Features/Memory/SemanticItemBody.swift

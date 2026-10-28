@@ -1,6 +1,0 @@
-<resources>
-    <string name="app_name">Mission Control</string>
-    <string name="router_base_url">https://harness-router.nighthawklabs.org</string>
-    <string name="clerk_publishable_key">pk_live_Y2xlcmsubmlnaHRoYXdrbGFicy5vcmck</string>
-    <string name="phone_only_message">Sign in and refresh your briefings before driving. Android Auto plays the resulting voice briefings safely.</string>
-</resources>

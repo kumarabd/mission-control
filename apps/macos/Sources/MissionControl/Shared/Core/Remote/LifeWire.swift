@@ -1,1 +1,1 @@
-../../../../../../../MissionControl/Core/Remote/LifeWire.swift
+../../../../../../../apps/ios/MissionControl/Core/Remote/LifeWire.swift

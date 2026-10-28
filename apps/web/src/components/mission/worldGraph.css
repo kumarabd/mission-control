@@ -1,0 +1,217 @@
+/* The Living Atlas: a seal, its orbit, and the plate beneath it. */
+
+.world-graph-node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  transition: opacity 200ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+.world-graph-node--dimmed {
+  opacity: 0.42;
+}
+
+.world-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.world-mark-orbit {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  border: 1px dashed;
+  border-radius: 9999px;
+  pointer-events: none;
+  opacity: 0.75;
+}
+
+.world-mark-orbit--live {
+  border-style: dashed;
+  opacity: 1;
+  animation: world-orbit 26s linear infinite;
+  will-change: transform;
+}
+
+.world-mark-satellite {
+  position: absolute;
+  top: -3px;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  border-radius: 9999px;
+}
+
+.world-mark-bloom {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  border: 1.5px solid;
+  border-radius: 9999px;
+  pointer-events: none;
+  animation: world-bloom 780ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.world-mark-glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+
+.world-mark-icon {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.world-mark-degree {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border: 1px solid var(--mark-border);
+  border-radius: 9999px;
+  background: var(--mark-surface);
+  color: var(--mark-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 13px;
+  text-align: center;
+}
+
+.world-graph-node:hover .world-mark-glyph {
+  transform: translateY(-2px);
+}
+
+.world-graph-node[aria-pressed='true'] .world-mark-glyph {
+  transform: scale(1.05);
+}
+
+.world-graph-node[aria-pressed='true']:hover .world-mark-glyph {
+  transform: scale(1.05) translateY(-2px);
+}
+
+.world-graph-node[data-pressed='true'] .world-mark-glyph {
+  transform: scale(1.05);
+}
+
+.world-graph-node[data-neighbor='true'] .world-mark-glyph {
+  transform: scale(1.03);
+}
+
+.world-graph-node[data-dragging='true'] {
+  z-index: 5;
+  cursor: grabbing;
+}
+
+.world-graph-node[data-dragging='true'] .world-mark-glyph {
+  transform: scale(1.08) rotate(-3deg);
+}
+
+.world-graph-label {
+  display: block;
+  max-width: 128px;
+  overflow: hidden;
+  padding: 1px 7px 2px;
+  border: 1px solid var(--mark-border);
+  border-radius: 6px;
+  background: var(--mark-surface);
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(-2px);
+  pointer-events: none;
+  transition:
+    opacity 160ms ease-out,
+    transform 160ms ease-out,
+    border-color 180ms ease-out,
+    box-shadow 180ms ease-out;
+}
+
+.world-graph-node[aria-pressed='true'] .world-graph-label,
+.world-graph-node:focus-visible .world-graph-label,
+.world-graph-node[data-pressed='true'] .world-graph-label,
+.world-graph-node[data-dragging='true'] .world-graph-label {
+  opacity: 1;
+  transform: none;
+  border-color: var(--mark-color);
+}
+
+.world-graph-node[data-dragging='true'] .world-graph-label {
+  box-shadow: 0 5px 18px color-mix(in srgb, var(--mark-color) 22%, transparent);
+}
+
+@media (hover: hover) {
+  .world-graph-node:hover .world-graph-label {
+    opacity: 1;
+    transform: none;
+    border-color: var(--mark-color);
+  }
+}
+
+.world-graph-node[aria-pressed='true'] .world-graph-label {
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--mark-color) 22%, transparent);
+}
+
+.world-graph-node:focus-visible {
+  border-radius: 14px;
+  outline: 2px solid var(--mark-color);
+  outline-offset: 4px;
+}
+
+@keyframes world-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes world-bloom {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.72);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.42);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .world-mark-orbit--live {
+    animation: none;
+  }
+
+  .world-mark-bloom {
+    display: none;
+  }
+
+  .world-mark-glyph,
+  .world-graph-node,
+  .world-graph-label {
+    transition-duration: 0.01ms;
+  }
+}

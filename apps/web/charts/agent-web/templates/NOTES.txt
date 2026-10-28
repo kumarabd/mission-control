@@ -1,0 +1,27 @@
+MissionControl (agent-web) installed.
+
+  UI Service: {{ include "agent-web.fullname" . }}:{{ .Values.service.port }}
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  Ingress: https://{{ .host }}/
+{{- end }}
+{{- else }}
+  Port-forward: kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "agent-web.fullname" . }} 3000:{{ .Values.service.port }}
+           open http://localhost:3000/connections/external
+{{- end }}
+
+API mode ({{ .Values.frontend.apiMode }}):
+{{- if eq .Values.frontend.apiMode "direct" }}
+  Browser → agent-brain directly (image built with VITE_API_BASE_URL={{ .Values.frontend.apiBaseUrl }}).
+  Ensure agent-brain cors.allowedOrigins includes this Explorer origin.
+{{- else }}
+  Browser → same-origin /v1 → nginx → {{ .Values.agentBrain.apiUrl }}
+{{- end }}
+
+Clerk login:
+{{- if or .Values.frontend.clerkPublishableKey .Values.image.buildArgs.viteClerkPublishableKey }}
+  Image should include VITE_CLERK_PUBLISHABLE_KEY. Set agent-brain explorer.clerkIssuer (or clerkJWKSUrl).
+{{- else }}
+  Set GitHub variable VITE_CLERK_PUBLISHABLE_KEY and rebuild — see charts/agent-web/README.md
+  Set agent-brain explorer.clerkIssuer for POST /v1/explorer/auth/session.
+{{- end }}

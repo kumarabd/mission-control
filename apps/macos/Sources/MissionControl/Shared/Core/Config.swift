@@ -1,1 +1,1 @@
-../../../../../../MissionControl/Core/Config.swift
+../../../../../../apps/ios/MissionControl/Core/Config.swift

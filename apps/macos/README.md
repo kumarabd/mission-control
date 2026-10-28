@@ -30,7 +30,7 @@ spoken chat.
 ## Shared code
 
 `Sources/MissionControl/Shared/` contains relative symlinks into the iOS
-client's `MissionControl/Core`, `Features` and `UI`. The Life Engine contracts,
+client's `apps/ios/MissionControl/Core`, `Features` and `UI`. The Life Engine contracts,
 memory and notification clients, view-kit evaluator, world layout, goal tracker,
 notifications list, settings forms and semantic design tokens therefore have one
 implementation for both Apple clients. macOS-only screens live beside them.

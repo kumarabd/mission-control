@@ -1,1 +1,1 @@
-../../../../../../../MissionControl/Core/Domain/ViewKit.swift
+../../../../../../../apps/ios/MissionControl/Core/Domain/ViewKit.swift

@@ -1,1 +1,1 @@
-../../../../../../../MissionControl/Core/Domain/WorkspaceUpdate.swift
+../../../../../../../apps/ios/MissionControl/Core/Domain/WorkspaceUpdate.swift

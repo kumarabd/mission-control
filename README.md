@@ -1,9 +1,30 @@
 # Mission Control
 
-Mission Control is a calm, native assistant for iPhone and iPad: one chat with your agent, next to the day, goals and
-memory it keeps for you.
+Mission Control is one product with several clients: a web console, iPhone/iPad, macOS, CarPlay and watch surfaces, and an Android app. They share the same workspace: chat with the assistant, today, goals, memory, notifications and settings.
 
-## What it is
+## Repository
+
+| Path | Client | Entry point |
+|------|--------|-------------|
+| `apps/web/` | Web console (React, Vite, Tailwind) | `npm run dev` |
+| `apps/ios/` | iOS, iPadOS, CarPlay and watch target | `apps/ios/MissionControl.xcodeproj` |
+| `apps/macos/` | macOS console (SwiftUI + shared iOS Core) | `apps/macos/MissionControl.xcodeproj` |
+| `apps/android/` | Android app (Kotlin, Compose, Car App) | `apps/android` in Android Studio |
+| `design/` | Canonical app icon sources and shared design assets | — |
+| `docs/` | Architecture, parity and operations notes | — |
+
+The web app is an npm workspace; install and run from the repository root:
+
+```sh
+npm install
+npm run dev
+```
+
+Its own setup, environment variables and deployment details are in [apps/web/README.md](apps/web/README.md). Android builds with its Gradle wrapper from `apps/android`; use JDK 21 (Android Studio's bundled JBR works). `make help` lists the common checks.
+
+The sections below describe the Apple clients.
+
+## Apple clients
 
 - **Today** — the day's tasks and events, read from the Life Engine through the router.
 - **Goals** — goals, their steps and the views the agent composes from them.
@@ -41,7 +62,7 @@ the mark.
 ## Architecture
 
 ```
-MissionControl/
+apps/ios/MissionControl/
 ├── App/                 App entry point, root and tabs
 ├── Core/
 │   ├── Auth/            Clerk sign-in and gateway token
@@ -64,9 +85,9 @@ MissionControl/
 
 The same target supports iPhone and iPad; iPad adapts the tab bar to a sidebar and uses two-column layouts.
 
-## Run
+## Run the Apple clients
 
-Open `MissionControl.xcodeproj` in Xcode 26 or later, select an iOS 26+ simulator or device, and run the
+Open `apps/ios/MissionControl.xcodeproj` in Xcode 26 or later, select an iOS 26+ simulator or device, and run the
 **MissionControl** scheme.
 
 ## Local checks (no simulator)
@@ -74,15 +95,15 @@ Open `MissionControl.xcodeproj` in Xcode 26 or later, select an iOS 26+ simulato
 From the repository root on a Mac with Xcode installed:
 
 ```sh
-xcrun swiftc -parse-as-library MissionControl/Core/Domain/ChatTranscript.swift MissionControl/Core/Domain/ChatStore.swift Tests/ChatTranscriptChecks.swift -o /private/tmp/chat-transcript-checks
+xcrun swiftc -parse-as-library apps/ios/MissionControl/Core/Domain/ChatTranscript.swift apps/ios/MissionControl/Core/Domain/ChatStore.swift apps/ios/Tests/ChatTranscriptChecks.swift -o /private/tmp/chat-transcript-checks
 /private/tmp/chat-transcript-checks
 
-xcrun swiftc -parse-as-library MissionControl/Features/Capture/Voice/VoiceInteractionPolicy.swift MissionControl/Features/Capture/Voice/VoiceConversationText.swift Tests/VoiceInteractionChecks.swift -o /private/tmp/mission-voice-interaction-checks
+xcrun swiftc -parse-as-library apps/ios/MissionControl/Features/Capture/Voice/VoiceInteractionPolicy.swift apps/ios/MissionControl/Features/Capture/Voice/VoiceConversationText.swift apps/ios/Tests/VoiceInteractionChecks.swift -o /private/tmp/mission-voice-interaction-checks
 /private/tmp/mission-voice-interaction-checks
 ```
 
 The rest — Life contract, views, notifications, memory, gateway agents, model tiers, planner, markdown, schedule — is
-documented in [Tests/README.md](Tests/README.md).
+documented in [apps/ios/Tests/README.md](apps/ios/Tests/README.md).
 
 ## Clerk authentication setup
 

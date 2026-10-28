@@ -1,0 +1,42 @@
+name: Foundations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "design/**"
+      - "scripts/**"
+      - "apps/web/src/themes.css"
+      - "apps/web/src/tokens.generated.css"
+      - "apps/ios/MissionControl/UI/MissionTheme.swift"
+      - "apps/android/app/src/main/java/org/nighthawklabs/missioncontrol/ui/theme/**"
+      - ".github/workflows/foundations.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "design/**"
+      - "scripts/**"
+      - "apps/web/src/themes.css"
+      - "apps/web/src/tokens.generated.css"
+      - "apps/ios/MissionControl/UI/MissionTheme.swift"
+      - "apps/android/app/src/main/java/org/nighthawklabs/missioncontrol/ui/theme/**"
+      - ".github/workflows/foundations.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Generated tokens are current
+        run: node scripts/tokens.mjs --check
+
+      - name: Font copies match the canonical set
+        run: ./scripts/sync-fonts.sh --check

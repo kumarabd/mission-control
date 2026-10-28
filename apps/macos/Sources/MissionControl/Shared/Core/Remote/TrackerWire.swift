@@ -1,1 +1,1 @@
-../../../../../../../MissionControl/Core/Remote/TrackerWire.swift
+../../../../../../../apps/ios/MissionControl/Core/Remote/TrackerWire.swift

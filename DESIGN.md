@@ -6,8 +6,9 @@ The macOS target compiles the same tokens through relative symlinks in
 size, and its screens use split views instead of the iOS tab bar.
 
 The web console's implementation-level design system is [apps/web/DESIGN.md](apps/web/DESIGN.md). Both clients share
-the sage/warm-neutral palette, Hanken Grotesk and IBM Plex Mono; the shared token source and drift check are tracked in
-[docs/parity.md](docs/parity.md).
+the sage/warm-neutral palette, Hanken Grotesk and IBM Plex Mono; the core palette is generated from
+[design/tokens.json](design/tokens.json) and the fonts are canonical in [design/fonts](design/fonts/). See
+[design/README.md](design/README.md) for the generation and drift-check commands.
 
 - **Palette:** `MissionTheme` (sage tint on warm neutrals), with light, dark and increased-contrast values. New screens read it through `Tok` (`canvas`, `surface`, `raised`, `hairline`, `text`, `muted`, `accent`, `onAccent`, `warn`, `critical`).
 - **Meaning colors:** `MissionTone` (focus, scheduled, attention, reminder, completed) is the only way colour carries meaning, always paired with a symbol and a label.

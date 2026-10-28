@@ -1,0 +1,86 @@
+/*
+ * MissionControl.
+ * The browser client shares the semantic palette used by the native clients:
+ * an olive signal colour, warm canvas and quiet, high-contrast surfaces.
+ * Colour is reserved for meaning: signal for the active path, telemetry for
+ * system activity, amber for attention, red for failures and green for health.
+ *
+ * One palette, two surface modes (ink-dark, paper-light). Role names are stable
+ * across modes; only lightness flips. src/index.css @theme maps these onto
+ * Tailwind tokens, so changing a value here propagates app-wide.
+ *
+ * Neutral ramp (reference):
+ *   #FFFFFF #FAFAFA #F1F1F3 #E2E2E6 #CFCFD4 #9A9CA4 #74767E
+ *   #565860 #3E4046 #2A2B30 #202125 #16171A #0E0F11
+ *
+ * Contrast targets: body text >= 4.5:1, large / UI >= 3:1 on its surface.
+ * --theme-flat-subtle-fg is deliberately sub-AA — placeholders / disabled only.
+ */
+
+/* Core roles (background, surface, muted, foreground, muted-fg, border,
+   primary, on-primary, scheduled, attention, reminder, telemetry, health,
+   success and graph-canvas) are generated from design/tokens.json. The
+   platform-only roles below stay hand-authored. */
+@import './tokens.generated.css';
+
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --theme-flat-surface-raised: #222824;
+  --theme-flat-tint: #263122;
+  --theme-flat-tint-warm: #31291d;
+  --theme-flat-tint-soft: #1c211e;
+  --theme-flat-border-strong: #455047;
+  --theme-flat-subtle-fg: #778379;
+  --theme-flat-primary-hover: #c2dda5;
+  --theme-flat-accent: #74b9c8;
+  --theme-flat-secondary: #a8b2aa;
+  --theme-flat-success-muted: #1c3022;
+  --theme-flat-warning: #f2c879;
+  --theme-flat-warning-muted: #352a16;
+  --theme-flat-error: #e6a18c;
+  --theme-flat-danger: #e6a18c;
+  --theme-flat-danger-muted: #38231d;
+  --theme-flat-scheduled-muted: #1a2633;
+  --theme-flat-reminder-muted: #38231d;
+  --theme-flat-telemetry-muted: #16292c;
+  --theme-flat-health-muted: #33211f;
+  --theme-flat-on-accent: #18211b;
+
+  /* Elevation — dark leans on a hairline, not a cast shadow. */
+  --theme-shadow-1: 0 0 0 1px rgb(0 0 0 / 0.4);
+  --theme-shadow-2: 0 8px 24px rgb(0 0 0 / 0.5);
+  --theme-shadow-3: 0 24px 64px rgb(0 0 0 / 0.6);
+  --theme-scrim: rgb(6 7 9 / 0.66);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --theme-flat-surface-raised: #ffffff;
+  --theme-flat-tint: #e7eddc;
+  --theme-flat-tint-warm: #f4ead8;
+  --theme-flat-tint-soft: #eff1ea;
+  --theme-flat-border-strong: #aab4a5;
+  --theme-flat-subtle-fg: #788177;
+  --theme-flat-primary-hover: #3d572a;
+  --theme-flat-accent: #2e6f7e;
+  --theme-flat-secondary: #566159;
+  --theme-flat-success-muted: #e3f0e3;
+  --theme-flat-warning: #8a6619;
+  --theme-flat-warning-muted: #f8efd9;
+  --theme-flat-error: #9a4c3e;
+  --theme-flat-danger: #9a4c3e;
+  --theme-flat-danger-muted: #f8e7e1;
+  --theme-flat-scheduled-muted: #e7edf6;
+  --theme-flat-reminder-muted: #f8e7e1;
+  --theme-flat-telemetry-muted: #e3f0f2;
+  --theme-flat-health-muted: #f3e6e3;
+  --theme-flat-on-accent: #ffffff;
+
+  --theme-shadow-1: 0 1px 2px rgb(16 17 20 / 0.04), 0 1px 1px rgb(16 17 20 / 0.03);
+  --theme-shadow-2: 0 4px 12px rgb(16 17 20 / 0.08), 0 2px 4px rgb(16 17 20 / 0.04);
+  --theme-shadow-3: 0 16px 48px rgb(16 17 20 / 0.16), 0 4px 12px rgb(16 17 20 / 0.08);
+  --theme-scrim: rgb(16 17 20 / 0.44);
+}

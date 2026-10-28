@@ -1,1 +1,1 @@
-../../../../../../../MissionControl/Core/Remote/MemoryService.swift
+../../../../../../../apps/ios/MissionControl/Core/Remote/MemoryService.swift

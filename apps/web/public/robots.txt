@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+Disallow: /home
+Disallow: /chat
+Disallow: /memory
+Disallow: /settings
+Disallow: /advanced
+Disallow: /connections
+Disallow: /travel
+Disallow: /finance
+Disallow: /setup
+Disallow: /setup-preview
+Disallow: /login
+Disallow: /signup

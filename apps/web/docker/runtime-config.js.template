@@ -1,0 +1,17 @@
+// Rendered by docker-entrypoint.sh (envsubst) at container start from
+// ROUTER_PUBLIC_URL — the one thing this image can't know at build time
+// (agent-harness/docs/components/gateway/web.md: one published image,
+// reused across deployments via runtime env vars, same philosophy as
+// AGENT_BRAIN_API_URL/GATEWAY_API_URL used to be before the nginx
+// reverse-proxy layer they drove was removed 2026-09-24 in favor of the
+// browser calling the shared router directly). Read by src/lib/gateway.ts
+// and src/lib/api.ts ahead of their Vite build-time VITE_*_BASE_URL
+// fallbacks — see index.html's own comment on load order.
+window.__RUNTIME_CONFIG__ = {
+  GATEWAY_API_URL: "${ROUTER_PUBLIC_URL}/gateway",
+  AGENT_BRAIN_API_URL: "${ROUTER_PUBLIC_URL}/brain",
+  // Bare, no path prefix — src/lib/onboarding.ts's POST/GET /onboard are
+  // mounted directly on the router's own root (workflows/internal/router/
+  // core/onboarding.go), not behind /gateway or /brain like the other two.
+  ROUTER_BASE_URL: "${ROUTER_PUBLIC_URL}",
+}

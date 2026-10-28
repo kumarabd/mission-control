@@ -7,9 +7,11 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace=@mission-control/webapp",
-    "test": "npm run test --workspace=@mission-control/webapp",
-    "typecheck": "npm run typecheck --workspace=@mission-control/webapp"
+    "dev": "npm run dev --workspace=@mission-control/web",
+    "build": "npm run build --workspace=@mission-control/web",
+    "lint": "npm run lint --workspace=@mission-control/web",
+    "test": "npm run test --workspace=@mission-control/web",
+    "typecheck": "npm run typecheck --workspace=@mission-control/web"
   },
   "engines": {
     "node": ">=22.22.0",

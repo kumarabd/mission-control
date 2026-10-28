@@ -3,6 +3,7 @@ build/
 .build/
 .gradle/
 .kotlin/
+.idea/
 DerivedData/
 xcuserdata/
 node_modules/
@@ -12,3 +13,9 @@ coverage/
 .env.*
 !.env.example
 *.tsbuildinfo
+.tsbuildinfo/
+local.properties
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/

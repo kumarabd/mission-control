@@ -1,0 +1,30 @@
+# Minimal: UI + agent-brain monolith in same namespace.
+#
+#   helm upgrade --install agent-brain ./charts/agent-brain \
+#     -f charts/agent-brain/values-minimal.yaml \
+#     --namespace agent-brain --create-namespace
+#
+#   helm upgrade --install agent-web ./charts/agent-web \
+#     -f charts/agent-web/values-minimal.yaml \
+#     --namespace agent-brain
+
+replicaCount: 1
+
+image:
+  pullPolicy: IfNotPresent
+  buildArgs:
+    viteApiBaseUrl: ""
+    viteClerkPublishableKey: ""
+
+agentBrain:
+  apiUrl: "http://hippocampus-agent-brain-server:8080"
+
+frontend:
+  apiMode: proxy
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false

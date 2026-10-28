@@ -1,0 +1,1404 @@
+/*
+ * Documentation surface. Scoped under .dx so nothing leaks into the console.
+ *
+ * Everything here reads from the app's flat-* theme tokens, so light and dark
+ * follow the theme switcher with no second palette to maintain.
+ *
+ * Motion budget (deliberate, not incidental):
+ *   - the index gets the one authored entrance, because it is the screen a reader
+ *     sees rarely. Staggered rise, 46ms apart.
+ *   - an article gets a short rise on its title block only. Prose the reader is
+ *     working through does not move under them.
+ *   - the rail's active tick and the reading hairline carry state, nothing else.
+ */
+
+.dx {
+  --dx-bg: var(--color-flat-background);
+  --dx-surface: var(--color-flat-surface);
+  --dx-line: var(--color-flat-border);
+  --dx-line-strong: var(--color-flat-border-strong);
+  --dx-fg: var(--color-flat-foreground);
+  --dx-mute: var(--color-flat-muted-fg);
+  --dx-faint: var(--color-flat-subtle-fg);
+  --dx-accent: var(--color-flat-primary);
+  --dx-ease: var(--ease-emphasized);
+
+  --dx-bar-h: 60px;
+  --dx-gut: clamp(20px, 4vw, 40px);
+  --dx-measure: 40rem;
+  --dx-rail-w: 264px;
+  --dx-toc-w: 216px;
+
+  min-height: 100dvh;
+  overflow-x: clip;
+  background: var(--dx-bg);
+  color: var(--dx-fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.dx *,
+.dx *::before,
+.dx *::after {
+  box-sizing: border-box;
+}
+/* :where() keeps this reset at zero specificity, so the prose rhythm rules further
+   down win without needing to out-specify a reset. */
+.dx :where(h1, h2, h3, h4, p, ul, ol, figure, blockquote) {
+  margin: 0;
+}
+.dx :where(ul) {
+  padding: 0;
+  list-style: none;
+}
+:where(.dx) a {
+  color: inherit;
+  text-decoration: none;
+}
+.dx :focus-visible {
+  outline: 2px solid var(--dx-accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-xs);
+}
+
+/* ---------- Reading progress ----------
+   Feedback, not decoration: it answers "how much is left" without a number.
+   Scroll-driven so it runs off the main thread. Where the timeline is not
+   supported the hairline simply does not exist, which costs nothing. */
+
+.dx-progress {
+  display: none;
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 40;
+  height: 2px;
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  background: var(--dx-accent);
+  pointer-events: none;
+}
+
+@supports (animation-timeline: scroll()) {
+  .dx-progress {
+    display: block;
+    animation: dx-progress linear;
+    animation-timeline: scroll(root block);
+  }
+}
+
+@keyframes dx-progress {
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* ---------- Bar ---------- */
+
+.dx-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: var(--dx-bar-h);
+  padding-inline: var(--dx-gut);
+  border-bottom: 1px solid var(--dx-line);
+  background: color-mix(in srgb, var(--dx-bg) 88%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.dx-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: var(--text-base);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.dx-brand-tag {
+  padding-left: 9px;
+  border-left: 1px solid var(--dx-line);
+  color: var(--dx-mute);
+  font-weight: 400;
+}
+
+.dx-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.dx-bar-link {
+  color: var(--dx-mute);
+  font-size: var(--text-base);
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+.dx-bar-link:hover {
+  color: var(--dx-fg);
+}
+
+.dx-navtoggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border: 1px solid var(--dx-line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--dx-fg);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-standard);
+}
+.dx-navtoggle svg {
+  width: 15px;
+  height: 15px;
+}
+.dx-navtoggle:hover {
+  border-color: var(--dx-line-strong);
+}
+
+/* ---------- Shell ---------- */
+
+.dx-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.dx-main {
+  grid-column: 1;
+  min-width: 0;
+  padding: clamp(32px, 5vw, 60px) var(--dx-gut) 96px;
+}
+
+/* ---------- The rail ----------
+   One unbroken hairline runs the height of the rail. Every doc is a tick sitting
+   on it, and the current one lights. The line is the navigation: it is what makes
+   "where am I" readable without reading. */
+
+.dx-rail {
+  grid-column: 1;
+  display: none;
+  padding: 18px var(--dx-gut) 40px;
+  border-bottom: 1px solid var(--dx-line);
+}
+.dx-rail-open {
+  display: block;
+}
+
+.dx-rail-head {
+  margin-bottom: 20px;
+}
+
+.dx-spine {
+  position: relative;
+  padding-left: 18px;
+}
+.dx-spine::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--dx-line);
+}
+
+.dx-group + .dx-group {
+  margin-top: 26px;
+}
+
+.dx-group-label {
+  position: relative;
+  margin-bottom: 8px;
+  padding-right: 8px;
+  background: var(--dx-bg);
+  color: var(--dx-mute);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.dx-list {
+  display: grid;
+  gap: 1px;
+}
+
+.dx-link {
+  position: relative;
+  display: block;
+  padding: 7px 10px 7px 14px;
+  border-radius: var(--radius-sm);
+  color: var(--dx-mute);
+  font-size: var(--text-base);
+  line-height: 1.35;
+  transition: color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+.dx-link:hover {
+  background: color-mix(in srgb, var(--dx-fg) 5%, transparent);
+  color: var(--dx-fg);
+}
+.dx-link-on {
+  background: color-mix(in srgb, var(--dx-accent) 9%, transparent);
+  color: var(--dx-fg);
+  font-weight: 500;
+}
+
+/* The node on the spine. Sits in the rail's padding, centred on the hairline. */
+.dx-tick {
+  position: absolute;
+  left: -18px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border: 1px solid var(--dx-line);
+  border-radius: 50%;
+  background: var(--dx-bg);
+  transition: background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-base) var(--dx-ease);
+}
+.dx-link-on .dx-tick {
+  border-color: var(--dx-accent);
+  background: var(--dx-accent);
+  transform: scale(1.15);
+}
+
+/* A nested family, shown only while you are inside it. The spine steps in one
+   level rather than restarting, so the children read as belonging to the parent
+   rather than as siblings of it. */
+.dx-sublist {
+  display: grid;
+  gap: 1px;
+  margin: 2px 0 6px;
+  padding-left: 14px;
+  border-left: 1px solid var(--dx-line);
+}
+.dx-link-child {
+  padding-block: 5px;
+  font-size: var(--text-sm);
+}
+.dx-count {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--dx-line);
+  border-radius: var(--radius-full);
+  color: var(--dx-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.dx-rail-empty {
+  color: var(--dx-mute);
+  font-size: var(--text-base);
+}
+.dx-rail-empty a {
+  color: var(--dx-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------- Index ----------
+   The one screen with an authored entrance. */
+
+.dx-hero {
+  max-width: var(--dx-measure);
+  animation: dx-rise 620ms var(--dx-ease) backwards;
+}
+
+.dx-hero-title {
+  font-size: clamp(2rem, 4.4vw, 2.9rem);
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+.dx-hero-lead {
+  margin-top: 16px;
+  max-width: 34rem;
+  color: var(--dx-mute);
+  font-size: 1.0625rem;
+  line-height: 1.62;
+  text-wrap: pretty;
+}
+
+.dx-group-block {
+  margin-top: clamp(40px, 6vw, 68px);
+  max-width: 44rem;
+}
+
+.dx-block-label {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--dx-line);
+  color: var(--dx-mute);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.dx-cards {
+  position: relative;
+  padding-left: 18px;
+}
+.dx-cards::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 20px;
+  bottom: 20px;
+  width: 1px;
+  background: var(--dx-line);
+}
+
+.dx-card {
+  animation: dx-rise 560ms var(--dx-ease) backwards;
+  animation-delay: calc(var(--dx-i, 0) * 46ms + 120ms);
+}
+
+.dx-card-link {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 15px 14px 15px 16px;
+  border-radius: var(--radius-md);
+  transition: background-color var(--duration-fast) var(--ease-standard);
+}
+.dx-card-link:hover {
+  background: color-mix(in srgb, var(--dx-fg) 4%, transparent);
+}
+
+.dx-card-link .dx-tick {
+  left: -18px;
+  margin-top: 0;
+  top: 22px;
+}
+.dx-card-link:hover .dx-tick,
+.dx-card-link:focus-visible .dx-tick {
+  border-color: var(--dx-accent);
+  background: var(--dx-accent);
+}
+
+.dx-card-body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.dx-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.0625rem;
+  font-weight: 500;
+  letter-spacing: -0.011em;
+}
+.dx-card-count {
+  padding: 1px 6px;
+  border: 1px solid var(--dx-line);
+  border-radius: var(--radius-full);
+  color: var(--dx-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+}
+.dx-card-summary {
+  color: var(--dx-mute);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.dx-card-go {
+  width: 16px;
+  height: 16px;
+  color: var(--dx-faint);
+  transition: transform var(--duration-base) var(--dx-ease),
+    color var(--duration-fast) var(--ease-standard);
+}
+.dx-card-link:hover .dx-card-go {
+  color: var(--dx-accent);
+  transform: translateX(3px);
+}
+
+/* The close resolves and holds; it does not fade into a footer. */
+.dx-close {
+  margin-top: clamp(56px, 8vw, 88px);
+  padding-top: 26px;
+  border-top: 1px solid var(--dx-line);
+  max-width: 44rem;
+}
+.dx-close-line {
+  color: var(--dx-mute);
+  font-size: var(--text-base);
+}
+.dx-close-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 9px 16px;
+  border: 1px solid var(--dx-line);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  font-weight: 500;
+  transition: border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+.dx-close-link svg {
+  width: 15px;
+  height: 15px;
+  transition: transform var(--duration-base) var(--dx-ease);
+}
+.dx-close-link:hover {
+  border-color: var(--dx-accent);
+  background: color-mix(in srgb, var(--dx-accent) 8%, transparent);
+}
+.dx-close-link:hover svg {
+  transform: translateX(2px);
+}
+
+/* ---------- Article ---------- */
+
+.dx-doc {
+  max-width: var(--dx-measure);
+  margin-inline: auto;
+}
+
+.dx-doc-head {
+  padding-bottom: 26px;
+  border-bottom: 1px solid var(--dx-line);
+  animation: dx-rise 380ms var(--dx-ease) backwards;
+}
+.dx-doc-head h1 {
+  font-size: clamp(1.75rem, 3.2vw, 2.25rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.12;
+  text-wrap: balance;
+}
+
+/* The page's build state, set directly under the title rather than above it. A label
+   above a heading is an eyebrow; below, it is a property of the page. */
+.dx-status {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 2px 8px;
+  border: 1px solid var(--dx-line);
+  border-radius: var(--radius-xs);
+  color: var(--dx-mute);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.04em;
+}
+
+.dx-missing {
+  padding-block: 40px;
+}
+.dx-missing h1 {
+  font-size: clamp(1.6rem, 3vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* ---------- The diagram ----------
+   A drafting sheet. The notation carries the meaning: a trigger pill starts it, boxes
+   are states, a dashed box is parked on the world, a tinted one is the exit that
+   evidence opens, and the dashed accent edge is what sends it round again.
+
+   Colours are MissionControl's tokens, so the notation reads as part of the product
+   rather than as a pasted-in diagram. The one exception is parked-amber, which the
+   theme already carries and which has to differ from the exit or the two dashed
+   boxes would be indistinguishable.
+
+   Sized for the 40rem reading column so the SVG's own text renders at 1:1 instead of
+   being scaled into illegibility; below that the figure scrolls sideways. */
+
+.dx-fig {
+  margin-top: 34px;
+}
+
+.dx-machine {
+  --dx-beat: 340ms;
+  margin: 0;
+}
+
+.dx-machine-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  /* Scrolls rather than shrinking: a diagram scaled to 60% is not a diagram. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--dx-line-strong) transparent;
+}
+
+.dx-machine-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 620px;
+  overflow: visible;
+}
+
+/* ---- notation ---- */
+
+.dx-dnode rect {
+  fill: var(--dx-bg);
+  stroke: var(--dx-line);
+  stroke-width: 1.5;
+}
+.dx-dtrigger rect {
+  fill: var(--color-flat-muted);
+  stroke: var(--dx-line);
+  stroke-width: 1;
+}
+.dx-dparked rect {
+  stroke: var(--color-flat-warning);
+  stroke-dasharray: 5 3;
+  fill: color-mix(in srgb, var(--color-flat-warning) 6%, var(--dx-bg));
+}
+.dx-dexit rect {
+  fill: color-mix(in srgb, var(--dx-accent) 9%, var(--dx-bg));
+  stroke: var(--dx-accent);
+  stroke-dasharray: 5 3;
+}
+/* No exit is a fact about the shape, so it is drawn as one rather than omitted. */
+.dx-dnoexit rect {
+  fill: none;
+  stroke: var(--dx-faint);
+}
+
+.dx-dlabel {
+  fill: var(--dx-fg);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.dx-dsub {
+  fill: var(--dx-mute);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+}
+.dx-dsmall {
+  fill: var(--dx-mute);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+}
+
+.dx-dedge {
+  stroke: var(--dx-line-strong);
+  stroke-width: 1.5;
+  fill: none;
+}
+.dx-m-arrow {
+  fill: var(--dx-line-strong);
+}
+.dx-m-arrow-accent {
+  fill: var(--dx-accent);
+}
+
+.dx-dloop {
+  stroke: var(--dx-accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+  fill: none;
+  opacity: 0.32;
+}
+.dx-dlooplabel {
+  fill: var(--dx-accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  opacity: 0.32;
+}
+.dx-dloopdot {
+  fill: var(--dx-accent);
+  opacity: 0;
+}
+
+/* ---- cascade ----
+   Nodes light in order, then the loop-back resolves. Motion controls arrival, never
+   visibility: every node sits at readable opacity from the first frame. */
+
+.dx-machine .dx-dnode,
+.dx-machine .dx-dloop,
+.dx-machine .dx-dlooplabel {
+  opacity: 0.32;
+}
+.is-live .dx-dnode {
+  animation: dx-light 420ms var(--dx-ease) both;
+  animation-delay: calc(var(--i, 0) * var(--dx-beat));
+}
+.is-live .dx-dexit,
+.is-live .dx-dnoexit {
+  animation: dx-light 420ms var(--dx-ease) both;
+  animation-delay: calc(var(--dx-beat) * 8);
+}
+.is-live .dx-dloop,
+.is-live .dx-dlooplabel {
+  animation: dx-light 420ms var(--dx-ease) both;
+  animation-delay: calc(var(--dx-beat) * 8 + 160ms);
+}
+/* The dot's travel is SMIL, because it follows the drawn path and scales with the
+   viewBox. Its opacity is CSS so it fades out on arrival instead of parking as a
+   stray mark at the end of the edge. */
+.is-live.is-running .dx-dloopdot {
+  animation: dx-dot-travel 2.4s var(--ease-standard) calc(var(--dx-beat) * 8 + 260ms) both;
+}
+.is-live .dx-machine-key,
+.is-live .dx-handoffs {
+  animation: dx-light 420ms var(--dx-ease) both;
+  animation-delay: calc(var(--dx-beat) * 8 + 320ms);
+}
+
+@keyframes dx-dot-travel {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  86% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ---- key + hand-offs ---- */
+
+.dx-machine-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--dx-mute);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+.dx-machine-key li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.dx-k {
+  display: inline-block;
+  width: 22px;
+  height: 11px;
+  border-radius: 3px;
+  border: 1px solid var(--dx-line);
+}
+.dx-k-trigger {
+  background: var(--color-flat-muted);
+  border-radius: 6px;
+}
+.dx-k-state {
+  background: var(--dx-bg);
+}
+.dx-k-parked {
+  background: color-mix(in srgb, var(--color-flat-warning) 6%, var(--dx-bg));
+  border-color: var(--color-flat-warning);
+  border-style: dashed;
+}
+.dx-k-exit {
+  background: color-mix(in srgb, var(--dx-accent) 9%, var(--dx-bg));
+  border-color: var(--dx-accent);
+  border-style: dashed;
+  border-radius: 6px;
+}
+.dx-k-noexit {
+  background: none;
+  border-color: var(--dx-faint);
+  border-style: dashed;
+}
+.dx-k-loop {
+  height: 0;
+  border: 0;
+  border-top: 2px dashed var(--dx-accent);
+  border-radius: 0;
+}
+
+.dx-handoffs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 0;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.dx-handoff {
+  margin-right: 18px;
+  color: var(--dx-mute);
+  font-size: var(--text-sm);
+}
+.dx-handoff b {
+  margin-right: 5px;
+  color: var(--dx-accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 500;
+}
+
+/* ---------- Regions ----------
+   For pages with no sequence to draw: containment, or two things held apart. */
+
+.dx-regions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+}
+
+.dx-region {
+  opacity: 0.32;
+  padding-inline: 24px;
+}
+.is-live .dx-region {
+  animation: dx-light 420ms var(--dx-ease) both;
+}
+.dx-region:first-child {
+  padding-left: 0;
+}
+.dx-region:last-child {
+  padding-right: 0;
+}
+.dx-regions:not(.dx-regions-nested) .dx-region:first-child {
+  border-right: 1px solid var(--dx-line);
+}
+.is-live .dx-regions:not(.dx-regions-nested) .dx-region {
+  animation-delay: calc(var(--i) * 120ms);
+}
+
+.dx-region-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 14px;
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: -0.008em;
+}
+.dx-region-icon {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--dx-line);
+  border-radius: var(--radius-sm);
+  background: var(--dx-bg);
+  color: var(--dx-mute);
+}
+.dx-region-icon svg {
+  width: 14px;
+  height: 14px;
+}
+.dx-region-accent .dx-region-icon {
+  border-color: color-mix(in srgb, var(--dx-accent) 45%, transparent);
+  background: var(--color-flat-tint);
+  color: var(--dx-accent);
+}
+.dx-region-accent .dx-region-title {
+  color: var(--dx-accent);
+}
+
+.dx-region-list {
+  display: grid;
+  gap: 8px;
+}
+.dx-region-list li {
+  position: relative;
+  padding-left: 16px;
+  color: var(--dx-mute);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+.dx-region-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 5px;
+  height: 1px;
+  background: var(--dx-line-strong);
+}
+.dx-region-accent .dx-region-list li::before {
+  background: var(--dx-accent);
+}
+
+.dx-regions-nested {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--dx-gap, 24px);
+}
+.dx-regions-nested .dx-region:first-child {
+  border-right: 0;
+}
+.dx-boundary {
+  position: relative;
+  opacity: 0.32;
+  padding: 26px 22px 22px;
+  border: 1px solid var(--dx-line-strong);
+  border-radius: var(--radius-md);
+}
+.is-live .dx-boundary {
+  animation: dx-light 420ms var(--dx-ease) both;
+}
+.is-live .dx-regions-nested .dx-boundary .dx-region {
+  animation-delay: 220ms;
+}
+.is-live .dx-regions-nested > .dx-region {
+  animation-delay: 180ms;
+}
+.dx-boundary-label {
+  position: absolute;
+  top: -8px;
+  left: 18px;
+  padding-inline: 8px;
+  background: var(--dx-bg);
+  color: var(--dx-mute);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dx-fig-cap {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--dx-line);
+  color: var(--dx-mute);
+  font-size: var(--text-base);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+
+@keyframes dx-light {
+  from {
+    opacity: 0.32;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- Prose ---------- */
+
+.dx-prose {
+  font-size: 1.0625rem;
+  line-height: 1.72;
+  color: var(--dx-fg);
+}
+
+.dx-prose > * + * {
+  margin-top: 1.15em;
+}
+
+.dx-prose h2 {
+  position: relative;
+  margin-top: 2.4em;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: -0.014em;
+  scroll-margin-top: calc(var(--dx-bar-h) + 20px);
+}
+.dx-prose h3 {
+  position: relative;
+  margin-top: 1.9em;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  scroll-margin-top: calc(var(--dx-bar-h) + 20px);
+}
+
+/* The anchor sits in the gutter so it never shifts the text it belongs to. */
+.dx-anchor {
+  position: absolute;
+  left: -1.35em;
+  top: 0.1em;
+  display: inline-flex;
+  color: var(--dx-faint);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+.dx-anchor svg {
+  width: 0.72em;
+  height: 0.72em;
+}
+.dx-prose h2:hover .dx-anchor,
+.dx-prose h3:hover .dx-anchor,
+.dx-anchor:focus-visible {
+  opacity: 1;
+}
+
+.dx-prose p,
+.dx-prose li {
+  text-wrap: pretty;
+}
+
+.dx-prose ul,
+.dx-prose ol {
+  padding-left: 1.35em;
+  list-style: disc;
+}
+.dx-prose ol {
+  list-style: decimal;
+}
+.dx-prose li + li {
+  margin-top: 0.4em;
+}
+.dx-prose li::marker {
+  color: var(--dx-faint);
+}
+
+.dx-prose strong {
+  font-weight: 600;
+}
+
+.dx-prose blockquote {
+  padding-left: 1.1em;
+  border-left: 2px solid var(--dx-line-strong);
+  color: var(--dx-mute);
+}
+
+.dx-prose hr {
+  margin-block: 2.2em;
+  border: 0;
+  border-top: 1px solid var(--dx-line);
+}
+
+.dx-prose code {
+  padding: 0.12em 0.36em;
+  border-radius: var(--radius-xs);
+  background: var(--color-flat-muted);
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+.dx-prose pre {
+  overflow-x: auto;
+  padding: 16px 18px;
+  border: 1px solid var(--dx-line);
+  border-radius: var(--radius-md);
+  background: var(--dx-surface);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+.dx-prose pre code {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  font-size: inherit;
+}
+
+.dx-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-base);
+}
+.dx-prose th,
+.dx-prose td {
+  padding: 9px 14px 9px 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--dx-line);
+}
+.dx-prose th {
+  color: var(--dx-mute);
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+.dx-md-link {
+  color: var(--dx-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+.dx-md-link:hover {
+  opacity: 0.78;
+}
+
+/* ---------- Callout ----------
+   Written as `> [!NOTE] ...` in markdown and caught by the blockquote override.
+   No left border: a thick coloured bar on one side of a box is the single most
+   recognisable tell of a generated interface, so the label row carries the tone
+   instead. */
+
+.dx-callout {
+  margin: 1.5em 0;
+  padding: 15px 18px;
+  border: 1px solid var(--dx-line);
+  border-radius: var(--radius-md);
+  background: var(--color-flat-tint);
+}
+.dx-callout-warning {
+  background: var(--color-flat-tint-warm);
+}
+.dx-callout-question {
+  background: color-mix(in srgb, var(--dx-fg) 4%, transparent);
+}
+
+.dx-callout-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 7px;
+  color: var(--dx-accent);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.dx-callout-warning .dx-callout-label {
+  color: var(--color-flat-warning);
+}
+.dx-callout-question .dx-callout-label {
+  color: var(--dx-mute);
+}
+.dx-callout-label svg {
+  width: 13px;
+  height: 13px;
+}
+
+.dx-callout > :where(p, ul, ol) {
+  color: var(--dx-fg);
+  font-size: var(--text-base);
+  line-height: 1.6;
+}
+.dx-callout > :where(p) + :where(p) {
+  margin-top: 0.75em;
+}
+
+/* ---------- Related ----------
+   Driven by the `related:` frontmatter list rather than a trailing markdown
+   heading, so a broken link is a missing slug rather than a silently empty
+   section. */
+
+.dx-related {
+  margin-top: clamp(40px, 6vw, 60px);
+  padding-top: 24px;
+  border-top: 1px solid var(--dx-line);
+}
+
+.dx-related-label {
+  margin-bottom: 14px;
+  color: var(--dx-mute);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dx-related-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dx-related-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 14px 8px 9px;
+  border: 1px solid var(--dx-line);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  font-weight: 500;
+  transition: border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+.dx-related-link:hover {
+  border-color: var(--dx-accent);
+  background: color-mix(in srgb, var(--dx-accent) 7%, transparent);
+}
+.dx-related-link svg {
+  width: 15px;
+  height: 15px;
+  color: var(--dx-mute);
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+.dx-related-link:hover svg {
+  color: var(--dx-accent);
+}
+
+/* ---------- Pager ---------- */
+
+.dx-pager {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: clamp(48px, 7vw, 72px);
+  padding-top: 26px;
+  border-top: 1px solid var(--dx-line);
+}
+
+.dx-pager-link {
+  display: grid;
+  gap: 5px;
+  padding: 13px 16px;
+  border: 1px solid var(--dx-line);
+  border-radius: var(--radius-md);
+  transition: border-color var(--duration-fast) var(--ease-standard),
+    background-color var(--duration-fast) var(--ease-standard);
+}
+.dx-pager-link:hover {
+  border-color: var(--dx-accent);
+  background: color-mix(in srgb, var(--dx-accent) 6%, transparent);
+}
+.dx-pager-next {
+  grid-column: 2;
+  text-align: right;
+}
+
+.dx-pager-dir {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--dx-mute);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.dx-pager-next .dx-pager-dir {
+  justify-self: end;
+}
+.dx-pager-dir svg {
+  width: 13px;
+  height: 13px;
+}
+.dx-pager-title {
+  font-size: var(--text-md);
+  font-weight: 500;
+}
+
+/* ---------- On this page ---------- */
+
+.dx-toc {
+  display: none;
+  padding: 0 var(--dx-gut) 40px 0;
+}
+
+.dx-toc-label {
+  margin-bottom: 12px;
+  color: var(--dx-mute);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dx-toc-list {
+  display: grid;
+  gap: 2px;
+  border-left: 1px solid var(--dx-line);
+}
+
+.dx-toc-link {
+  display: block;
+  padding: 5px 0 5px 13px;
+  margin-left: -1px;
+  border-left: 2px solid transparent;
+  color: var(--dx-mute);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  transition: color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-base) var(--ease-standard);
+}
+.dx-toc-link:hover {
+  color: var(--dx-fg);
+}
+.dx-toc-link-on {
+  border-color: var(--dx-accent);
+  color: var(--dx-fg);
+  font-weight: 500;
+}
+.dx-toc-sub .dx-toc-link {
+  padding-left: 24px;
+  font-size: var(--text-xs);
+}
+
+/* ---------- Entrance ---------- */
+
+@keyframes dx-rise {
+  from {
+    opacity: 0;
+    transform: translateY(11px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------- Breakpoints ----------
+   Explicit per layout, not "Tailwind handles it". */
+
+@media (min-width: 1024px) {
+  .dx-shell {
+    grid-template-columns: var(--dx-rail-w) minmax(0, 1fr);
+  }
+  .dx-rail {
+    display: block;
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    position: sticky;
+    top: var(--dx-bar-h);
+    max-height: calc(100dvh - var(--dx-bar-h));
+    overflow-y: auto;
+    padding: 32px 20px 48px var(--dx-gut);
+    border-bottom: 0;
+    border-right: 1px solid var(--dx-line);
+  }
+  .dx-navtoggle {
+    display: none;
+  }
+  .dx-main {
+    grid-column: 2;
+    padding-inline: clamp(32px, 4vw, 56px);
+  }
+}
+
+@media (min-width: 1400px) {
+  .dx-shell {
+    grid-template-columns: var(--dx-rail-w) minmax(0, 1fr) var(--dx-toc-w);
+  }
+  .dx-toc {
+    display: block;
+    grid-column: 3;
+    grid-row: 1;
+    position: sticky;
+    top: var(--dx-bar-h);
+    max-height: calc(100dvh - var(--dx-bar-h));
+    overflow-y: auto;
+    padding-top: 32px;
+  }
+  /* Centre the reading column between the two rails. */
+  .dx-doc {
+    margin-inline: auto;
+  }
+}
+
+@media (max-width: 1023px) {
+  .dx-pager {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dx-pager-next {
+    grid-column: 1;
+    text-align: left;
+  }
+  .dx-pager-next .dx-pager-dir {
+    justify-self: start;
+  }
+
+  /* Two columns of short phrases stop being scannable before they stop fitting. */
+  .dx-regions {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+  .dx-region,
+  .dx-region:first-child {
+    padding: 0;
+  }
+  .dx-regions:not(.dx-regions-nested) .dx-region:first-child {
+    padding-bottom: 22px;
+    border-right: 0;
+    border-bottom: 1px solid var(--dx-line);
+  }
+  .dx-region:last-child {
+    padding-right: 0;
+  }
+
+  /* The state diagram keeps its shape and scrolls instead. Reflowing it to one
+     column would break the arrows, and the arrows are the whole point. */
+  .dx-machine-svg {
+    min-width: 560px;
+  }
+}
+
+@media (max-width: 560px) {
+  .dx-brand-tag {
+    display: none;
+  }
+  .dx-bar-link {
+    display: none;
+  }
+}
+
+/* The app's global reduced-motion rule flattens animation durations, but flattened
+   is not the same as removed: a cascade whose delays survive would still leave the
+   diagram dimming and lighting for two seconds. Here the sequence is dropped
+   outright and the finished picture is simply the picture. */
+@media (prefers-reduced-motion: reduce) {
+  .dx-progress {
+    animation: none;
+    transform: scaleX(0);
+  }
+
+  /* Scoped with .dx-machine, not bare: the dimming rule is `.dx-machine .dx-dnode`,
+     so a single-class override loses to it and the whole figure stays at 0.32. */
+  .dx-machine .dx-dnode,
+  .dx-machine .dx-dloop,
+  .dx-machine .dx-dlooplabel,
+  .dx-region,
+  .dx-boundary,
+  .dx-machine-key,
+  .dx-handoffs,
+  .is-live .dx-machine .dx-dnode,
+  .is-live .dx-machine .dx-dloop,
+  .is-live .dx-machine .dx-dlooplabel,
+  .is-live .dx-region,
+  .is-live .dx-boundary,
+  .is-live .dx-regions-nested .dx-boundary .dx-region,
+  .is-live .dx-regions-nested > .dx-region,
+  .is-live .dx-machine-key,
+  .is-live .dx-handoffs {
+    opacity: 1;
+    animation: none;
+  }
+  /* The travelling dot is decoration; the labelled edge already says it loops. */
+  .dx-dloopdot {
+    display: none;
+  }
+
+  .dx-card-link:hover .dx-card-go,
+  .dx-close-link:hover svg,
+  .dx-link-on .dx-tick {
+    transform: none;
+  }
+}
+
+/* ---------- Browser surfaces ----------
+   The parts nobody draws still carry the design: selection, caret and scrollbars
+   ship with defaults that belong to no design system. */
+
+.dx ::selection {
+  background: color-mix(in srgb, var(--dx-accent) 26%, transparent);
+  color: var(--dx-fg);
+}
+
+.dx-prose {
+  caret-color: var(--dx-accent);
+}
+
+.dx-rail,
+.dx-toc,
+.dx-prose pre {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dx-line-strong) transparent;
+}

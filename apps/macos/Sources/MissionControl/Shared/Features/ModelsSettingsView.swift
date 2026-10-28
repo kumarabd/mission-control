@@ -1,1 +1,1 @@
-../../../../../../MissionControl/Features/Settings/ModelsSettingsView.swift
+../../../../../../apps/ios/MissionControl/Features/Settings/ModelsSettingsView.swift

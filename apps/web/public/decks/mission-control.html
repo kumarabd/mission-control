@@ -1,0 +1,1357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mission Control</title>
+
+<!-- Fonts: the same pair the landing page uses -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;450;500;550&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* ===========================================
+   THEME: the landing page's paper-light palette
+   =========================================== */
+:root {
+  --bg: #f7f8f3;            /* warm canvas */
+  --surface: #ffffff;
+  --soft: #eff1ea;          /* scene frame */
+  --tint: #e7eddc;          /* sage tint */
+  --line: #ced1c5;
+  --line-strong: #aab4a5;
+  --fg: #18211b;
+  --muted: #566159;
+  --accent: #4e6a37;        /* the one olive signal */
+  --on-accent: #ffffff;
+  --warn: #8a6619;
+  --sans: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --shadow-1: 0 2px 4px rgba(16,17,20,.04), 0 1px 2px rgba(16,17,20,.03);
+  --shadow-2: 0 10px 28px rgba(16,17,20,.09), 0 3px 8px rgba(16,17,20,.05);
+  --ease: cubic-bezier(.16,1,.3,1);
+  --stage-bg: #e6e9de;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ===========================================
+   FIXED 16:9 STAGE (viewport-base.css)
+   Slides are authored at 1920x1080 and scaled as a whole.
+   =========================================== */
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--stage-bg, #000); }
+.deck-viewport { position: fixed; inset: 0; overflow: hidden; background: var(--stage-bg, #000); }
+.deck-stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; transform-origin: 0 0; background: var(--bg); }
+.slide { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden; display: block; visibility: hidden; opacity: 0; pointer-events: none; background: var(--bg); }
+.slide.active, .slide.visible { visibility: visible; opacity: 1; pointer-events: auto; z-index: 1; }
+img, video, canvas, svg { max-width: 100%; max-height: 100%; }
+@media print {
+  html, body { width: 1920px; height: auto; overflow: visible; background: #fff; }
+  .deck-viewport { position: static; overflow: visible; background: #fff; }
+  .deck-stage { position: static; width: auto; height: auto; transform: none !important; background: none; }
+  .slide { position: relative; display: block !important; visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; width: 1920px; height: 1080px; break-after: page; page-break-after: always; }
+  .slide:last-child { break-after: auto; page-break-after: auto; }
+  .nav-dots, .notes-panel, .edit-toggle, .edit-hotzone { display: none !important; }
+  .a, .pop, .fade, .k-card { opacity: 1 !important; animation: none !important; transform: none !important; }
+  .grow, .growy { transform: none !important; animation: none !important; }
+  .draw, .drawR { stroke-dashoffset: 0 !important; animation: none !important; }
+  .t:empty::before { content: attr(data-text); }
+  .t .ch { opacity: 1 !important; }
+  .v-grid .cells i.d { background: var(--accent) !important; animation: none !important; }
+  .bd-item .ck { background: var(--accent) !important; border-color: var(--accent) !important; color: var(--on-accent) !important; animation: none !important; }
+  .tog.on .fill { transform: scaleX(1) !important; } .tog.on .th { transform: translateX(28px) !important; }
+  .m-detail { max-height: 150px !important; opacity: 1 !important; animation: none !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition-duration: .2s !important; transition-delay: 0s !important; }
+}
+
+/* ===========================================
+   SLIDE FRAME: brand, section label, chapter rail
+   =========================================== */
+.slide { color: var(--fg); font-family: var(--sans); font-weight: 400; -webkit-font-smoothing: antialiased; }
+.brand { position: absolute; left: 154px; top: 50px; display: flex; align-items: center; gap: 14px; font: 550 30px var(--sans); letter-spacing: -.02em; }
+.brand svg { width: 42px; height: 42px; }
+.secno { position: absolute; right: 154px; top: 62px; font: 400 18px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.rail { position: absolute; left: 84px; top: 118px; bottom: 80px; width: 1px; background: var(--line); }
+.rail i { position: absolute; left: 0; top: 0; width: 1px; height: 100%; background: var(--accent); transform-origin: top; transform: scaleY(var(--p, 0)); transition: transform .9s var(--ease); }
+.rail b { position: absolute; left: -5px; width: 11px; height: 11px; border-radius: 50%; background: var(--bg); box-shadow: inset 0 0 0 1.5px var(--line-strong); transition: all .5s var(--ease); }
+.rail b.on { background: var(--accent); box-shadow: 0 0 0 7px var(--tint); }
+
+/* Headline + lede (left column) */
+.copy { position: absolute; left: 154px; top: 210px; width: 650px; }
+h1, h2 { font-family: var(--sans); font-weight: 450; letter-spacing: -.045em; line-height: 1.03; text-wrap: balance; }
+h1 { font-size: 112px; }
+h2 { font-size: 96px; }
+em { font-style: normal; color: var(--accent); }
+.lede { margin-top: 36px; max-width: 520px; font: 400 29px/1.55 var(--sans); color: var(--muted); }
+.mono { font: 400 17px/1.5 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+
+/* ===========================================
+   SCENES: shared objects from the landing page
+   =========================================== */
+.scene { position: absolute; left: 864px; top: 134px; width: 904px; height: 832px; padding: 28px; border: 1px solid var(--line); border-radius: 44px; background: var(--soft); overflow: hidden; }
+.scene .note { position: absolute; left: 32px; bottom: 22px; font: 400 15px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.mark { display: inline-grid; place-items: center; width: 54px; height: 54px; border-radius: 17px 17px 17px 5px; background: var(--tint); color: var(--accent); flex: none; }
+.mark svg { width: 30px; height: 30px; }
+.mark.sm { width: 46px; height: 46px; border-radius: 14px 14px 14px 4px; }
+.mark.sm svg { width: 26px; height: 26px; }
+.ic { width: 1em; height: 1em; flex: none; }
+.pill { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 4px 15px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font: 500 15px/1.2 var(--mono); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+.pill.on { background: var(--tint); border-color: transparent; color: var(--accent); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; padding: 0 26px; border-radius: 12px; font: 500 21px var(--sans); white-space: nowrap; }
+.btn.solid { background: var(--accent); color: var(--on-accent); }
+.btn.ghost { border: 1px solid var(--line); background: var(--surface); }
+.card { position: absolute; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-2); }
+.bubble { padding: 16px 20px; border-radius: 22px; font: 400 22px/1.45 var(--sans); }
+.bubble.user { justify-self: end; max-width: 90%; background: var(--tint); }
+.bubble.bot { display: flex; gap: 12px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line); }
+
+/* Typed text keeps its final width: letters are revealed, not added. */
+.t .ch { opacity: 0; }
+.t .ch.on { opacity: 1; }
+.t .w { white-space: nowrap; }
+.caret::after { content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -.12em; background: var(--accent); animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Entrance animation: every .a element rises in; --d sets its moment. */
+.slide:not(.go) .a { opacity: 0; }
+.slide.go .a { animation: rise .75s var(--ease) both; animation-delay: var(--d, 0s); }
+@keyframes rise { from { opacity: 0; transform: translateY(28px) scale(.985); } to { opacity: 1; transform: none; } }
+.slide.go .pop { animation: pop .55s var(--ease) both; animation-delay: var(--d, 0s); }
+.slide:not(.go) .pop { opacity: 0; }
+@keyframes pop { from { opacity: 0; transform: scale(.7); } to { opacity: 1; transform: none; } }
+.slide.go .fade { animation: fade .8s ease both; animation-delay: var(--d, 0s); }
+.slide:not(.go) .fade { opacity: 0; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+.slide.go .grow { animation: grow 1.1s var(--ease) both; animation-delay: var(--d, 0s); transform-origin: left center; }
+.slide:not(.go) .grow { transform: scaleX(0); }
+@keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.slide.go .growy { animation: growy 1.2s var(--ease) both; animation-delay: var(--d, 0s); transform-origin: top center; }
+.slide:not(.go) .growy { transform: scaleY(0); }
+@keyframes growy { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.slide.go .draw { animation: draw 1.6s cubic-bezier(.45,.05,.2,1) both; animation-delay: var(--d, 0s); }
+.slide:not(.go) .draw { stroke-dashoffset: 1; }
+@keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.slide.go .drawR { animation: drawR 1.5s cubic-bezier(.45,.05,.2,1) both; animation-delay: var(--d, 0s); }
+.slide:not(.go) .drawR { stroke-dashoffset: .79; }
+@keyframes drawR { from { stroke-dashoffset: .79; } to { stroke-dashoffset: 0; } }
+
+/* Scene height per slide: the frame hugs its content and sits mid-slide. */
+.s2 .scene { height: 760px; top: 160px; }
+.s3 .scene { height: 700px; top: 190px; }
+.s4 .scene { height: 640px; top: 220px; }
+.s7 .scene { height: 730px; top: 175px; }
+.s8 .scene { height: 700px; top: 190px; }
+
+/* ===========================================
+   01 · HERO: continuity (phone, laptop, check-in, thread, token)
+   =========================================== */
+.s1 .copy { top: 250px; }
+.s1 .copy .cta { margin-top: 48px; display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
+.s1 .copy .cta small { font: 400 17px var(--sans); color: var(--muted); }
+.c-phone { left: 28px; top: 66px; width: 372px; border-radius: 40px; overflow: hidden; }
+.c-head { display: flex; align-items: center; gap: 14px; padding: 20px 22px; border-bottom: 1px solid var(--line); }
+.c-head strong { display: block; font: 500 24px var(--sans); }
+.c-head span { display: block; margin-top: 2px; font: 400 14px var(--mono); letter-spacing: .04em; color: var(--muted); }
+.c-body { display: grid; gap: 14px; padding: 20px; background: var(--soft); min-height: 300px; align-content: start; }
+.c-chip { justify-self: start; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--accent); font: 500 15px var(--mono); letter-spacing: .04em; }
+.c-voice { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-top: 1px solid var(--line); background: var(--surface); }
+.c-voice .mic, .c-voice .send { display: grid; place-items: center; border-radius: 50%; flex: none; }
+.c-voice .mic { width: 46px; height: 46px; background: var(--tint); color: var(--accent); font-size: 22px; }
+.c-voice .send { width: 42px; height: 42px; background: var(--accent); color: var(--on-accent); font-size: 20px; }
+.c-voice span.l { flex: 1; font: 400 15px var(--mono); letter-spacing: .04em; color: var(--muted); }
+.c-laptop { left: 440px; top: 28px; width: 436px; border-radius: 26px; overflow: hidden; }
+.c-bar { display: flex; align-items: center; gap: 12px; height: 50px; padding: 0 18px; border-bottom: 1px solid var(--line); }
+.c-bar .dots { display: flex; gap: 7px; } .c-bar .dots i { width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); }
+.c-bar strong { flex: 1; text-align: center; font: 400 14px var(--mono); letter-spacing: .03em; color: var(--muted); }
+.c-bar svg { color: var(--accent); font-size: 20px; }
+.c-lbody { display: grid; gap: 14px; padding: 20px; }
+.mem-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mem-row > span { color: var(--accent); font: 500 14px var(--mono); letter-spacing: .08em; text-transform: uppercase; }
+.mem-row > i { padding: 5px 11px; border-radius: 999px; background: var(--tint); color: var(--accent); font: 500 14px var(--mono); font-style: normal; letter-spacing: .03em; }
+.c-lmsg { padding: 16px 18px; border-radius: 18px; background: var(--soft); font: 400 21px/1.45 var(--sans); }
+.c-src { display: flex; align-items: center; gap: 8px; font: 400 14px var(--mono); letter-spacing: .03em; color: var(--muted); }
+.c-checkin { left: 440px; top: 470px; width: 436px; display: flex; align-items: center; gap: 16px; padding: 20px 22px; border-radius: 26px; background: var(--tint); }
+.c-checkin .bellc { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 50%; background: var(--surface); color: var(--accent); font-size: 24px; flex: none; }
+.c-checkin .tx { flex: 1; } .c-checkin .tx span { display: block; font: 500 14px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.c-checkin .tx p { margin-top: 4px; font: 400 21px/1.35 var(--sans); }
+.c-checkin time { font: 400 15px var(--mono); color: var(--muted); }
+.slide.go .c-checkin .bellc { animation: ring 1.4s ease 5.6s 2; }
+@keyframes ring { 0%,100% { transform: rotate(0); } 15% { transform: rotate(14deg); } 35% { transform: rotate(-12deg); } 55% { transform: rotate(8deg); } 75% { transform: rotate(-4deg); } }
+.thread { position: absolute; left: 418px; top: 120px; width: 2px; height: 600px; }
+.thread .ln { display: block; width: 2px; height: 100%; border-radius: 99px; background: var(--accent); opacity: .65; }
+.thread i { position: absolute; left: 50%; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--accent); }
+.thread i.t { top: -5px; } .thread i.b { bottom: -5px; }
+.token { position: absolute; left: 0; top: 0; z-index: 6; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font: 500 15px var(--mono); letter-spacing: .04em; white-space: nowrap; opacity: 0; }
+
+/* ===========================================
+   02 · MEMORY
+   =========================================== */
+.m-panel { left: 28px; top: 28px; width: 560px; padding: 26px; border-radius: 30px; }
+.m-head { display: flex; align-items: center; justify-content: space-between; }
+.m-head h3 { font: 500 28px var(--sans); letter-spacing: -.02em; }
+.search { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--muted); font: 400 14px var(--mono); }
+.m-tabs { display: flex; gap: 8px; margin: 16px 0 14px; }
+.m-list { display: grid; gap: 10px; }
+.m-item { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 14px; padding: 14px 16px; background: var(--soft); border: 1px solid transparent; border-radius: 16px; transition: all .6s var(--ease); }
+.m-ico { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--tint); color: var(--accent); font-size: 22px; }
+.m-copy strong { display: block; font: 500 20px/1.3 var(--sans); }
+.m-copy span { display: block; margin-top: 3px; font: 400 14px var(--mono); letter-spacing: .03em; color: var(--muted); }
+.m-eye { color: var(--muted); font-size: 22px; }
+.m-open { grid-template-columns: 1fr; background: var(--tint); border-color: var(--accent); }
+.m-open .top { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 14px; }
+.m-detail { margin-left: 58px; overflow: hidden; max-height: 0; opacity: 0; }
+.slide.go .m-detail { animation: unfold 1s var(--ease) 2.2s both; }
+@keyframes unfold { from { max-height: 0; opacity: 0; } to { max-height: 150px; opacity: 1; } }
+.m-detail > div { padding: 14px 16px; background: var(--surface); border-radius: 12px; }
+.m-detail p { font: italic 400 19px/1.4 var(--sans); color: var(--muted); }
+.m-detail .pill { margin-top: 10px; }
+.m-foot { margin-top: 14px; font: 400 14px var(--mono); letter-spacing: .03em; color: var(--muted); }
+.m-bank { left: 612px; top: 28px; width: 232px; padding: 24px; border-radius: 26px; background: var(--tint); box-shadow: none; display: grid; gap: 8px; }
+.m-bank svg { font-size: 34px; color: var(--accent); }
+.m-bank strong { font: 500 26px var(--sans); }
+.m-bank span { font: 400 14px/1.5 var(--mono); letter-spacing: .03em; color: var(--muted); }
+.m-bank .big { font: 450 64px/1 var(--sans); letter-spacing: -.04em; color: var(--accent); margin-top: 10px; }
+.m-bank p { font: 400 18px/1.4 var(--sans); margin-top: 8px; }
+.m-bank .big span { font: 450 64px/1 var(--sans); letter-spacing: -.04em; color: var(--accent); }
+
+/* ===========================================
+   03 · BOUNDARY
+   =========================================== */
+.b-panel { left: 28px; top: 28px; width: 470px; padding: 26px; border-radius: 30px; }
+.b-panel h3 { font: 500 28px var(--sans); letter-spacing: -.02em; display: flex; align-items: center; gap: 12px; }
+.b-panel h3 svg { color: var(--accent); }
+.perm { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.perm .lbl { display: flex; align-items: center; gap: 14px; font: 400 22px var(--sans); } .perm .lbl svg { color: var(--accent); font-size: 26px; }
+.tog { position: relative; width: 66px; height: 38px; border-radius: 99px; background: var(--line); overflow: hidden; flex: none; }
+.tog .fill { position: absolute; inset: 0; background: var(--accent); transform: scaleX(0); transform-origin: left; }
+.tog .th { position: absolute; top: 5px; left: 5px; width: 28px; height: 28px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.slide.go .tog.on .fill { animation: tfill .5s var(--ease) both; animation-delay: var(--d, 0s); }
+.slide.go .tog.on .th { animation: tthumb .5s var(--ease) both; animation-delay: var(--d, 0s); }
+@keyframes tfill { to { transform: scaleX(1); } } @keyframes tthumb { to { transform: translateX(28px); } }
+.model { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; padding: 14px 16px; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; }
+.model .l { display: flex; align-items: center; gap: 12px; } .model .l svg { color: var(--accent); font-size: 26px; }
+.model small { display: block; font: 400 13px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.model strong { display: block; margin-top: 2px; font: 500 20px var(--sans); }
+.b-approve { left: 524px; top: 28px; width: 324px; padding: 22px; border-radius: 26px; display: grid; gap: 10px; }
+.b-approve .hd { display: flex; align-items: center; gap: 8px; font: 500 14px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.b-approve h3 { font: 500 24px/1.3 var(--sans); }
+.b-approve p { font: 400 17px/1.45 var(--sans); color: var(--muted); }
+.b-approve .row { display: flex; gap: 10px; margin-top: 6px; }
+.b-route { left: 524px; top: 330px; width: 324px; padding: 22px; border-radius: 26px; background: var(--tint); box-shadow: none; display: grid; gap: 14px; }
+.b-route .lb { font: 500 14px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.route { position: relative; display: grid; gap: 12px; }
+.route .chip { position: relative; z-index: 1; padding: 11px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); font: 400 18px var(--sans); }
+.route .chip { margin-left: 34px; }
+.route .rail2 { position: absolute; left: 12px; top: 14px; bottom: 14px; width: 2px; background: var(--accent); opacity: .35; }
+.route .pk { position: absolute; left: 8px; top: 8px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); z-index: 2; }
+.slide.go .route .pk { animation: travel 2.6s ease-in-out 2.4s infinite; }
+@keyframes travel { 0% { transform: translateY(0); opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { transform: translateY(150px); opacity: 0; } }
+.b-route small { font: 400 14px/1.5 var(--mono); letter-spacing: .03em; color: var(--muted); }
+
+/* ===========================================
+   04 · BUILD: one sentence becomes a goal
+   =========================================== */
+.bd-chat { left: 28px; top: 150px; width: 352px; padding: 20px; border-radius: 26px; display: grid; gap: 12px; }
+.bd-chat .bubble { font-size: 20px; padding: 14px 16px; }
+.bd-goal { left: 414px; top: 28px; width: 434px; padding: 28px; border-radius: 30px; display: grid; gap: 12px; }
+.bd-goal .hd { display: flex; align-items: center; justify-content: space-between; }
+.bd-goal h3 { font: 500 29px/1.25 var(--sans); letter-spacing: -.02em; }
+.bd-goal .sub { font: 400 17px var(--sans); color: var(--muted); margin-bottom: 4px; }
+.bd-item { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 14px; padding: 16px 16px; background: var(--soft); border: 1px solid var(--line); border-radius: 16px; }
+.bd-item .ico { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--tint); color: var(--accent); font-size: 22px; }
+.bd-item strong { display: block; font: 500 20px/1.3 var(--sans); }
+.bd-item span.s { display: block; margin-top: 2px; font: 400 14px var(--mono); letter-spacing: .03em; color: var(--muted); }
+.bd-item .ck { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--line); color: transparent; }
+.slide.go .bd-item .ck { animation: ticked .5s var(--ease) both; animation-delay: var(--d2, 0s); }
+@keyframes ticked { to { background: var(--accent); border-color: var(--accent); color: var(--on-accent); } }
+.bd-goal .foot { font: 400 14px var(--mono); letter-spacing: .03em; color: var(--muted); margin-top: 4px; }
+.bd-link { position: absolute; left: 380px; top: 262px; width: 34px; height: 2px; background: var(--accent); opacity: .6; transform-origin: left; }
+
+/* ===========================================
+   05 · LIVE: the prompt, typed
+   =========================================== */
+.l-phone { left: 230px; top: 28px; width: 444px; border-radius: 46px; overflow: hidden; }
+.l-body { display: grid; align-content: start; gap: 16px; padding: 24px; background: var(--soft); min-height: 460px; }
+.l-composer { display: flex; align-items: center; gap: 12px; padding: 18px 20px; border-top: 1px solid var(--line); background: var(--surface); }
+.l-composer .field { flex: 1; min-height: 70px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 18px; background: var(--bg); font: 400 21px/1.4 var(--sans); }
+.l-composer .mic { position: relative; display: grid; place-items: center; width: 54px; height: 54px; border-radius: 50%; background: var(--tint); color: var(--accent); font-size: 25px; flex: none; }
+.l-composer .mic::before, .l-composer .mic::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--accent); opacity: 0; }
+.slide.go .l-composer .mic::before { animation: ripple 2.2s ease-out 1s infinite; }
+.slide.go .l-composer .mic::after { animation: ripple 2.2s ease-out 2.1s infinite; }
+@keyframes ripple { 0% { transform: scale(1); opacity: .6; } 100% { transform: scale(2.1); opacity: 0; } }
+.hid { opacity: 0; transform: translateY(20px); }
+.hid.in { opacity: 1; transform: none; transition: opacity .6s var(--ease), transform .6s var(--ease); }
+.l-composer .field.ph { color: var(--muted); }
+.dotsT { display: inline-flex; gap: 6px; padding: 14px 18px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); }
+.dotsT i { width: 9px; height: 9px; border-radius: 50%; background: var(--line-strong); }
+.slide.go .dotsT i { animation: bounce 1.1s ease-in-out infinite; }
+.dotsT i:nth-child(2) { animation-delay: .15s !important; } .dotsT i:nth-child(3) { animation-delay: .3s !important; }
+@keyframes bounce { 0%,60%,100% { transform: none; } 30% { transform: translateY(-7px); background: var(--accent); } }
+
+/* ===========================================
+   06 · VIEW: a goal's own page, drawn
+   =========================================== */
+.v-hero { position: absolute; left: 36px; top: 36px; font: 450 54px/1.1 var(--sans); letter-spacing: -.04em; color: var(--fg); }
+.v-hero b { font-weight: 450; color: var(--accent); }
+.v-sub { position: absolute; left: 38px; top: 104px; font: 400 18px var(--sans); color: var(--muted); }
+.v-chart { left: 28px; top: 156px; width: 540px; height: 330px; padding: 22px 24px; border-radius: 26px; }
+.v-chart h4, .v-bar h4, .v-grid h4, .v-rout h4 { font: 500 19px var(--sans); }
+.v-chart .rd { margin-top: 8px; font: 400 15px var(--mono); color: var(--muted); }
+.v-chart svg { position: absolute; left: 14px; top: 76px; width: 512px; height: 232px; }
+.v-bar { left: 592px; top: 156px; width: 256px; height: 158px; padding: 20px 22px; border-radius: 26px; }
+.track { position: relative; height: 16px; margin-top: 26px; border-radius: 99px; background: var(--soft); overflow: visible; }
+.track .fillb { position: absolute; left: 0; top: 0; bottom: 0; width: 24%; border-radius: 99px; background: var(--accent); }
+.track .half { position: absolute; left: 50%; top: -8px; bottom: -8px; width: 2px; background: var(--fg); }
+.v-bar .nums { display: flex; justify-content: space-between; margin-top: 16px; font: 450 24px var(--sans); }
+.v-bar .nums span { font: 400 15px var(--mono); color: var(--muted); align-self: flex-end; }
+.v-rout { left: 592px; top: 328px; width: 256px; height: 158px; padding: 20px 22px; border-radius: 26px; }
+.v-rout .rw { display: flex; align-items: center; gap: 14px; margin-top: 18px; }
+.ring { position: relative; width: 66px; height: 66px; flex: none; }
+.ring svg { width: 66px; height: 66px; transform: rotate(-90deg); }
+.v-rout strong { display: block; font: 500 19px/1.25 var(--sans); }
+.v-rout span { display: block; margin-top: 3px; font: 400 14px var(--mono); color: var(--muted); }
+.v-grid { left: 28px; top: 500px; width: 820px; height: 292px; padding: 20px 26px; border-radius: 26px; }
+.v-grid .cells { display: grid; grid-template-columns: repeat(14, 1fr); gap: 8px; margin-top: 16px; }
+.v-grid .cells i { aspect-ratio: 1.15; border-radius: 8px; background: var(--soft); }
+.v-grid .cells i.d { background: var(--accent); }
+.v-grid .cells i.f { background: transparent; border: 1.5px dashed var(--line); }
+.slide.go .v-grid .cells i.d { animation: cellOn .45s var(--ease) both; animation-delay: calc(2.4s + var(--k) * 38ms); }
+.slide:not(.go) .v-grid .cells i.d { background: var(--soft); }
+@keyframes cellOn { from { background: var(--soft); transform: scale(.7); } to { background: var(--accent); transform: none; } }
+.v-grid .cap { margin-top: 14px; font: 400 14px var(--mono); letter-spacing: .03em; color: var(--muted); }
+
+/* ===========================================
+   07 · COMPANIONS: a fan of cards
+   =========================================== */
+.k-tabs { position: absolute; left: 0; right: 0; top: 52px; display: flex; justify-content: center; gap: 10px; }
+.k-card { top: 150px; width: 262px; padding: 24px; border-radius: 28px; display: grid; gap: 10px; transform-origin: center bottom; }
+.k-card .tp { display: flex; align-items: center; justify-content: space-between; }
+.k-card .av { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--tint); color: var(--accent); font-size: 28px; }
+.k-card h3 { font: 500 32px var(--sans); letter-spacing: -.02em; }
+.k-card .rl { font: 500 14px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.k-card p { min-height: 54px; font: 400 19px/1.45 var(--sans); color: var(--muted); }
+.k-card hr { border: 0; height: 1px; background: var(--line); }
+.k-card small { font: 500 14px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.k-card .mm { font: 500 19px/1.4 var(--sans); }
+.k-card .sc { display: flex; flex-wrap: wrap; gap: 6px; }
+.k-card .sc .pill { min-height: 30px; font-size: 13px; padding: 2px 11px; }
+.k-atlas { left: 40px; --rot: -5deg; --tx: 0px; }
+.k-mira { left: 291px; z-index: 3; --rot: 0deg; padding: 28px; }
+.k-june { left: 546px; --rot: 5deg; }
+.slide.go .k-card { animation: fan 1.1s var(--ease) both; animation-delay: var(--d, 0s); }
+.slide:not(.go) .k-card { opacity: 0; }
+@keyframes fan { from { opacity: 0; transform: translateX(var(--from, 0px)) scale(.92) rotate(0deg); } to { opacity: 1; transform: rotate(var(--rot, 0deg)); } }
+.k-atlas { --from: 268px; } .k-june { --from: -268px; }
+.k-add { position: absolute; left: 0; right: 0; bottom: 70px; display: flex; justify-content: center; }
+.k-add .pill { color: var(--accent); min-height: 46px; font-size: 16px; padding: 4px 22px; }
+
+/* ===========================================
+   08 · CREATION: name, tone, preview
+   =========================================== */
+.n-ctrl { left: 28px; top: 70px; width: 420px; display: grid; gap: 14px; }
+.n-ctrl label { font: 500 15px var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.n-field { position: relative; display: flex; align-items: center; min-height: 72px; padding: 0 56px 0 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); font: 400 32px var(--sans); letter-spacing: -.02em; }
+.n-field svg { position: absolute; right: 18px; color: var(--accent); font-size: 28px; }
+.n-ctrl .hint { margin-top: 8px; font: 400 15px var(--mono); letter-spacing: .04em; color: var(--muted); }
+.opts { display: grid; gap: 10px; }
+.opt { position: relative; display: flex; align-items: center; justify-content: space-between; min-height: 64px; padding: 0 20px; border: 1px solid var(--line); border-radius: 12px; font: 400 21px var(--sans); background: transparent; transition: all .5s var(--ease); }
+.opt.sel { border-color: var(--accent); color: var(--accent); background: var(--bg); }
+.opt svg { opacity: 0; font-size: 22px; transition: opacity .4s; } .opt.sel svg { opacity: 1; }
+.n-prev { left: 480px; top: 70px; width: 368px; padding: 28px; border-radius: 28px; display: grid; gap: 8px; justify-items: start; overflow: hidden; background: var(--bg); }
+.n-prev .top { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-bottom: 18px; font: 400 14px var(--mono); letter-spacing: .04em; color: var(--muted); }
+.n-prev .nm { margin-top: 10px; font: 500 40px/1.15 var(--sans); letter-spacing: -.03em; }
+.n-prev .tn { font: 400 14px var(--mono); letter-spacing: .03em; color: var(--muted); }
+.n-prev .q { margin-top: 18px; font: 400 23px/1.4 var(--sans); }
+.n-prev .ft { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); font: 400 14px var(--mono); letter-spacing: .03em; color: var(--muted); }
+.n-prev .ft i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.shine { position: absolute; top: 0; bottom: 0; left: -40%; width: 40%; background: linear-gradient(90deg, transparent, rgba(78,106,55,.16), transparent); opacity: 0; pointer-events: none; }
+.slide.go .shine { animation: shine 1.4s ease 3.6s both; }
+@keyframes shine { 0% { left: -40%; opacity: 0; } 20% { opacity: 1; } 100% { left: 110%; opacity: 0; } }
+.steps { position: absolute; left: 32px; right: 32px; bottom: 74px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.steps div { padding-top: 14px; border-top: 1px solid var(--line-strong); font: 500 18px/1.35 var(--sans); }
+.steps div span { display: block; font: 500 14px var(--mono); color: var(--accent); margin-bottom: 4px; }
+
+/* ===========================================
+   09 · CLOSING
+   =========================================== */
+.s9 .center { position: absolute; left: 0; right: 0; top: 150px; display: grid; justify-items: center; text-align: center; }
+.s9 .mark { width: 96px; height: 96px; border-radius: 30px 30px 30px 9px; } .s9 .mark svg { width: 54px; height: 54px; }
+.s9 h2 { margin-top: 34px; font-size: 100px; max-width: none; }
+.s9 p.l2 { margin-top: 26px; font: 400 32px var(--sans); color: var(--muted); }
+.s9 .btn { margin-top: 44px; min-height: 76px; padding: 0 42px; font-size: 30px; border-radius: 16px; gap: 26px; }
+.s9 .ea { margin-top: 14px; font: 400 18px var(--sans); color: var(--muted); }
+.s9 .av { margin-top: 44px; max-width: 1000px; font: 400 18px/1.7 var(--mono); letter-spacing: .02em; color: var(--muted); }
+.s9 .av b { font-weight: 500; color: var(--accent); }
+
+
+/* ===========================================
+   10 · PROBLEM: goals fade at three points
+   =========================================== */
+.p-curve { left: 28px; top: 28px; width: 846px; height: 342px; padding: 22px 26px; border-radius: 30px; }
+.p-curve .hd { display: flex; align-items: baseline; justify-content: space-between; }
+.p-curve h4 { font: 500 24px var(--sans); letter-spacing: -.01em; }
+.p-curve svg { position: absolute; left: 20px; top: 62px; width: 806px; height: 262px; overflow: visible; }
+.p-card { top: 396px; width: 274px; height: 340px; padding: 22px; border-radius: 26px; display: flex; flex-direction: column; gap: 14px; }
+.p-card .hd { display: flex; align-items: center; gap: 12px; }
+.p-card .hd b { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--tint); color: var(--accent); font-size: 22px; flex: none; }
+.p-card h3 { font: 500 24px/1.2 var(--sans); letter-spacing: -.02em; }
+.p-card .vis { flex: 1; position: relative; }
+.p-card .cap { font: 400 15px/1.45 var(--mono); letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
+.pc1 { left: 28px; } .pc2 { left: 314px; } .pc3 { left: 600px; }
+.fld { display: grid; gap: 7px; margin-top: 6px; }
+.fld i { display: block; height: 9px; width: 42%; border-radius: 6px; background: var(--soft); }
+.fld u { display: block; height: 38px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); text-decoration: none; }
+.fld u.cur::after { content: ""; display: block; width: 2px; height: 20px; margin: 8px 0 0 12px; background: var(--accent); animation: blink 1s steps(1) infinite; }
+.nf { display: grid; gap: 10px; margin-top: 4px; }
+.nf div { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--bg); }
+.nf div svg { color: var(--accent); font-size: 20px; }
+.nf div span { flex: 1; display: grid; gap: 5px; } .nf div span i { display: block; height: 8px; border-radius: 5px; background: var(--soft); } .nf div span i:last-child { width: 60%; }
+.slide.go .nf div { animation: dismiss .9s cubic-bezier(.5,0,.75,0) both; animation-delay: var(--k); }
+@keyframes dismiss { 0% { transform: none; opacity: 1; } 100% { transform: translateX(150px); opacity: 0; } }
+.nf-off { position: absolute; right: 0; bottom: 0; }
+.sheet { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; margin-top: 4px; }
+.sheet i { height: 24px; border-radius: 5px; background: var(--tint); }
+.slide.go .sheet i { animation: stale 1.2s ease both; animation-delay: var(--k); }
+@keyframes stale { to { background: var(--soft); opacity: .55; } }
+.sheet-pill { position: absolute; left: 0; bottom: 0; }
+.slide.go .mk { animation: pop .5s var(--ease) both; animation-delay: var(--d); transform-box: fill-box; transform-origin: center; }
+.slide:not(.go) .mk { opacity: 0; }
+
+/* ===========================================
+   11 · LANDSCAPE: apps, agents, and both
+   =========================================== */
+.q-ax { position: absolute; background: var(--line-strong); }
+.q-axv { left: 90px; top: 60px; width: 2px; height: 640px; transform-origin: bottom; }
+.q-axh { left: 90px; top: 698px; width: 740px; height: 2px; transform-origin: left; }
+.slide.go .q-axv { animation: growy2 1s var(--ease) both; } .slide.go .q-axh { animation: grow 1s var(--ease) .15s both; }
+.slide:not(.go) .q-axv { transform: scaleY(0); } .slide:not(.go) .q-axh { transform: scaleX(0); }
+@keyframes growy2 { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.q-lab { position: absolute; font: 500 17px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.q-labv { left: 36px; top: 420px; transform: rotate(-90deg); transform-origin: left top; }
+.q-labh { left: 340px; top: 722px; }
+.q-div { position: absolute; opacity: .8; }
+.q-divh { left: 92px; top: 446px; width: 738px; height: 1px; background: repeating-linear-gradient(90deg, var(--line) 0 8px, transparent 8px 16px); }
+.q-divv { left: 450px; top: 62px; width: 1px; height: 636px; background: repeating-linear-gradient(0deg, var(--line) 0 8px, transparent 8px 16px); }
+.q-node { padding: 22px 24px; border-radius: 26px; display: grid; gap: 12px; }
+.q-ics { display: flex; gap: 8px; }
+.q-brands { display: flex; gap: 12px; align-items: flex-start; }
+.bt { display: grid; justify-items: center; gap: 6px; }
+.bt i { display: grid; place-items: center; width: 54px; height: 54px; border-radius: 15px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-1); }
+.bt i svg { width: 30px; height: 30px; }
+.bt i.gen { color: var(--accent); background: var(--tint); } .bt i.gen svg { width: 26px; height: 26px; }
+.bt em { font: 500 13px var(--mono); font-style: normal; letter-spacing: .02em; color: var(--muted); white-space: nowrap; }
+.q-ics b { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; background: var(--tint); color: var(--accent); font-size: 22px; }
+.q-node h3 { font: 500 26px/1.2 var(--sans); letter-spacing: -.02em; }
+.q-node .mono { font-size: 15px; letter-spacing: .04em; text-transform: none; }
+.qa { left: 124px; top: 110px; width: 322px; } .qb { left: 484px; top: 500px; width: 340px; }
+.qc { left: 484px; top: 66px; width: 340px; padding: 18px 24px; background: var(--tint); border-color: var(--accent); box-shadow: 0 0 0 8px rgba(78,106,55,.10), var(--shadow-2); }
+.qd { left: 484px; top: 246px; width: 340px; padding: 18px 24px; }
+.q-hd { display: flex; align-items: center; gap: 12px; }
+.q-hd .pill { min-height: 32px; font-size: 13px; padding: 3px 12px; }
+.q-hd .pill.cloud { background: #eaf1fb; color: #0467DF; border-color: transparent; }
+.q-hd .bt { margin: 0; } .q-hd .bt i { width: 46px; height: 46px; border-radius: 14px; }
+.qc .q-hd b { display: grid; place-items: center; background: var(--surface); width: 46px; height: 46px; border-radius: 15px 15px 15px 5px; }
+.qc .q-ics b { background: var(--surface); }
+.q-arrows { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+.slide.go .qc { animation: pop .8s var(--ease) 4.1s both, glow 2.4s ease-in-out 5.2s infinite; }
+@keyframes glow { 0%,100% { box-shadow: 0 0 0 8px rgba(78,106,55,.10), var(--shadow-2); } 50% { box-shadow: 0 0 0 16px rgba(78,106,55,.05), var(--shadow-2); } }
+
+
+/* ===========================================
+   11b · OWNER: whose computer it runs on
+   =========================================== */
+.o-wrap { position: absolute; inset: 28px 28px 64px; display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.o-col { position: relative; display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: 30px; }
+.o-them { background: #eef3fa; border: 1px solid #cfdcf0; }
+.o-you { background: var(--tint); border: 2px dashed var(--accent); }
+.o-hd { display: flex; align-items: center; gap: 12px; min-height: 52px; }
+.o-hd > span:first-child { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); flex: none; }
+.o-hd svg.m { width: 28px; height: 28px; } .o-hd strong { font: 500 24px/1.15 var(--sans); letter-spacing: -.02em; }
+.o-hd small { display: block; font: 500 13px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.o-row { display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: center; padding: 14px 14px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-1); flex: 1; }
+.o-row > svg { width: 28px; height: 28px; color: var(--muted); }
+.o-you .o-row > svg { color: var(--accent); }
+.o-row b { display: block; font: 500 21px/1.2 var(--sans); letter-spacing: -.015em; }
+.o-row small { display: block; margin-top: 3px; font: 400 15px/1.35 var(--sans); color: var(--muted); }
+.o-tag { position: absolute; right: 16px; top: -16px; }
+.o-tag.cloud { background: #0467DF; color: #fff; border-color: transparent; }
+.o-tag.mine { background: var(--accent); color: #fff; border-color: transparent; }
+.o-foot { display: flex; align-items: center; gap: 10px; font: 500 15px/1.3 var(--mono); letter-spacing: .03em; color: var(--muted); }
+.o-you .o-foot { color: var(--accent); }
+.o-foot svg { width: 22px; height: 22px; flex: none; }
+.o-link { position: absolute; left: 0; right: 0; bottom: 20px; display: flex; justify-content: center; }
+/* ===========================================
+   12 · ENGINE: an agent for thinking, an engine for doing
+   =========================================== */
+.e-in { left: 28px; top: 24px; max-width: 440px; }
+.e-agent { left: 28px; top: 118px; width: 846px; height: 214px; padding: 24px 28px; border-radius: 30px; }
+.e-engine { left: 28px; top: 414px; width: 846px; height: 342px; padding: 24px 28px; border-radius: 30px; background: var(--surface); }
+.e-hd { display: flex; align-items: center; gap: 14px; }
+.e-hd strong { font: 500 30px var(--sans); letter-spacing: -.02em; }
+.e-hd .mono { margin-left: auto; font-size: 15px; }
+.e-hd b { display: grid; place-items: center; width: 50px; height: 50px; border-radius: 15px 15px 15px 4px; background: var(--tint); color: var(--accent); font-size: 28px; flex: none; }
+.e-engine .e-hd b { border-radius: 14px; }
+.e-chips { display: flex; gap: 12px; margin-top: 22px; flex-wrap: wrap; }
+.e-chip { display: inline-flex; align-items: center; gap: 10px; min-height: 54px; padding: 0 20px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); font: 400 21px var(--sans); color: var(--muted); transition: all .5s var(--ease); }
+.e-chip svg { font-size: 22px; }
+.e-chip.lit { background: var(--tint); border-color: var(--accent); color: var(--accent); }
+.e-tag { position: absolute; right: 28px; bottom: 22px; }
+.e-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }
+.e-tile { position: relative; display: flex; align-items: center; gap: 12px; padding: 0 16px; min-height: 70px; border: 1px solid var(--line); border-radius: 16px; background: var(--soft); font: 500 21px var(--sans); }
+.e-tile svg.ic0 { color: var(--accent); font-size: 26px; }
+.e-tile .tk { margin-left: auto; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--line); color: transparent; }
+.slide.go .e-tile .tk { animation: ticked .5s var(--ease) both; animation-delay: var(--d2); }
+.e-foot { position: absolute; left: 28px; right: 28px; bottom: 22px; display: flex; align-items: center; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); font: 400 16px var(--mono); letter-spacing: .03em; color: var(--muted); }
+.e-foot svg { color: var(--accent); font-size: 22px; }
+.e-foot .pill { margin-left: auto; }
+.e-skip { position: absolute; right: 28px; top: 28px; }
+.e-line { position: absolute; width: 2px; background: var(--line-strong); height: 80px; top: 334px; }
+.e-dot { position: absolute; width: 12px; height: 12px; margin-left: -5px; border-radius: 50%; background: var(--accent); top: 330px; opacity: 0; }
+.slide.go .e-dot.dn { animation: dropdot .9s ease-in both; animation-delay: var(--d); }
+.slide.go .e-dot.up { animation: updot .9s ease-in both; animation-delay: var(--d); }
+@keyframes dropdot { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateY(78px); opacity: 0; } }
+@keyframes updot { 0% { transform: translateY(78px); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateY(0); opacity: 0; } }
+.e-lnk { position: absolute; left: 238px; top: 82px; width: 2px; height: 36px; background: var(--accent); opacity: .6; }
+.slide.go .e-lnk { transform-origin: top; }
+
+/* ===========================================
+   13 · TRUST: the agent writes the page, the engine writes the numbers
+   =========================================== */
+.t-agent { left: 28px; top: 28px; width: 846px; height: 176px; padding: 22px 28px; border-radius: 28px; }
+.t-engine { left: 28px; top: 254px; width: 846px; height: 262px; padding: 22px 28px; border-radius: 28px; }
+.t-screen { left: 28px; top: 566px; width: 846px; height: 176px; padding: 22px 28px; border-radius: 28px; background: var(--tint); box-shadow: none; }
+.t-tpl { margin-top: 18px; font: 450 44px/1.2 var(--sans); letter-spacing: -.03em; }
+.t-tpl s { text-decoration: none; display: inline-block; padding: 0 12px; border-radius: 10px; background: var(--tint); color: var(--accent); font: 500 36px var(--mono); letter-spacing: 0; }
+.t-never { position: absolute; right: 28px; top: 24px; }
+.t-never svg { color: #a3412e; }
+.t-body { display: grid; grid-template-columns: 330px 1fr; gap: 30px; margin-top: 16px; align-items: center; }
+.t-data { position: relative; height: 150px; }
+.t-data svg { width: 330px; height: 150px; overflow: visible; }
+.t-formulas { display: grid; gap: 14px; }
+.t-f { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--soft); }
+.t-f code { font: 500 21px var(--mono); color: var(--muted); }
+.t-f svg { color: var(--accent); font-size: 20px; }
+.t-f b { margin-left: auto; font: 450 34px var(--sans); letter-spacing: -.03em; color: var(--accent); }
+.t-big { margin-top: 16px; font: 450 62px/1.1 var(--sans); letter-spacing: -.04em; }
+.t-big b { font-weight: 450; color: var(--accent); }
+.t-cn { position: absolute; width: 2px; background: var(--accent); opacity: .6; height: 50px; transform-origin: top; }
+.t-dot { position: absolute; width: 12px; height: 12px; margin-left: -5px; border-radius: 50%; background: var(--accent); opacity: 0; }
+.slide.go .t-dot { animation: dropdot2 .9s ease-in both; animation-delay: var(--d); }
+@keyframes dropdot2 { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translateY(48px); opacity: 0; } }
+
+/* ===========================================
+   DECK CHROME OUTSIDE THE STAGE
+   =========================================== */
+.nav-dots { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 10px; z-index: 1000; }
+.nav-dots button { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; background: rgba(24,33,27,.22); cursor: pointer; transition: transform .2s, background .2s; }
+.nav-dots button.on { background: var(--accent); transform: scale(1.5); }
+.nav-dots button.appx { background: rgba(24,33,27,.12); }
+.nav-dots button.appx.on { background: var(--accent); }
+.notes-panel { position: fixed; left: 0; right: 0; bottom: 0; max-height: 40vh; overflow: auto; background: #18211b; color: #e8eee9; border-top: 1px solid #455047; padding: 18px 28px 40px; font: 400 18px/1.55 'Hanken Grotesk', sans-serif; z-index: 2000; display: none; }
+.notes-panel.on { display: block; }
+.notes-panel h4 { font: 500 12px 'IBM Plex Mono', monospace; letter-spacing: .2em; text-transform: uppercase; color: #a9c985; margin-bottom: 8px; }
+.notes-panel p + p { margin-top: 8px; }
+.slide .notes { display: none; }
+.edit-hotzone { position: fixed; top: 0; left: 0; width: 80px; height: 80px; z-index: 10000; cursor: pointer; }
+.edit-toggle { position: fixed; top: 14px; left: 14px; z-index: 10001; opacity: 0; pointer-events: none; transition: opacity .3s; font: 500 13px 'IBM Plex Mono', monospace; letter-spacing: .14em; text-transform: uppercase; color: #18211b; background: #fff; border: 1px solid #aab4a5; padding: 8px 12px; cursor: pointer; }
+.edit-toggle.show, .edit-toggle.active { opacity: 1; pointer-events: auto; }
+body.editing [contenteditable="true"] { outline: 1px dashed rgba(78,106,55,.8); outline-offset: 6px; cursor: text; }
+</style>
+</head>
+<body>
+<!-- Icon sprite: the same lucide icons the landing page uses -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-Sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"></path><path d="M20 2v4"></path><path d="M22 4h-4"></path><circle cx="4" cy="20" r="2"></circle></symbol>
+<symbol id="i-Mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19v3"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><rect x="9" y="2" width="6" height="13" rx="3"></rect></symbol>
+<symbol id="i-ArrowRight" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></symbol>
+<symbol id="i-ArrowUpRight" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10"></path><path d="M7 17 17 7"></path></symbol>
+<symbol id="i-BookOpen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v16"></path><path d="M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z"></path></symbol>
+<symbol id="i-Bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"></path><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path></symbol>
+<symbol id="i-Eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path><circle cx="12" cy="12" r="3"></circle></symbol>
+<symbol id="i-Search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></symbol>
+<symbol id="i-MoreHorizontal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></symbol>
+<symbol id="i-LockKeyhole" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="16" r="1"></circle><rect x="3" y="10" width="18" height="12" rx="2"></rect><path d="M7 10V7a5 5 0 0 1 10 0v3"></path></symbol>
+<symbol id="i-ShieldCheck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></symbol>
+<symbol id="i-Cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v2"></path><path d="M12 2v2"></path><path d="M17 20v2"></path><path d="M17 2v2"></path><path d="M2 12h2"></path><path d="M2 17h2"></path><path d="M2 7h2"></path><path d="M20 12h2"></path><path d="M20 17h2"></path><path d="M20 7h2"></path><path d="M7 20v2"></path><path d="M7 2v2"></path><rect x="4" y="4" width="16" height="16" rx="2"></rect><rect x="8" y="8" width="8" height="8" rx="1"></rect></symbol>
+<symbol id="i-Folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path></symbol>
+<symbol id="i-CalendarDays" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v3"></path><path d="M16 2v3"></path><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path><path d="M8 13h.01"></path><path d="M12 13h.01"></path><path d="M16 13h.01"></path><path d="M8 17h.01"></path><path d="M12 17h.01"></path><path d="M16 17h.01"></path></symbol>
+<symbol id="i-MessageCircle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"></path></symbol>
+<symbol id="i-Check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></symbol>
+<symbol id="i-Briefcase" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path><rect width="20" height="14" x="2" y="6" rx="2"></rect></symbol>
+<symbol id="i-GraduationCap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"></path><path d="M22 10v6"></path><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"></path></symbol>
+<symbol id="i-Fingerprint" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"></path><path d="M14 13.12c0 2.38 0 6.38-1 8.88"></path><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"></path><path d="M2 12a10 10 0 0 1 18-6"></path><path d="M2 16h.01"></path><path d="M21.8 16c.2-2 .131-5.354 0-6"></path><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"></path><path d="M8.65 22c.21-.66.45-1.32.57-2"></path><path d="M9 6.8a6 6 0 0 1 9 5.2v2"></path></symbol>
+<symbol id="i-Plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></symbol>
+<symbol id="i-Phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384"></path></symbol>
+<symbol id="i-Footprints" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z"></path><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z"></path><path d="M16 17h4"></path><path d="M4 13h4"></path></symbol>
+<symbol id="i-Repeat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"></path><path d="M3 11v-1a4 4 0 0 1 4-4h14"></path><path d="m7 22-4-4 4-4"></path><path d="M21 13v1a4 4 0 0 1-4 4H3"></path></symbol>
+<symbol id="i-Flag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528"></path></symbol>
+<symbol id="i-ChartLine" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"></path><path d="m19 9-5 5-4-4-3 3"></path></symbol>
+<symbol id="i-ChevronDown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"></path></symbol>
+<symbol id="i-Smartphone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"></rect><path d="M12 18h.01"></path></symbol>
+<symbol id="i-Laptop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2z"></path><path d="M20.054 15.987H3.946"></path></symbol>
+<symbol id="i-Cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></symbol>
+<symbol id="i-Heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"></path></symbol>
+<symbol id="i-Wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path></symbol>
+<symbol id="i-ListChecks" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M13 5h8"></path><path d="M13 12h8"></path><path d="M13 19h8"></path><path d="m3 17 2 2 4-4"></path><path d="m3 7 2 2 4-4"></path></symbol>
+<symbol id="i-BellOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"></path><path d="M17 17H4a1 1 0 0 1-.74-1.673C4.59 13.956 6 12.499 6 8a6 6 0 0 1 .258-1.742"></path><path d="m2 2 20 20"></path><path d="M8.668 3.01A6 6 0 0 1 18 8c0 2.687.77 4.653 1.707 6.05"></path></symbol>
+<symbol id="i-Table" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"></path><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M3 9h18"></path><path d="M3 15h18"></path></symbol>
+<symbol id="i-Clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></symbol>
+<symbol id="i-Bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"></path><rect width="16" height="12" x="4" y="8" rx="2"></rect><path d="M2 14h2"></path><path d="M20 14h2"></path><path d="M15 13v2"></path><path d="M9 13v2"></path></symbol>
+<symbol id="i-Brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 18V5"></path><path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"></path><path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5"></path><path d="M17.997 5.125a4 4 0 0 1 2.526 5.77"></path><path d="M18 18a4 4 0 0 0 2-7.464"></path><path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517"></path><path d="M6 18a4 4 0 0 1-2-7.464"></path><path d="M6.003 5.125a4 4 0 0 0-2.526 5.77"></path></symbol>
+<symbol id="i-Database" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5V19A9 3 0 0 0 21 19V5"></path><path d="M3 12A9 3 0 0 0 21 12"></path></symbol>
+<symbol id="i-Cog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M11 10.27 7 3.34"></path><path d="m11 13.73-4 6.93"></path><path d="M12 22v-2"></path><path d="M12 2v2"></path><path d="M14 12h8"></path><path d="m17 20.66-1-1.73"></path><path d="m17 3.34-1 1.73"></path><path d="M2 12h2"></path><path d="m20.66 17-1.73-1"></path><path d="m20.66 7-1.73 1"></path><path d="m3.34 17 1.73-1"></path><path d="m3.34 7 1.73 1"></path><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="12" r="8"></circle></symbol>
+<symbol id="i-StickyNote" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 9a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2z"></path><path d="M15 3v5a1 1 0 0 0 1 1h5"></path></symbol>
+<symbol id="i-Timer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="10" x2="14" y1="2" y2="2"></line><line x1="12" x2="15" y1="14" y2="11"></line><circle cx="12" cy="14" r="8"></circle></symbol>
+<symbol id="i-Calculator" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"></rect><line x1="8" x2="16" y1="6" y2="6"></line><line x1="16" x2="16" y1="14" y2="18"></line><path d="M16 10h.01"></path><path d="M12 10h.01"></path><path d="M8 10h.01"></path><path d="M12 14h.01"></path><path d="M8 14h.01"></path><path d="M12 18h.01"></path><path d="M8 18h.01"></path></symbol>
+<symbol id="i-Layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"></path><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"></path><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"></path></symbol>
+<symbol id="i-Workflow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="8" x="3" y="3" rx="2"></rect><path d="M7 11v4a2 2 0 0 0 2 2h4"></path><rect width="8" height="8" x="13" y="13" rx="2"></rect></symbol>
+<symbol id="i-Gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"></path><path d="M3.34 19a10 10 0 1 1 17.32 0"></path></symbol>
+<symbol id="i-Terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19h8"></path><path d="m4 17 6-6-6-6"></path></symbol>
+<symbol id="i-Target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></symbol>
+<symbol id="i-X" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></symbol>
+<symbol id="i-Minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path></symbol>
+<symbol id="i-ArrowDown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></symbol>
+<symbol id="i-Zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"></path></symbol>
+<symbol id="i-Lightbulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"></path><path d="M9 18h6"></path><path d="M10 22h4"></path></symbol>
+<symbol id="b-todoist" viewBox="0 0 24 24"><path fill="#E44332" d="M21 0H3C1.35 0 0 1.35 0 3v3.858s3.854 2.24 4.098 2.38c.31.18.694.177 1.004 0 .26-.147 8.02-4.608 8.136-4.675.279-.161.58-.107.748-.01.164.097.606.348.84.48.232.134.221.502.013.622l-9.712 5.59c-.346.2-.69.204-1.048.002C3.478 10.907.998 9.463 0 8.882v2.02l4.098 2.38c.31.18.694.177 1.004 0 .26-.147 8.02-4.609 8.136-4.676.279-.16.58-.106.748-.008.164.096.606.347.84.48.232.133.221.5.013.62-.208.121-9.288 5.346-9.712 5.59-.346.2-.69.205-1.048.002C3.478 14.951.998 13.506 0 12.926v2.02l4.098 2.38c.31.18.694.177 1.004 0 .26-.147 8.02-4.609 8.136-4.676.279-.16.58-.106.748-.009.164.097.606.348.84.48.232.133.221.502.013.622l-9.712 5.59c-.346.199-.69.204-1.048.001C3.478 18.994.998 17.55 0 16.97V21c0 1.65 1.35 3 3 3h18c1.65 0 3-1.35 3-3V3c0-1.65-1.35-3-3-3z"/></symbol>
+<symbol id="b-notion" viewBox="0 0 24 24"><path fill="#000000" d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.981-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.887l-15.177.887c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.748 0-.935-.234-1.495-.933l-4.577-7.186v6.952L12.21 19s0 .84-1.168.84l-3.222.186c-.093-.186 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.139c-.093-.514.28-.887.747-.933zM1.936 1.035l13.31-.98c1.634-.14 2.055-.047 3.082.7l4.249 2.986c.7.513.934.653.934 1.213v16.378c0 1.026-.373 1.634-1.68 1.726l-15.458.934c-.98.047-1.448-.093-1.962-.747l-3.129-4.06c-.56-.747-.793-1.306-.793-1.96V2.667c0-.839.374-1.54 1.447-1.632z"/></symbol>
+<symbol id="b-googlekeep" viewBox="0 0 24 24"><path fill="#FFBB00" d="M4.908 0c-.904 0-1.635.733-1.635 1.637v20.726c0 .904.732 1.637 1.635 1.637H19.09c.904 0 1.637-.733 1.637-1.637V6.5h-6.5V0H4.908zm9.819 0v6h6l-6-6zM11.97 8.229c.224 0 .571.031.765.072.2.04.576.185.842.312.828.414 1.467 1.164 1.774 2.088.168.511.188 1.34.05 1.865a3.752 3.752 0 0 1-1.277 1.952l-.25.193h-1.87c-2.134 0-1.931.042-2.478-.494a3.349 3.349 0 0 1-.984-1.844c-.148-.766-.053-1.437.32-2.203.19-.399.303-.556.65-.899.68-.679 1.513-1.037 2.458-1.042zm-1.866 7.863h3.781v1.328h-3.779v-1.328z"/></symbol>
+<symbol id="b-googlecalendar" viewBox="0 0 24 24"><path fill="#4285F4" d="M18.316 5.684H24v12.632h-5.684V5.684zM5.684 24h12.632v-5.684H5.684V24zM18.316 5.684V0H1.895A1.894 1.894 0 0 0 0 1.895v16.421h5.684V5.684h12.632zm-7.207 6.25v-.065c.272-.144.5-.349.687-.617s.279-.595.279-.982c0-.379-.099-.72-.3-1.025a2.05 2.05 0 0 0-.832-.714 2.703 2.703 0 0 0-1.197-.257c-.6 0-1.094.156-1.481.467-.386.311-.65.671-.793 1.078l1.085.452c.086-.249.224-.461.413-.633.189-.172.445-.257.767-.257.33 0 .602.088.816.264a.86.86 0 0 1 .322.703c0 .33-.12.589-.36.778-.24.19-.535.284-.886.284h-.567v1.085h.633c.407 0 .748.109 1.02.327.272.218.407.499.407.843 0 .336-.129.614-.387.832s-.565.327-.924.327c-.351 0-.651-.103-.897-.311-.248-.208-.422-.502-.521-.881l-1.096.452c.178.616.505 1.082.977 1.401.472.319.984.478 1.538.477a2.84 2.84 0 0 0 1.293-.291c.382-.193.684-.458.902-.794.218-.336.327-.72.327-1.149 0-.429-.115-.797-.344-1.105a2.067 2.067 0 0 0-.881-.689zm2.093-1.931l.602.913L15 10.045v5.744h1.187V8.446h-.827l-2.158 1.557zM22.105 0h-3.289v5.184H24V1.895A1.894 1.894 0 0 0 22.105 0zm-3.289 23.5l4.684-4.684h-4.684V23.5zM0 22.105C0 23.152.848 24 1.895 24h3.289v-5.184H0v3.289z"/></symbol>
+<symbol id="b-claude" viewBox="0 0 24 24"><path fill="#D97757" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></symbol>
+<symbol id="b-googlegemini" viewBox="0 0 24 24"><path fill="#8E75B2" d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"/></symbol>
+<symbol id="b-meta" viewBox="0 0 24 24"><path fill="#0467DF" d="M6.915 4.03c-1.968 0-3.683 1.28-4.871 3.113C.704 9.208 0 11.883 0 14.449c0 .706.07 1.369.21 1.973a6.624 6.624 0 0 0 .265.86 5.297 5.297 0 0 0 .371.761c.696 1.159 1.818 1.927 3.593 1.927 1.497 0 2.633-.671 3.965-2.444.76-1.012 1.144-1.626 2.663-4.32l.756-1.339.186-.325c.061.1.121.196.183.3l2.152 3.595c.724 1.21 1.665 2.556 2.47 3.314 1.046.987 1.992 1.22 3.06 1.22 1.075 0 1.876-.355 2.455-.843a3.743 3.743 0 0 0 .81-.973c.542-.939.861-2.127.861-3.745 0-2.72-.681-5.357-2.084-7.45-1.282-1.912-2.957-2.93-4.716-2.93-1.047 0-2.088.467-3.053 1.308-.652.57-1.257 1.29-1.82 2.05-.69-.875-1.335-1.547-1.958-2.056-1.182-.966-2.315-1.303-3.454-1.303zm10.16 2.053c1.147 0 2.188.758 2.992 1.999 1.132 1.748 1.647 4.195 1.647 6.4 0 1.548-.368 2.9-1.839 2.9-.58 0-1.027-.23-1.664-1.004-.496-.601-1.343-1.878-2.832-4.358l-.617-1.028a44.908 44.908 0 0 0-1.255-1.98c.07-.109.141-.224.211-.327 1.12-1.667 2.118-2.602 3.358-2.602zm-10.201.553c1.265 0 2.058.791 2.675 1.446.307.327.737.871 1.234 1.579l-1.02 1.566c-.757 1.163-1.882 3.017-2.837 4.338-1.191 1.649-1.81 1.817-2.486 1.817-.524 0-1.038-.237-1.383-.794-.263-.426-.464-1.13-.464-2.046 0-2.221.63-4.535 1.66-6.088.454-.687.964-1.226 1.533-1.533a2.264 2.264 0 0 1 1.088-.285z"/></symbol>
+
+</defs></svg>
+
+<div class="deck-viewport">
+<main class="deck-stage" id="deckStage">
+<!-- ============ 1 · HERO: one companion, one memory ============ -->
+<section class="slide s1" data-id="hero" data-section="Hero">
+  <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="3" y="3" width="26" height="26" rx="7.5" fill="none" stroke="#6F9253" stroke-width="2.5" />
+  <path d="M10 10L16 16L22 22" stroke="#6F9253" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="10" cy="10" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="22" cy="22" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="16" cy="16" r="3.5" fill="#6F9253" />
+</svg>Mission Control</div><div class="secno"></div>
+  <div class="copy">
+    <h1 class="a" style="--d:.05s" data-edit>Where your personal AI <em>comes to life.</em></h1>
+    <p class="lede a" style="--d:.25s" data-edit>Talk or type. One companion, one memory, across your devices.</p>
+  </div>
+  <div class="scene" id="heroScene" role="img" aria-label="Illustrative example: one companion shares one memory across a phone, a laptop and a check-in you chose.">
+    <div class="thread fade" style="--d:3.3s"><i class="t"></i><span class="ln growy" style="--d:3.4s"></span><i class="b"></i></div>
+    <div class="card c-phone a" style="--d:.2s">
+      <div class="c-head"><span class="mark sm"><svg class="ic"><use href="#i-Sparkles"/></svg></span><div><strong>Mira</strong><span>Everyday companion</span></div></div>
+      <div class="c-body">
+        <div class="bubble user t" id="heroUser" data-text="I want to learn Spanish, 20 minutes on weekdays."></div>
+        <div class="bubble bot pop" style="--d:2.5s"><span class="mark sm"><svg class="ic"><use href="#i-Sparkles"/></svg></span><span>Let&rsquo;s make it part of your week. Start with 10 minutes listening, 10 minutes vocabulary.</span></div>
+        <div class="c-chip pop" id="heroChip" style="--d:3.1s"><svg class="ic"><use href="#i-BookOpen"/></svg> Remembers &middot; weekdays</div>
+      </div>
+      <div class="c-voice"><span class="mic"><svg class="ic"><use href="#i-Mic"/></svg></span><span class="l">Hold to talk</span><span class="send"><svg class="ic"><use href="#i-ArrowRight"/></svg></span></div>
+    </div>
+    <div class="card c-laptop a" style="--d:3.4s">
+      <div class="c-bar"><span class="dots"><i></i><i></i><i></i></span><strong>Mission Control &mdash; Mira</strong><svg class="ic"><use href="#i-Sparkles"/></svg></div>
+      <div class="c-lbody">
+        <div class="mem-row"><span>Remembered</span><i id="heroMemA">Spanish &middot; weekdays</i><i>Keep it short</i></div>
+        <p class="c-lmsg a" style="--d:4.6s">You said weekdays work best. Want a 5-minute version for busy days?</p>
+        <div class="c-src a" style="--d:4.9s"><svg class="ic"><use href="#i-Phone"/></svg> from your phone</div>
+      </div>
+    </div>
+    <div class="card c-checkin a" style="--d:5.4s"><span class="bellc"><svg class="ic"><use href="#i-Bell"/></svg></span><div class="tx"><span>A check-in you chose</span><p>Practice today? 10 minutes is enough.</p></div><time>Now</time></div>
+    <span class="token" id="heroToken"><svg class="ic"><use href="#i-BookOpen"/></svg> Spanish &middot; weekdays</span>
+    <p class="note">Illustrative example</p>
+  </div>
+  <aside class="notes"><h4>0:00 &middot; What it is (20s)</h4>
+    <p><b>Example:</b> Open with someone in the room: "Say you tell your phone, 'I want to run a 10k by March.' A week later it's still just a sentence in a notes app. Here, it becomes a plan, a Tuesday reminder and a page that shows how you're doing."</p>
+    <p>Let the animation play: one sentence on the phone, the assistant remembers it, the laptop already knows, and a check-in arrives on its own.</p>
+    <p>Say: "Everyone has goals. Apps give you a blank tracker and you do the work. What if you just said it, and it followed through?"</p>
+    <p>Keep it light: this is the what. The why comes next.</p></aside>
+</section>
+
+<!-- ============ 4 · BUILD ============ -->
+<section class="slide s4" data-id="build" data-section="Build">
+  <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="3" y="3" width="26" height="26" rx="7.5" fill="none" stroke="#6F9253" stroke-width="2.5" />
+  <path d="M10 10L16 16L22 22" stroke="#6F9253" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="10" cy="10" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="22" cy="22" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="16" cy="16" r="3.5" fill="#6F9253" />
+</svg>Mission Control</div><div class="secno"></div>
+  <div class="copy">
+    <h2 class="a" style="--d:.05s" data-edit>Say it once. <em>It builds the whole thing.</em></h2>
+    <p class="lede a" style="--d:.25s" data-edit>A goal, its steps, a routine, a reminder, and a view of its own.</p>
+  </div>
+  <div class="scene" role="img" aria-label="Illustrative example: one sentence becomes a goal with steps, a routine, a reminder and a view.">
+    <div class="card bd-chat a" style="--d:.2s">
+      <div class="bubble user t" id="bdUser" data-text="I want to lose 5 kg by February."></div>
+      <div class="bubble bot pop" style="--d:1.9s"><span class="mark sm"><svg class="ic"><use href="#i-Sparkles"/></svg></span><span>Done. Here&rsquo;s what I built.</span></div>
+    </div>
+    <span class="bd-link grow" style="--d:1.9s"></span>
+    <div class="card bd-goal a" style="--d:1.7s">
+      <div class="hd"><h3>Lose 5 kg by February</h3><span class="pill on">New</span></div>
+      <p class="sub">Created from one sentence</p>
+      <div class="bd-item a" style="--d:2.3s;--d2:2.6s"><span class="ico"><svg class="ic"><use href="#i-Flag"/></svg></span><div><strong>Weigh in every Monday</strong><span class="s">Steps</span></div><span class="ck"><svg class="ic"><use href="#i-Check"/></svg></span></div>
+      <div class="bd-item a" style="--d:2.9s;--d2:3.2s"><span class="ico"><svg class="ic"><use href="#i-Footprints"/></svg></span><div><strong>Walk 30 minutes</strong><span class="s">Routine &middot; daily</span></div><span class="ck"><svg class="ic"><use href="#i-Check"/></svg></span></div>
+      <div class="bd-item a" style="--d:3.5s;--d2:3.8s"><span class="ico"><svg class="ic"><use href="#i-Bell"/></svg></span><div><strong>Before dinner</strong><span class="s">Reminder &middot; 6:00 pm</span></div><span class="ck"><svg class="ic"><use href="#i-Check"/></svg></span></div>
+      <div class="bd-item a" style="--d:4.1s;--d2:4.4s"><span class="ico"><svg class="ic"><use href="#i-ChartLine"/></svg></span><div><strong>Progress, trend, habit days</strong><span class="s">A view of its own</span></div><span class="ck"><svg class="ic"><use href="#i-Check"/></svg></span></div>
+      <p class="foot a" style="--d:4.8s">You can change any of it by asking.</p>
+    </div>
+    <p class="note">Illustrative example</p>
+  </div>
+  <aside class="notes"><h4>0:20 &middot; What it does (25s)</h4>
+    <p><b>Example:</b> Say: "I want to read more." It asks two things, how many minutes a day and when. Then it creates the goal, a 20-minute evening routine, a 9pm reminder and a progress view. You typed one sentence.</p>
+    <p>"This is the part that's different. One sentence. It asks only what it needs, then creates the goal, the steps, a routine, a reminder and a view, all at once."</p></aside>
+</section>
+
+<!-- ============ PROBLEM (why) ============ -->
+<section class="slide s10" data-id="problem" data-section="Why">
+  <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="3" y="3" width="26" height="26" rx="7.5" fill="none" stroke="#6F9253" stroke-width="2.5" />
+  <path d="M10 10L16 16L22 22" stroke="#6F9253" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="10" cy="10" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="22" cy="22" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="16" cy="16" r="3.5" fill="#6F9253" />
+</svg>Mission Control</div><div class="secno"></div>
+  <div class="copy">
+    <h2 class="a" style="--d:.05s" data-edit>Goals fade between <em>the idea and the follow-through.</em></h2>
+    <p class="lede a" style="--d:.25s" data-edit>It breaks in three places.</p>
+  </div>
+  <div class="scene" role="img" aria-label="A momentum curve decaying over time, with three failure points: setting it up, remembering, and seeing the truth.">
+    <div class="card p-curve a" style="--d:.2s">
+      <div class="hd"><h4>Momentum</h4><span class="mono">Day 1 &rarr; Month 2</span></div>
+      <svg viewBox="0 0 806 262" fill="none">
+        <g stroke="#e5e8df" stroke-width="1"><line x1="0" y1="40" x2="806" y2="40"/><line x1="0" y1="120" x2="806" y2="120"/><line x1="0" y1="200" x2="806" y2="200"/></g>
+        <path class="fade" style="--d:1s" d="M10 40 C 150 40, 190 70, 260 115 S 420 185, 540 200 S 700 215, 796 218 L796 236 L10 236 Z" fill="#e7eddc" opacity=".6"/>
+        <path class="draw" style="--d:.5s" pathLength="1" stroke-dasharray="1" d="M10 40 C 150 40, 190 70, 260 115 S 420 185, 540 200 S 700 215, 796 218" stroke="#4e6a37" stroke-width="4" stroke-linecap="round"/>
+        <g class="mk" style="--d:1.3s"><circle cx="161" cy="61" r="15" fill="#fff" stroke="#4e6a37" stroke-width="2.5"/><text x="161" y="67" text-anchor="middle" font-family="IBM Plex Mono" font-weight="500" font-size="17" fill="#4e6a37">1</text></g>
+        <g class="mk" style="--d:2.3s"><circle cx="381" cy="169" r="15" fill="#fff" stroke="#4e6a37" stroke-width="2.5"/><text x="381" y="175" text-anchor="middle" font-family="IBM Plex Mono" font-weight="500" font-size="17" fill="#4e6a37">2</text></g>
+        <g class="mk" style="--d:3.3s"><circle cx="677" cy="214" r="15" fill="#fff" stroke="#4e6a37" stroke-width="2.5"/><text x="677" y="220" text-anchor="middle" font-family="IBM Plex Mono" font-weight="500" font-size="17" fill="#4e6a37">3</text></g>
+        <g font-family="IBM Plex Mono" font-size="15" fill="#566159"><text x="10" y="258">Day 1</text><text x="240" y="258">Week 1</text><text x="520" y="258">Week 3</text><text x="720" y="258">Month 2</text></g>
+      </svg>
+    </div>
+    <div class="card p-card pc1 a" style="--d:1.4s"><div class="hd"><b><svg class="ic"><use href="#i-ListChecks"/></svg></b><h3>Setting it up</h3></div>
+      <div class="vis"><div class="fld"><i></i><u class="cur"></u><i></i><u></u><i></i><u></u></div></div><p class="cap">Forms before progress</p></div>
+    <div class="card p-card pc2 a" style="--d:2.4s"><div class="hd"><b><svg class="ic"><use href="#i-Bell"/></svg></b><h3>Remembering</h3></div>
+      <div class="vis"><div class="nf"><div style="--k:3.1s"><svg class="ic"><use href="#i-Bell"/></svg><span><i></i><i></i></span></div><div style="--k:3.5s"><svg class="ic"><use href="#i-Bell"/></svg><span><i></i><i></i></span></div><div style="--k:3.9s"><svg class="ic"><use href="#i-Bell"/></svg><span><i></i><i></i></span></div></div><span class="pill nf-off pop" style="--d:4.5s"><svg class="ic"><use href="#i-BellOff"/></svg> Ignored</span></div><p class="cap">Alarms you learn to ignore</p></div>
+    <div class="card p-card pc3 a" style="--d:3.4s"><div class="hd"><b><svg class="ic"><use href="#i-Table"/></svg></b><h3>Seeing the truth</h3></div>
+      <div class="vis"><div class="sheet" id="sheet"></div><span class="pill sheet-pill pop" style="--d:5.2s"><svg class="ic"><use href="#i-Clock"/></svg> 3 weeks ago</span></div><p class="cap">A sheet you stop opening</p></div>
+  </div>
+  <aside class="notes"><h4>0:45 &middot; Why (20s) &mdash; send your live prompt now</h4>
+    <p><b>Example:</b> Three moments everyone knows. Setting up: the spreadsheet with six columns you never open again. Remembering: the reminder you snoozed three times. Seeing: by the 20th you can't tell whether $200 on dining is fine.</p>
+    <p><b>Send the real prompt on your phone as you reach this slide</b> so the goal builds while you talk: "I want to keep my dining spending under $200 a month."</p>
+    <p>"Goals don't fail on willpower. They fail in three places: setting them up, remembering them, and seeing whether you're on track."</p></aside>
+</section>
+
+<!-- ============ LANDSCAPE (why: existing ways) ============ -->
+<section class="slide s11" data-id="landscape" data-section="Why">
+  <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="3" y="3" width="26" height="26" rx="7.5" fill="none" stroke="#6F9253" stroke-width="2.5" />
+  <path d="M10 10L16 16L22 22" stroke="#6F9253" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="10" cy="10" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="22" cy="22" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="16" cy="16" r="3.5" fill="#6F9253" />
+</svg>Mission Control</div><div class="secno"></div>
+  <div class="copy">
+    <h2 class="a" style="--d:.05s" data-edit>There are ways to do this today. <em>Each gives something up.</em></h2>
+    <p class="lede a" style="--d:.25s" data-edit>Reliable, or smart. Now some do both. The difference left is <em>whose computer it runs on.</em></p>
+  </div>
+  <div class="scene" role="img" aria-label="A map: reminder and notes apps are dependable but do not understand you; AI agents with schedules understand but are less dependable; Muse and Mission Control are both dependable and understand you, but Muse runs on Meta's servers and Mission Control runs on your own computer.">
+    <span class="q-ax q-axv"></span><span class="q-ax q-axh"></span>
+    <span class="q-div q-divh fade" style="--d:.8s"></span><span class="q-div q-divv fade" style="--d:.8s"></span>
+    <span class="q-lab q-labv fade" style="--d:.6s">Dependable &rarr;</span><span class="q-lab q-labh fade" style="--d:.6s">Understands you &rarr;</span>
+    <div class="card q-node qa pop" style="--d:1.4s"><div class="q-brands"><span class="bt pop" style="--d:1.8s"><i><svg viewBox="0 0 24 24"><use href="#b-todoist"/></svg></i><em>Todoist</em></span><span class="bt pop" style="--d:1.95s"><i><svg viewBox="0 0 24 24"><use href="#b-notion"/></svg></i><em>Notion</em></span><span class="bt pop" style="--d:2.1s"><i><svg viewBox="0 0 24 24"><use href="#b-googlekeep"/></svg></i><em>Keep</em></span><span class="bt pop" style="--d:2.25s"><i><svg viewBox="0 0 24 24"><use href="#b-googlecalendar"/></svg></i><em>Calendar</em></span></div><h3>Reminders, notes, trackers</h3><span class="mono">You set up every piece</span></div>
+    <div class="card q-node qb pop" style="--d:2.4s"><div class="q-brands"><span class="bt pop" style="--d:2.8s"><i><svg viewBox="0 0 24 24"><use href="#b-claude"/></svg></i><em>Claude Code</em></span><span class="bt pop" style="--d:2.95s"><i><svg viewBox="0 0 24 24"><use href="#b-googlegemini"/></svg></i><em>Gemini</em></span><span class="bt pop" style="--d:3.1s"><i class="gen"><svg class="ic"><use href="#i-Clock"/></svg></i><em>Schedules</em></span></div><h3>AI agents with schedules</h3><span class="mono">A prompt on a timer</span></div>
+    <svg class="q-arrows" viewBox="0 0 902 830" fill="none"><path class="draw" style="--d:3.3s" pathLength="1" stroke-dasharray="1" d="M450 126 H 482" stroke="#4e6a37" stroke-width="3" stroke-linecap="round"/></svg>
+    <div class="card q-node qd pop" style="--d:4.6s"><div class="q-hd"><span class="bt"><i><svg viewBox="0 0 24 24"><use href="#b-meta"/></svg></i></span><span class="pill cloud"><svg class="ic"><use href="#i-Cloud"/></svg> Meta&rsquo;s servers</span></div><h3>Muse</h3><span class="mono">Personal agent, in the cloud</span></div>
+    <div class="card q-node qc" style="--d:4.1s"><div class="q-hd"><b><svg class="ic" style="font-size:28px"><use href="#i-Sparkles"/></svg></b><span class="pill on"><svg class="ic"><use href="#i-Smartphone"/></svg> Your computer</span></div><h3>Mission Control</h3><span class="mono">Dependable, and yours</span></div>
+    <p class="note">Illustrative map</p>
+  </div>
+  <aside class="notes"><h4>1:05 &middot; Existing ways (35s)</h4>
+    <p><b>Example:</b> Todoist pings you at 9pm but doesn't know you've skipped three days. A weekly Claude schedule like "check my spending every Monday" starts from words each run and re-explains the whole thing. Muse can book the dinner and keep working after you close the app.</p>
+    <p>"You can do this today. Reminder, notes and tracker apps are dependable, but they only do what you set up, piece by piece. AI agents with schedules, like Claude Code's, understand you, but a schedule is a prompt on a timer: every run starts from words, not from a structure."</p>
+    <p>"Meta's Muse closes that gap: a personal agent that keeps working after you close the app. So capability is no longer the difference. The difference is whose computer it runs on, which is the next slide."</p>
+    <p>Be fair to both: apps are great at what they do, and agents are great at reasoning. The gap is the combination.</p></aside>
+</section>
+
+<!-- ============ OWNER (why: whose computer) ============ -->
+<section class="slide s14" data-id="owner" data-section="Why">
+  <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="3" y="3" width="26" height="26" rx="7.5" fill="none" stroke="#6F9253" stroke-width="2.5" />
+  <path d="M10 10L16 16L22 22" stroke="#6F9253" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="10" cy="10" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="22" cy="22" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="16" cy="16" r="3.5" fill="#6F9253" />
+</svg>Mission Control</div><div class="secno"></div>
+  <div class="copy">
+    <h2 class="a" style="--d:.05s" data-edit>Same job. <em>Different owner.</em></h2>
+    <p class="lede a" style="--d:.25s" data-edit>Muse runs on Meta&rsquo;s computer. Mission Control runs on yours: your models, your connectors, your data, your engine.</p>
+  </div>
+  <div class="scene" role="img" aria-label="Two stacks compared. Muse: the model, the connectors, the data and the execution all sit on Meta's servers inside a Muse Secure VM. Mission Control: the model you choose, the connectors you pick, your database and your own engine all sit inside your computer.">
+    <div class="o-wrap">
+      <div class="o-col o-them a" style="--d:.5s">
+        <span class="pill o-tag cloud pop" style="--d:1.2s"><svg class="ic"><use href="#i-Cloud"/></svg> Meta&rsquo;s servers</span>
+        <div class="o-hd"><span><svg class="m"><use href="#b-meta"/></svg></span><div><strong>Muse</strong><small>Secure VM, in Meta&rsquo;s cloud</small></div></div>
+        <div class="o-row a" style="--d:0.9s"><svg class="ic"><use href="#i-Brain"/></svg><div><b>Model</b><small>Muse Spark, Meta&rsquo;s</small></div></div>
+        <div class="o-row a" style="--d:1.15s"><svg class="ic"><use href="#i-Cloud"/></svg><div><b>Connectors</b><small>Your apps, with logins held on the VM</small></div></div>
+        <div class="o-row a" style="--d:1.4s"><svg class="ic"><use href="#i-Database"/></svg><div><b>Data</b><small>Memory and files, on Meta&rsquo;s VM</small></div></div>
+        <div class="o-row a" style="--d:1.65s"><svg class="ic"><use href="#i-Cog"/></svg><div><b>Execution</b><small>Meta&rsquo;s computer runs the work</small></div></div>
+        <div class="o-foot a" style="--d:2s"><svg class="ic"><use href="#i-Smartphone"/></svg> You connect in</div>
+      </div>
+      <div class="o-col o-you a" style="--d:.7s">
+        <span class="pill o-tag mine pop" style="--d:1.4s"><svg class="ic"><use href="#i-LockKeyhole"/></svg> Yours</span>
+        <div class="o-hd"><span><svg class="ic" style="font-size:26px;color:var(--accent)"><use href="#i-Sparkles"/></svg></span><div><strong>Mission Control</strong><small>Your workspace</small></div></div>
+        <div class="o-row a" style="--d:1.0s"><svg class="ic"><use href="#i-Brain"/></svg><div><b>Model</b><small>Your pick: local, or any provider</small></div></div>
+        <div class="o-row a" style="--d:1.25s"><svg class="ic"><use href="#i-Workflow"/></svg><div><b>Connectors</b><small>The tools you choose, your keys</small></div></div>
+        <div class="o-row a" style="--d:1.5s"><svg class="ic"><use href="#i-Database"/></svg><div><b>Data</b><small>Your database, in your workspace</small></div></div>
+        <div class="o-row a" style="--d:1.75s"><svg class="ic"><use href="#i-Cog"/></svg><div><b>Execution</b><small>Your engine fires your clock</small></div></div>
+        <div class="o-foot a" style="--d:2.1s"><svg class="ic"><use href="#i-ShieldCheck"/></svg> You choose what leaves</div>
+      </div>
+    </div>
+    <p class="note">Source: Meta announcement and developer docs, Sept 2026</p>
+  </div>
+  <aside class="notes"><h4>1:40 &middot; Whose computer (35s)</h4>
+    <p><b>Example:</b> Ask the room: "Where does your spending history live?" With Muse, on Meta's VM, along with the logins for every account you connect. With Mission Control, in a database in your own workspace, and you pick the model, even one running on your laptop.</p>
+    <p>"Meta's Muse is the closest thing to what we built: a personal agent that keeps working after you close the app, connects to your apps, remembers you. Be generous about that."</p>
+    <p>"The difference is where it lives. Muse runs on a dedicated virtual machine in Meta's cloud: that VM holds the agent, your data and the logins for every service you connect, and the model is Meta's. Mission Control is the opposite shape: you own the model choice, the connectors, the data and the engine that runs it. Even the model can run on your own hardware."</p>
+    <p><b>Be accurate, if asked:</b> Meta says each VM is isolated, shows an audit trail, lets you export files, disconnect services and opt out of training, and has announced a Confidential VM with a key only the user holds, not yet available. Meta says the data is not shared with its advertising system. TIME (Oct 2026) reported that Muse builds continuously updated profiles of users and the people they mention. Meta did not dispute it. Those are their claims and TIME's reading of internal instructions, not our testing.</p>
+    <p><b>If asked about choice or self-hosting:</b> Meta's own developer docs (dev.meta.ai) confirm it publishes open-weight models, Muse Spark Open and Muse Glimmer (Apache 2.0), to run on your own GPUs; they say nothing about the consumer Muse agent, which runs only on Meta's cloud, and I found no source saying you can swap its model. Custom connectors: a third-party test (Parallel, mid-Sept 2026, citing Meta's Help Center, not independently confirmed) says Muse builds its own client on its cloud VM for a remote server you point it at. It is reached from Meta's cloud, so a server on your laptop is not reachable, and Meta does not review custom connectors. Pricing reports conflict ($16 or $20 and $80 or $100 a month), so leave it off the slide.</p></aside>
+</section>
+
+<!-- ============ ENGINE (how) ============ -->
+<section class="slide s12" data-id="engine" data-section="How">
+  <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="3" y="3" width="26" height="26" rx="7.5" fill="none" stroke="#6F9253" stroke-width="2.5" />
+  <path d="M10 10L16 16L22 22" stroke="#6F9253" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="10" cy="10" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="22" cy="22" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="16" cy="16" r="3.5" fill="#6F9253" />
+</svg>Mission Control</div><div class="secno"></div>
+  <div class="copy">
+    <h2 class="a" style="--d:.05s" data-edit>An agent for the <em>thinking.</em> An engine for the <em>doing.</em></h2>
+    <p class="lede a" style="--d:.25s" data-edit>Judgement where it helps. Guarantees where it matters.</p>
+  </div>
+  <div class="scene" role="img" aria-label="A sentence goes to the agent, which understands, asks and designs; it hands structured calls to a deterministic engine that stores goals, steps, routines, reminders, views and numbers, and fires on time. When you skip days, the engine tells the agent, which adapts.">
+    <div class="bubble user e-in pop" style="--d:.3s">I want to lose 5 kg by February.</div>
+    <span class="e-lnk growy" style="--d:.9s"></span>
+    <div class="card e-agent a" style="--d:.7s">
+      <div class="e-hd"><b><svg class="ic"><use href="#i-Sparkles"/></svg></b><strong>Agent</strong><span class="mono">Judgement</span></div>
+      <div class="e-chips"><span class="e-chip" data-lit="1500"><svg class="ic"><use href="#i-Brain"/></svg>Understands</span><span class="e-chip" data-lit="1900"><svg class="ic"><use href="#i-MessageCircle"/></svg>Asks</span><span class="e-chip" data-lit="2300"><svg class="ic"><use href="#i-Layers"/></svg>Designs</span><span class="e-chip" data-lit="7000"><svg class="ic"><use href="#i-Repeat"/></svg>Adapts</span></div>
+      <span class="pill on e-tag pop" style="--d:7.5s">Smaller step: walk 10 minutes</span>
+    </div>
+    <span class="e-line fade" style="left:200px;--d:.9s"></span><span class="e-line fade" style="left:424px;--d:.9s"></span><span class="e-line fade" style="left:648px;--d:.9s"></span><span class="e-line fade" style="left:808px;--d:.9s"></span>
+    <span class="e-dot dn" style="left:200px;--d:2.7s"></span><span class="e-dot dn" style="left:424px;--d:2.9s"></span><span class="e-dot dn" style="left:648px;--d:3.1s"></span>
+    <span class="e-dot up" style="left:808px;--d:6.5s"></span>
+    <div class="card e-engine a" style="--d:1.1s">
+      <div class="e-hd"><b><svg class="ic"><use href="#i-Cog"/></svg></b><strong>Engine</strong><span class="mono">Guarantees</span></div>
+      <span class="pill e-skip pop" style="--d:6.2s"><svg class="ic"><use href="#i-X"/></svg> 3 days skipped</span>
+      <div class="e-grid">
+        <div class="e-tile" style="--d2:3.6s"><svg class="ic ic0"><use href="#i-Flag"/></svg>Goals<span class="tk"><svg class="ic"><use href="#i-Check"/></svg></span></div>
+        <div class="e-tile" style="--d2:3.85s"><svg class="ic ic0"><use href="#i-ListChecks"/></svg>Steps<span class="tk"><svg class="ic"><use href="#i-Check"/></svg></span></div>
+        <div class="e-tile" style="--d2:4.1s"><svg class="ic ic0"><use href="#i-Repeat"/></svg>Routines<span class="tk"><svg class="ic"><use href="#i-Check"/></svg></span></div>
+        <div class="e-tile" style="--d2:4.35s"><svg class="ic ic0"><use href="#i-Bell"/></svg>Reminders<span class="tk"><svg class="ic"><use href="#i-Check"/></svg></span></div>
+        <div class="e-tile" style="--d2:4.6s"><svg class="ic ic0"><use href="#i-ChartLine"/></svg>Views<span class="tk"><svg class="ic"><use href="#i-Check"/></svg></span></div>
+        <div class="e-tile" style="--d2:4.85s"><svg class="ic ic0"><use href="#i-Calculator"/></svg>Numbers<span class="tk"><svg class="ic"><use href="#i-Check"/></svg></span></div>
+      </div>
+      <div class="e-foot a" style="--d:5.3s"><svg class="ic"><use href="#i-Clock"/></svg> Fires on time, every time <span class="pill on"><svg class="ic"><use href="#i-Bell"/></svg> Before dinner</span></div>
+    </div>
+  </div>
+  <aside class="notes"><h4>2:15 &middot; How (40s)</h4>
+    <p><b>Example:</b> You skip your walk three days running. The engine notices and tells the agent. The agent doesn't scold: it proposes "walk 10 minutes after lunch". Tomorrow's reminder fires on time either way, with no model involved.</p>
+    <p>"Here's how we get both. The agent does the thinking: it understands the sentence, asks what it needs, and designs the structure. It hands that to a deterministic engine that stores the goal, the steps, the routine, the reminder, the view, and does the numbers. The engine runs the clock: it fires on time, every time, no model needed."</p>
+    <p>"And when you skip days, the engine notices and tells the agent, which adapts: a smaller step, a different nudge. The agent brings judgement; the engine brings guarantees."</p></aside>
+</section>
+
+<!-- ============ TRUST (how: the numbers) ============ -->
+<section class="slide s13" data-id="trust" data-section="How">
+  <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="3" y="3" width="26" height="26" rx="7.5" fill="none" stroke="#6F9253" stroke-width="2.5" />
+  <path d="M10 10L16 16L22 22" stroke="#6F9253" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="10" cy="10" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="22" cy="22" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="16" cy="16" r="3.5" fill="#6F9253" />
+</svg>Mission Control</div><div class="secno"></div>
+  <div class="copy">
+    <h2 class="a" style="--d:.05s" data-edit>The agent designs the page. <em>The engine fills in the numbers.</em></h2>
+    <p class="lede a" style="--d:.25s" data-edit>So a figure can&rsquo;t be made up.</p>
+  </div>
+  <div class="scene" role="img" aria-label="The agent writes a sentence template with slots; the engine computes the figures from live data; your screen shows the finished sentence.">
+    <div class="card t-agent a" style="--d:.2s"><div class="e-hd"><b><svg class="ic"><use href="#i-Sparkles"/></svg></b><strong>Agent writes</strong></div>
+      <span class="pill t-never pop" style="--d:1.2s"><svg class="ic"><use href="#i-X"/></svg> Never a figure</span>
+      <p class="t-tpl a" style="--d:.7s"><s>{lost}</s> down, <s>{left}</s> to go</p></div>
+    <span class="t-cn growy" style="left:120px;top:204px;--d:1.4s"></span><span class="t-dot" style="left:120px;top:204px;--d:1.5s"></span><span class="t-cn growy" style="left:300px;top:204px;--d:1.4s"></span><span class="t-dot" style="left:300px;top:204px;--d:1.7s"></span>
+    <div class="card t-engine a" style="--d:1.9s"><div class="e-hd"><b><svg class="ic"><use href="#i-Cog"/></svg></b><strong>Engine computes</strong><span class="mono">From live data</span></div>
+      <div class="t-body">
+        <div class="t-data"><svg viewBox="0 0 330 150" fill="none"><g stroke="#e5e8df"><line x1="0" y1="30" x2="330" y2="30"/><line x1="0" y1="100" x2="330" y2="100"/></g><path class="draw" style="--d:2.2s" pathLength="1" stroke-dasharray="1" d="M14 30 L90 44 L150 52 L210 62 L316 86" stroke="#4e6a37" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/><circle class="mk" style="--d:2.3s" cx="14" cy="30" r="8" fill="#4e6a37"/><circle class="mk" style="--d:3s" cx="316" cy="86" r="8" fill="#4e6a37"/><text x="14" y="16" font-family="IBM Plex Mono" font-size="15" fill="#566159">78.4 first</text><text x="226" y="122" font-family="IBM Plex Mono" font-size="15" fill="#566159">77.2 latest</text></svg></div>
+        <div class="t-formulas"><div class="t-f a" style="--d:2.7s"><code>first &minus; latest</code><svg class="ic"><use href="#i-ArrowRight"/></svg><b><span data-countnum="1.2" data-dec="1" data-delay="3300">1.2</span></b></div><div class="t-f a" style="--d:3.1s"><code>latest &minus; 73.4</code><svg class="ic"><use href="#i-ArrowRight"/></svg><b><span data-countnum="3.8" data-dec="1" data-delay="3700">3.8</span></b></div></div>
+      </div></div>
+    <span class="t-cn growy" style="left:200px;top:516px;--d:4.1s"></span><span class="t-dot" style="left:200px;top:516px;--d:4.2s"></span><span class="t-cn growy" style="left:640px;top:516px;--d:4.1s"></span><span class="t-dot" style="left:640px;top:516px;--d:4.4s"></span>
+    <div class="card t-screen a" style="--d:4.6s"><div class="e-hd"><b style="background:var(--surface)"><svg class="ic"><use href="#i-Smartphone"/></svg></b><strong>Your screen</strong><span class="mono">Live from your data</span></div>
+      <p class="t-big"><span data-countnum="1.2" data-dec="1" data-delay="5000">1.2</span><b> kg</b> down, <b><span data-countnum="3.8" data-dec="1" data-delay="5200">3.8</span> kg</b> to go</p></div>
+  </div>
+  <aside class="notes"><h4>2:55 &middot; The numbers (20s)</h4>
+    <p><b>Example:</b> You ask: "How much have I spent on dining?" The agent writes the sentence with slots, "{spent} of {limit}". The engine fills in "$143 of $200" from your real transactions. The model never types 143.</p>
+    <p>"The agent designs the page, with slots, but it never writes a figure. The engine computes each one from your real data, on your device. So the model can't make up your balance or your weight."</p></aside>
+</section>
+
+<!-- ============ 5 · LIVE ============ -->
+<section class="slide s5" data-id="live" data-section="Live">
+  <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="3" y="3" width="26" height="26" rx="7.5" fill="none" stroke="#6F9253" stroke-width="2.5" />
+  <path d="M10 10L16 16L22 22" stroke="#6F9253" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="10" cy="10" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="22" cy="22" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="16" cy="16" r="3.5" fill="#6F9253" />
+</svg>Mission Control</div><div class="secno"></div>
+  <div class="copy">
+    <h2 class="a" style="--d:.05s" data-edit>Let&rsquo;s try <em>one.</em></h2>
+    <p class="lede a" style="--d:.25s" data-edit>Say it, or type it. Then watch it build.</p>
+  </div>
+  <div class="scene" role="img" aria-label="A phone with the prompt being typed: keep my dining spending under 200 dollars a month.">
+    <div class="card l-phone a" style="--d:.2s">
+      <div class="c-head"><span class="mark sm"><svg class="ic"><use href="#i-Sparkles"/></svg></span><div><strong>Mira</strong><span>Everyday companion</span></div></div>
+      <div class="l-body">
+        <div class="bubble user t hid" id="liveUser" data-text="I want to keep my dining spending under $200 a month."></div>
+        <div class="hid" id="liveDots"><span class="dotsT"><i></i><i></i><i></i></span></div>
+      </div>
+      <div class="l-composer"><div class="field t" id="liveField" data-text="I want to keep my dining spending under $200 a month."></div><span class="mic"><svg class="ic"><use href="#i-Mic"/></svg></span></div>
+    </div>
+    <p class="note">Live demo</p>
+  </div>
+  <aside class="notes"><h4>3:15 &middot; Live: switch to the phone (30s)</h4>
+    <p><b>Example:</b> Prompt you sent: "I want to keep my dining spending under $200 a month." Likely questions it asks you: "Which card counts as dining?" and "Want a Friday check-in?" Answer in a few words, then open the goal.</p>
+    <p>You sent the real prompt at slide 3 (the problem), so it has been building for about two minutes. Don't send a second message; a message mid-reply interrupts the reply.</p>
+    <p>When you reach this slide, switch to the phone: show the two questions, your answer, then open the goal. If it isn't ready, say "it's finishing, here's one I made earlier" and go on.</p></aside>
+</section>
+
+<!-- ============ 6 · VIEW ============ -->
+<section class="slide s6" data-id="view" data-section="View">
+  <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="3" y="3" width="26" height="26" rx="7.5" fill="none" stroke="#6F9253" stroke-width="2.5" />
+  <path d="M10 10L16 16L22 22" stroke="#6F9253" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="10" cy="10" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="22" cy="22" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="16" cy="16" r="3.5" fill="#6F9253" />
+</svg>Mission Control</div><div class="secno"></div>
+  <div class="copy">
+    <h2 class="a" style="--d:.05s" data-edit>A view made for <em>this</em> goal.</h2>
+    <p class="lede a" style="--d:.25s" data-edit>Designed for the goal in front of it. The numbers come from your real data.</p>
+  </div>
+  <div class="scene" role="img" aria-label="Illustrative example: a goal view with a headline, a weight trend toward a target, a progress bar, a routine ring and a habit grid.">
+    <div class="v-hero a" style="--d:.2s"><span data-countnum="1.2" data-dec="1" data-delay="500">1.2</span><b> kg</b> down, <b><span data-countnum="3.8" data-dec="1" data-delay="700">3.8</span> kg</b> to go</div>
+    <p class="v-sub a" style="--d:.35s">Lose 5 kg by February</p>
+    <div class="card v-chart a" style="--d:.5s"><h4>Weight trend</h4><p class="rd">77.2 kg &middot; 1.2 kg since Sep 29</p>
+      <svg viewBox="0 0 512 232" fill="none">
+        <rect class="fade" style="--d:1.6s" x="0" y="168" width="512" height="34" rx="4" fill="#e7eddc"/>
+        <text x="8" y="190" font-family="IBM Plex Mono" font-size="13" fill="#566159">target</text>
+        <g stroke="#e5e8df" stroke-width="1"><line x1="0" y1="20" x2="512" y2="20"/><line x1="0" y1="94" x2="512" y2="94"/></g>
+        <path class="draw" style="--d:.9s" pathLength="1" stroke-dasharray="1" d="M6 24 L52 40 L98 52 L130 48 L166 70" stroke="#4e6a37" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path class="draw" style="--d:2.1s" pathLength="1" stroke-dasharray="1" d="M166 70 L500 184" stroke="#4e6a37" stroke-width="2.5" stroke-linecap="round" opacity=".75"/>
+        <circle class="pop" style="--d:2s" cx="166" cy="70" r="8" fill="#4e6a37"/>
+      </svg></div>
+    <div class="card v-bar a" style="--d:.7s"><h4>Lost so far</h4><div class="track"><span class="fillb grow" style="--d:1.2s"></span><span class="half"></span></div><div class="nums"><div>1.2 kg</div><span>of 5.0 kg</span></div></div>
+    <div class="card v-rout a" style="--d:.9s"><h4>Your routines</h4><div class="rw"><div class="ring"><svg viewBox="0 0 66 66"><circle cx="33" cy="33" r="27" stroke="#e5e8df" stroke-width="7" fill="none"/><circle class="drawR" style="--d:1.6s" pathLength="1" stroke-dasharray=".79 1" cx="33" cy="33" r="27" stroke="#4e6a37" stroke-width="7" stroke-linecap="round" fill="none"/></svg></div><div><strong>Walk 30 minutes</strong><span>4-day streak</span></div></div></div>
+    <div class="card v-grid a" style="--d:1.1s"><h4>Walking days</h4><div class="cells" id="vCells"></div><p class="cap">23 of 29 days</p></div>
+  </div>
+  <aside class="notes"><h4>3:45 &middot; The reveal (45s)</h4>
+    <p><b>Example:</b> Walk it with the real figures from the goal: "$143 of $200, 12 days left", the trend line, a grid of days you stayed under budget, and the Friday review routine. Illustrative numbers only if the live goal isn't ready.</p>
+    <p>Switch to the real goal you just built, then use this slide as the backup. Walk it: the headline sentence, the trend toward the target, the habit grid, the routine.</p>
+    <p>"The assistant designs the page, but every figure is computed on your device from your real data. It can't make up your balance."</p></aside>
+</section>
+
+<!-- ============ 2 · MEMORY ============ -->
+<section class="slide s2" data-id="memory" data-section="Memory">
+  <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="3" y="3" width="26" height="26" rx="7.5" fill="none" stroke="#6F9253" stroke-width="2.5" />
+  <path d="M10 10L16 16L22 22" stroke="#6F9253" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="10" cy="10" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="22" cy="22" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="16" cy="16" r="3.5" fill="#6F9253" />
+</svg>Mission Control</div><div class="secno"></div>
+  <div class="copy">
+    <h2 class="a" style="--d:.05s" data-edit>It should know you <em>without owning you.</em></h2>
+    <p class="lede a" style="--d:.25s" data-edit>See what it remembers, and where it came from.</p>
+  </div>
+  <div class="scene" role="img" aria-label="Illustrative example: an inspectable memory panel with remembered facts, their sources and a separate memory bank.">
+    <div class="card m-panel a" style="--d:.2s">
+      <div class="m-head"><h3>What Mira remembers</h3><span class="search"><svg class="ic"><use href="#i-Search"/></svg> Search memory</span></div>
+      <div class="m-tabs"><span class="pill on">Memory</span><span class="pill">Sources</span></div>
+      <div class="m-list">
+        <div class="m-item a" style="--d:.6s"><span class="m-ico"><svg class="ic"><use href="#i-BookOpen"/></svg></span><div class="m-copy"><strong>Learning Spanish &middot; 20 minutes on weekdays</strong><span>From a goal &middot; Added 12 Sep</span></div><svg class="ic m-eye"><use href="#i-Eye"/></svg></div>
+        <div class="m-item m-open a" style="--d:.9s"><div class="top"><span class="m-ico"><svg class="ic"><use href="#i-MessageCircle"/></svg></span><div class="m-copy"><strong>Prefers short, practical check-ins</strong><span>From a conversation &middot; 8 Sep</span></div><svg class="ic m-eye"><use href="#i-ChevronDown"/></svg></div>
+          <div class="m-detail"><div><p>&ldquo;Keep it short and practical.&rdquo;</p><span class="pill pill-link on">View source <svg class="ic"><use href="#i-ArrowRight"/></svg></span></div></div></div>
+        <div class="m-item a" style="--d:1.2s"><span class="m-ico"><svg class="ic"><use href="#i-CalendarDays"/></svg></span><div class="m-copy"><strong>Book club on Thursday evenings</strong><span>You shared this &middot; 2 Sep</span></div><svg class="ic m-eye"><use href="#i-Eye"/></svg></div>
+        <div class="m-item a" style="--d:1.5s"><span class="m-ico"><svg class="ic"><use href="#i-Bell"/></svg></span><div class="m-copy"><strong>Doesn&rsquo;t want morning notifications</strong><span>From a preference &middot; 28 Aug</span></div><svg class="ic m-eye"><use href="#i-Eye"/></svg></div>
+      </div>
+      <p class="m-foot a" style="--d:1.8s">4 memories &middot; 2 sources</p>
+    </div>
+    <div class="card m-bank a" style="--d:1.0s"><svg class="ic"><use href="#i-Sparkles"/></svg><strong>Mira</strong><span>Everyday memory bank</span><div class="big"><span data-count="24" data-delay="1300">24</span></div><span>items, separate from other companions</span><p>Select any row to see its source.</p></div>
+    <p class="note">Illustrative example</p>
+  </div>
+  <aside class="notes"><h4>4:30 &middot; Yours to inspect (15s)</h4>
+    <p><b>Example:</b> Tap a row such as "Prefers sushi on Fridays" and it shows it came from your chat on a given day. Delete it, and it's gone. Nothing is hidden in a profile you can't see.</p>
+    <p>"You can open the memory, see every fact, and tap a row to see where it came from. It's separate from any other companion."</p></aside>
+</section>
+
+<!-- ============ 9 · CLOSE ============ -->
+<section class="slide s9" data-id="close" data-section="Close">
+  <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="3" y="3" width="26" height="26" rx="7.5" fill="none" stroke="#6F9253" stroke-width="2.5" />
+  <path d="M10 10L16 16L22 22" stroke="#6F9253" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="10" cy="10" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="22" cy="22" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="16" cy="16" r="3.5" fill="#6F9253" />
+</svg>Mission Control</div><div class="secno"></div>
+  <div class="center">
+    <span class="mark pop" style="--d:.1s"><svg class="ic"><use href="#i-Sparkles"/></svg></span>
+    <h2 class="a" style="--d:.3s" data-edit>A little less to carry.<br><em>A companion of your own.</em></h2>
+    <p class="l2 a" style="--d:.6s" data-edit>One companion to start. More when you want them.</p>
+    <span class="btn solid a" style="--d:.9s">Create your companion <svg class="ic"><use href="#i-ArrowUpRight"/></svg></span>
+    <span class="ea a" style="--d:1.1s">Early access &middot; Account setup comes first</span>
+    <p class="av a" style="--d:1.4s">Goal trackers on iPhone and iPad. Proactive help in <b>development</b>.</p>
+  </div>
+  <aside class="notes"><h4>4:45 &middot; Close (15s)</h4>
+    <p><b>Example:</b> End on the same size of ask: "Remind me to call Sam on Thursday at 5pm." Same sentence, same result, whether it's a reminder or a whole goal.</p>
+    <p>"Say it once. It builds it, tracks it and nudges you. Questions?"</p>
+    <p>Be honest about availability: goal trackers are on iPhone and iPad today; proactive help is still in development.</p></aside>
+</section>
+
+<!-- ============ 3 · BOUNDARY ============ -->
+<section class="slide s3" data-id="boundary" data-appendix="1" data-section="Control">
+  <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="3" y="3" width="26" height="26" rx="7.5" fill="none" stroke="#6F9253" stroke-width="2.5" />
+  <path d="M10 10L16 16L22 22" stroke="#6F9253" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="10" cy="10" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="22" cy="22" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="16" cy="16" r="3.5" fill="#6F9253" />
+</svg>Mission Control</div><div class="secno"></div>
+  <div class="copy">
+    <h2 class="a" style="--d:.05s" data-edit>You decide what it <em>can reach.</em></h2>
+    <p class="lede a" style="--d:.25s" data-edit>You choose what it sees, how it&rsquo;s powered, and nothing happens without your approval.</p>
+  </div>
+  <div class="scene" role="img" aria-label="Illustrative example: permission toggles, a model choice, an approval card and the route data takes.">
+    <div class="card b-panel a" style="--d:.2s">
+      <h3><svg class="ic" style="font-size:30px"><use href="#i-LockKeyhole"/></svg> What Mira can reach</h3>
+      <div class="perm"><span class="lbl"><svg class="ic"><use href="#i-CalendarDays"/></svg> Calendar</span><span class="tog on" style="--d:.9s"><span class="fill"></span><span class="th"></span></span></div>
+      <div class="perm"><span class="lbl"><svg class="ic"><use href="#i-Wallet"/></svg> Spending</span><span class="tog on" style="--d:1.3s"><span class="fill"></span><span class="th"></span></span></div>
+      <div class="perm"><span class="lbl"><svg class="ic"><use href="#i-Heart"/></svg> Health</span><span class="tog"><span class="fill"></span><span class="th"></span></span></div>
+      <div class="perm"><span class="lbl"><svg class="ic"><use href="#i-Folder"/></svg> Files</span><span class="tog"><span class="fill"></span><span class="th"></span></span></div>
+      <div class="model"><div class="l"><svg class="ic"><use href="#i-Cpu"/></svg><div><small>Powered by</small><strong>Platform models</strong></div></div><svg class="ic" style="color:var(--muted);font-size:22px"><use href="#i-ChevronDown"/></svg></div>
+    </div>
+    <div class="card b-approve a" style="--d:1.8s">
+      <div class="hd"><svg class="ic"><use href="#i-ShieldCheck"/></svg> Needs your approval</div>
+      <h3>Message Sam about Thursday?</h3><p>Nothing is sent until you approve.</p>
+      <div class="row"><span class="btn solid" style="min-height:46px;font-size:18px;padding:0 20px">Approve</span><span class="btn ghost" style="min-height:46px;font-size:18px;padding:0 20px">Edit</span></div>
+    </div>
+    <div class="card b-route a" style="--d:2.2s"><span class="lb">The route your data takes</span>
+      <div class="route"><span class="rail2"></span><span class="pk"></span><span class="chip">Your phone</span><span class="chip">Your workspace</span><span class="chip">The model you chose</span></div>
+      <small>Your memory stays in your workspace.</small></div>
+    <p class="note">Illustrative example</p>
+  </div>
+  <aside class="notes"><h4>Appendix &middot; Control</h4>
+    <p>"You decide what it can reach: calendar yes, health no. You choose how it's powered. And anything that goes out waits for your approval."</p></aside>
+</section>
+
+<!-- ============ 7 · COMPANIONS ============ -->
+<section class="slide s7" data-id="companions" data-appendix="1" data-section="Companions">
+  <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="3" y="3" width="26" height="26" rx="7.5" fill="none" stroke="#6F9253" stroke-width="2.5" />
+  <path d="M10 10L16 16L22 22" stroke="#6F9253" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="10" cy="10" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="22" cy="22" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="16" cy="16" r="3.5" fill="#6F9253" />
+</svg>Mission Control</div><div class="secno"></div>
+  <div class="copy">
+    <h2 class="a" style="--d:.05s" data-edit>One life. <em>More than one companion.</em></h2>
+    <p class="lede a" style="--d:.25s" data-edit>Different roles. Separate instructions and memory.</p>
+  </div>
+  <div class="scene" role="img" aria-label="Illustrative example: three companions, Atlas for work, Mira for everyday life and June for learning, each with its own memory bank.">
+    <div class="k-tabs fade" style="--d:1.3s"><span class="pill on">Mira</span><span class="pill">Atlas</span><span class="pill">June</span></div>
+    <div class="card k-card k-atlas" style="--d:.5s"><div class="tp"><span class="av"><svg class="ic"><use href="#i-Briefcase"/></svg></span></div><h3>Atlas</h3><span class="rl">Work companion</span><p>Direct, concise. Numbers first.</p><hr><small>Memory bank</small><span class="mm">2 projects &middot; 1 decision</span><div class="sc"><span class="pill">Web</span><span class="pill">Work</span></div></div>
+    <div class="card k-card k-june" style="--d:.5s"><div class="tp"><span class="av"><svg class="ic"><use href="#i-GraduationCap"/></svg></span></div><h3>June</h3><span class="rl">Learning companion</span><p>Curious, patient. Asks questions.</p><hr><small>Memory bank</small><span class="mm">12 items &middot; Spanish</span><div class="sc"><span class="pill">iPad</span></div></div>
+    <div class="card k-card k-mira" style="--d:.25s"><div class="tp"><span class="av"><svg class="ic"><use href="#i-Sparkles"/></svg></span><span class="pill on">Active</span></div><h3>Mira</h3><span class="rl">Everyday companion</span><p>Warm, practical, brief.</p><hr><small>Memory bank</small><span class="mm">Spanish, book club, check-ins</span><div class="sc"><span class="pill">iPhone</span><span class="pill">iPad</span><span class="pill">Web</span></div></div>
+    <div class="k-add fade" style="--d:1.6s"><span class="pill"><svg class="ic"><use href="#i-Plus"/></svg> Add companion</span></div>
+    <p class="note">Illustrative example</p>
+  </div>
+  <aside class="notes"><h4>Appendix &middot; More than one companion</h4>
+    <p>"One life, more than one companion: work, everyday, learning. Each has its own instructions and its own memory."</p></aside>
+</section>
+
+<!-- ============ 8 · CREATION ============ -->
+<section class="slide s8" data-id="create" data-appendix="1" data-section="Create">
+  <div class="brand"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect x="3" y="3" width="26" height="26" rx="7.5" fill="none" stroke="#6F9253" stroke-width="2.5" />
+  <path d="M10 10L16 16L22 22" stroke="#6F9253" stroke-width="2.5" stroke-linecap="round" />
+  <circle cx="10" cy="10" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="22" cy="22" r="2.75" fill="#6F9253" fill-opacity="0.55" />
+  <circle cx="16" cy="16" r="3.5" fill="#6F9253" />
+</svg>Mission Control</div><div class="secno"></div>
+  <div class="copy">
+    <h2 class="a" style="--d:.05s" data-edit>Personal starts <em>with you.</em></h2>
+    <p class="lede a" style="--d:.25s" data-edit>Create a companion, share what matters, choose how it&rsquo;s powered.</p>
+  </div>
+  <div class="scene" role="img" aria-label="Illustrative example: naming a companion, choosing a tone, and a preview card taking shape.">
+    <div class="n-ctrl a" style="--d:.2s">
+      <label>A name that feels right</label>
+      <div class="n-field"><span id="nameText" class="caret"></span><svg class="ic"><use href="#i-Sparkles"/></svg></div>
+      <span class="hint">Make the conversation your own</span>
+      <div class="opts" id="opts"><div class="opt">Practical &amp; direct<svg class="ic"><use href="#i-Check"/></svg></div><div class="opt sel">Curious &amp; thoughtful<svg class="ic"><use href="#i-Check"/></svg></div><div class="opt">Warm &amp; encouraging<svg class="ic"><use href="#i-Check"/></svg></div></div>
+    </div>
+    <div class="card n-prev a" style="--d:.5s"><span class="shine"></span>
+      <div class="top"><svg class="ic" style="font-size:24px"><use href="#i-Fingerprint"/></svg><span>Shaped by you</span></div>
+      <span class="mark"><svg class="ic"><use href="#i-Sparkles"/></svg></span>
+      <div class="nm" id="prevName">Mira</div><div class="tn" id="prevTone">Curious &amp; thoughtful</div>
+      <p class="q" id="prevQ">&ldquo;What would you like a hand with?&rdquo;</p>
+      <div class="ft"><i></i>A companion of your own</div></div>
+    <div class="steps a" style="--d:2s"><div><span>01</span>Create your space</div><div><span>02</span>Shape your companion</div><div><span>03</span>Choose how it&rsquo;s powered</div></div>
+    <p class="note">A local preview</p>
+  </div>
+  <aside class="notes"><h4>Appendix &middot; Make it yours</h4>
+    <p>"You name it, choose how it talks, and choose how it's powered. It's a companion of your own."</p></aside>
+</section>
+
+</main>
+</div>
+
+<div class="rail-host"></div>
+<nav class="nav-dots" id="navDots" aria-label="Slides"></nav>
+<div class="notes-panel" id="notesPanel" role="region" aria-label="Speaker notes"></div>
+<div class="edit-hotzone"></div>
+<button class="edit-toggle" id="editToggle" title="Edit mode (E)">Edit</button>
+
+<script>
+/* ===========================================
+   SLIDE PRESENTATION CONTROLLER
+   Arrows / Space / PageUp / PageDown / Home / End, swipe, wheel.
+   N toggles speaker notes. E toggles inline editing (Ctrl+S saves a copy).
+   =========================================== */
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* --- Scene scripts: only what CSS cannot do (typing, counting, a flying token) --- */
+const timers = [];
+const later = (fn, ms) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
+const clearTimers = () => { while (timers.length) clearTimeout(timers.pop()); };
+
+/* Typed text: letters are wrapped once so the bubble keeps its final size. */
+function prepType(el) {
+  if (!el || el.dataset.ready) return;
+  const text = el.dataset.text || '';
+  const esc = (c) => c.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  el.innerHTML = text.split(' ').map((w) => `<span class="w">${[...w].map((c) => `<span class="ch">${esc(c)}</span>`).join('')}</span>`).join(' ');
+  el.dataset.ready = '1';
+}
+function typeIn(el, start, cps = 26, done) {
+  prepType(el);
+  const letters = [...el.querySelectorAll('.ch')];
+  letters.forEach((s) => s.classList.toggle('on', reduceMotion));
+  if (reduceMotion) { done && done(); return; }
+  letters.forEach((s, i) => later(() => s.classList.add('on'), start + (i * 1000) / cps));
+  if (done) later(done, start + (letters.length * 1000) / cps);
+}
+function countTo(el, to, dec, start, dur = 1200) {
+  const fmt = (v) => v.toFixed(dec);
+  if (reduceMotion) { el.textContent = fmt(to); return; }
+  el.textContent = fmt(0);
+  later(() => {
+    const t0 = performance.now();
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / dur);
+      el.textContent = fmt(to * (1 - Math.pow(1 - k, 3)));
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, start);
+}
+/* Position of an element inside a container, in unscaled stage pixels. */
+function rel(el, box) {
+  const f = deck.factor, a = el.getBoundingClientRect(), b = box.getBoundingClientRect();
+  return { x: (a.left - b.left) / f, y: (a.top - b.top) / f, w: a.width / f, h: a.height / f };
+}
+
+const scripts = {
+  hero(sl) { // the hero: message, memory token, check-in
+    typeIn(sl.querySelector('#heroUser'), 600, 30);
+    const scene = sl.querySelector('#heroScene'), chip = sl.querySelector('#heroChip'), target = sl.querySelector('#heroMemA'), token = sl.querySelector('#heroToken');
+    if (reduceMotion) return;
+    later(() => {
+      const a = rel(chip, scene), b = rel(target, scene);
+      token.animate([
+        { transform: `translate(${a.x}px, ${a.y}px)`, opacity: 0 },
+        { transform: `translate(${a.x}px, ${a.y}px)`, opacity: 1, offset: .12 },
+        { transform: `translate(${b.x}px, ${b.y}px)`, opacity: 1, offset: .86 },
+        { transform: `translate(${b.x}px, ${b.y}px)`, opacity: 0 },
+      ], { duration: 1100, easing: 'cubic-bezier(.45,.05,.2,1)', fill: 'forwards' });
+    }, 3300);
+  },
+  memory(sl) { countTo(sl.querySelector('[data-count]'), 24, 0, 1300); },
+  build(sl) { typeIn(sl.querySelector('#bdUser'), 500, 30); },
+  live(sl) { // the prompt is typed in the composer, sent, and the assistant starts thinking
+    const field = sl.querySelector('#liveField'), bubble = sl.querySelector('#liveUser'), dots = sl.querySelector('#liveDots');
+    prepType(bubble); bubble.querySelectorAll('.ch').forEach((c) => c.classList.add('on'));
+    bubble.classList.remove('in'); dots.classList.remove('in'); field.classList.remove('ph');
+    const sent = () => {
+      field.classList.remove('caret'); field.classList.add('ph'); field.textContent = 'Say or type\u2026';
+      bubble.classList.add('in'); later(() => dots.classList.add('in'), 900);
+    };
+    if (reduceMotion) { sent(); return; }
+    field.classList.add('caret');
+    typeIn(field, 700, 22, () => later(sent, 500));
+  },
+  create(sl) {
+    const name = sl.querySelector('#nameText'), prevName = sl.querySelector('#prevName'), prevTone = sl.querySelector('#prevTone'), prevQ = sl.querySelector('#prevQ');
+    const opts = [...sl.querySelectorAll('.opt')];
+    const tones = [['Practical & direct', '“What should we get done?”'], ['Curious & thoughtful', '“What would you like a hand with?”'], ['Warm & encouraging', '“How are you feeling about today?”']];
+    const pick = (i) => { opts.forEach((o, n) => o.classList.toggle('sel', n === i)); prevTone.textContent = tones[i][0]; prevQ.textContent = tones[i][1]; };
+    const word = 'Mira';
+    if (reduceMotion) { name.textContent = word; prevName.textContent = word; pick(1); return; }
+    name.textContent = ''; prevName.textContent = ' '; pick(0);
+    [...word].forEach((c, i) => later(() => { name.textContent = word.slice(0, i + 1); prevName.textContent = word.slice(0, i + 1); }, 900 + i * 220));
+    later(() => pick(1), 2600);
+  },
+};
+/* A tidy hand-filled habit grid: 29 days of 42 cells (done cells animate in order). */
+(function buildGrid() {
+  const el = document.getElementById('vCells'); if (!el) return;
+  const missed = new Set([4, 9, 12, 17, 23, 26]); let k = 0, html = '';
+  for (let i = 0; i < 42; i++) {
+    if (i >= 29) html += '<i class="f"></i>';
+    else if (missed.has(i)) html += '<i></i>';
+    else html += `<i class="d" style="--k:${k++}"></i>`;
+  }
+  el.innerHTML = html;
+})();
+
+/* Behaviours any slide can opt into with attributes: counters and chips that light up. */
+function generic(sl) {
+  sl.querySelectorAll('[data-countnum]').forEach((n) => countTo(n, parseFloat(n.dataset.countnum), +n.dataset.dec, +n.dataset.delay, 1400));
+  sl.querySelectorAll('[data-lit]').forEach((c) => { c.classList.toggle('lit', reduceMotion); if (!reduceMotion) later(() => c.classList.add('lit'), +c.dataset.lit); });
+}
+/* The stale spreadsheet on the problem slide: cells fade to grey one after another. */
+(function buildSheet() {
+  const el = document.getElementById('sheet'); if (!el) return;
+  el.innerHTML = Array.from({ length: 30 }, (_, i) => `<i style="--k:${(4.2 + ((i * 7) % 30) * 0.045).toFixed(2)}s"></i>`).join('');
+})();
+
+class SlidePresentation {
+  constructor() {
+    this.slides = [...document.querySelectorAll('.slide')];
+    this.stage = document.getElementById('deckStage');
+    this.dots = document.getElementById('navDots');
+    this.notes = document.getElementById('notesPanel');
+    this.current = -1; this.factor = 1;
+    this.main = this.slides.filter((x) => !x.dataset.appendix);
+    this.buildDots(); this.buildRails();
+    this.scale();
+    addEventListener('resize', () => this.scale());
+    addEventListener('keydown', (e) => this.key(e));
+    this.touch(); this.wheel();
+    addEventListener('hashchange', () => this.show(Number(location.hash.slice(1)) - 1 || 0));
+    this.show(Number(location.hash.slice(1)) - 1 || 0);
+  }
+  scale() {
+    const f = Math.min(innerWidth / 1920, innerHeight / 1080);
+    this.factor = f;
+    this.stage.style.transform = `translate(${(innerWidth - 1920 * f) / 2}px, ${(innerHeight - 1080 * f) / 2}px) scale(${f})`;
+  }
+  buildDots() {
+    this.slides.forEach((s, i) => {
+      const b = document.createElement('button');
+      b.setAttribute('aria-label', `Slide ${i + 1}: ${s.dataset.section || ''}`);
+      b.addEventListener('click', () => this.show(i));
+      this.dots.appendChild(b);
+    });
+  }
+  /* The chapter rail down the left edge: fills as the story moves on. */
+  buildRails() {
+    const N = this.main.length;
+    this.slides.forEach((s, i) => {
+      const k = Math.min(i, N - 1), r = document.createElement('div'); r.className = 'rail';
+      r.innerHTML = '<i></i>' + this.main.map((_, n) => `<b style="top:calc(${(n / (N - 1)) * 100}% - 5px)"></b>`).join('');
+      r.style.setProperty('--p', k / (N - 1));
+      [...r.querySelectorAll('b')].forEach((b, n) => b.classList.toggle('on', n <= k));
+      s.prepend(r);
+      const lab = s.querySelector('.secno');
+      if (lab) lab.textContent = s.dataset.appendix ? 'Appendix' : String(i + 1).padStart(2, '0') + ' / ' + String(N).padStart(2, '0');
+    });
+  }
+  key(e) {
+    if (e.target.isContentEditable) return;
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) { e.preventDefault(); this.show(this.current + 1); }
+    else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) { e.preventDefault(); this.show(this.current - 1); }
+    else if (e.key === 'Home') this.show(0);
+    else if (e.key === 'End') this.show(this.slides.length - 1);
+    else if (e.key === 'n' || e.key === 'N') this.notes.classList.toggle('on');
+  }
+  touch() {
+    let x0 = null;
+    addEventListener('touchstart', (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+    addEventListener('touchend', (e) => {
+      if (x0 === null) return;
+      const dx = e.changedTouches[0].clientX - x0; x0 = null;
+      if (Math.abs(dx) > 50) this.show(this.current + (dx < 0 ? 1 : -1));
+    }, { passive: true });
+  }
+  wheel() {
+    let lock = false;
+    addEventListener('wheel', (e) => {
+      if (lock || Math.abs(e.deltaY) < 30) return;
+      lock = true; setTimeout(() => (lock = false), 800);
+      this.show(this.current + (e.deltaY > 0 ? 1 : -1));
+    }, { passive: true });
+  }
+  show(i) {
+    i = Math.max(0, Math.min(i, this.slides.length - 1));
+    if (i === this.current) return;
+    this.current = i; clearTimers();
+    this.slides.forEach((s, n) => { s.classList.remove('go'); s.classList.toggle('active', n === i); s.classList.toggle('visible', n === i); });
+    [...this.dots.children].forEach((d, n) => { d.classList.toggle('on', n === i); d.classList.toggle('appx', !!this.slides[n].dataset.appendix); });
+    const sl = this.slides[i], n = sl.querySelector('.notes');
+    this.notes.innerHTML = n ? n.innerHTML : '';
+    history.replaceState(null, '', '#' + (i + 1));
+    /* Two frames, so the hidden start state paints before the show begins. */
+    requestAnimationFrame(() => requestAnimationFrame(() => { sl.classList.add('go'); (scripts[sl.dataset.id] || (() => {}))(sl); generic(sl); }));
+  }
+}
+const deck = new SlidePresentation();
+
+/* ===========================================
+   INLINE EDITING (E): click any headline or line to change it; saved in this browser.
+   Ctrl+S downloads a copy of the deck with your edits.
+   =========================================== */
+const editor = {
+  isActive: false,
+  key: 'mission-control-pitch.landing.v1',
+  nodes: [...document.querySelectorAll('[data-edit]')],
+  init() {
+    try { const saved = JSON.parse(localStorage.getItem(this.key) || '{}'); this.nodes.forEach((n, i) => { if (saved[i] != null) n.innerHTML = saved[i]; }); } catch (e) { /* no saved edits */ }
+    this.nodes.forEach((n) => n.addEventListener('input', () => this.save()));
+  },
+  save() { try { localStorage.setItem(this.key, JSON.stringify(Object.fromEntries(this.nodes.map((n, i) => [i, n.innerHTML])))); } catch (e) { /* storage unavailable */ } },
+  toggle() {
+    this.isActive = !this.isActive;
+    document.body.classList.toggle('editing', this.isActive);
+    document.getElementById('editToggle').classList.toggle('active', this.isActive);
+    this.nodes.forEach((n) => n.setAttribute('contenteditable', this.isActive ? 'true' : 'false'));
+  },
+  download() {
+    const was = this.isActive; if (was) this.toggle();
+    const blob = new Blob(['<!DOCTYPE html>\n' + document.documentElement.outerHTML], { type: 'text/html' });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'mission-control-pitch.html' });
+    a.click(); URL.revokeObjectURL(a.href);
+    if (was) this.toggle();
+  },
+};
+editor.init();
+const hot = document.querySelector('.edit-hotzone'), tog = document.getElementById('editToggle'); let hideT = null;
+hot.addEventListener('mouseenter', () => { clearTimeout(hideT); tog.classList.add('show'); });
+hot.addEventListener('mouseleave', () => { hideT = setTimeout(() => { if (!editor.isActive) tog.classList.remove('show'); }, 400); });
+tog.addEventListener('mouseenter', () => clearTimeout(hideT));
+tog.addEventListener('mouseleave', () => { hideT = setTimeout(() => { if (!editor.isActive) tog.classList.remove('show'); }, 400); });
+hot.addEventListener('click', () => editor.toggle()); tog.addEventListener('click', () => editor.toggle());
+addEventListener('keydown', (e) => {
+  if ((e.key === 'e' || e.key === 'E') && !e.target.isContentEditable) editor.toggle();
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); editor.download(); }
+});
+</script>
+</body>
+</html>
