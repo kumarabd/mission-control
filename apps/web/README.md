@@ -81,18 +81,16 @@ Environment:
 The web checks run from the repository root in `.github/workflows/web.yml` on pushes and pull requests that touch
 `apps/web/**` or the root lockfile: lint, typecheck, tests and build.
 
-Images publish from `.github/workflows/web-image.yml`:
+The standalone Helm chart publishes from `.github/workflows/web-chart.yml` on `web-v*` tags:
 
 ```bash
 git tag web-v0.1.0
 git push origin web-v0.1.0
 ```
 
-The workflow builds `apps/web/Dockerfile` with the root workspace context and publishes
-`ghcr.io/kumarabd/mission-control-web` (semver, commit SHA, `internal` and `latest`) for `linux/amd64` and
-`linux/arm64`. The `internal` tag is the shared agent-harness deployment channel. Set the repository variable
-`VITE_CLERK_PUBLISHABLE_KEY` so the published bundle carries the Clerk key; the remaining URLs are Dockerfile defaults.
-The Helm chart defaults its image tag to `Chart.appVersion` (currently `0.1.0`).
+Container images are **not** published from this repository. Build and push `apps/web/Dockerfile` in the deployment
+pipeline; the shared agent-harness deployment uses the `internal` tag. The Helm chart defaults its image tag to
+`Chart.appVersion` (currently `0.1.0`).
 
 ## Kubernetes (Helm)
 

@@ -19,8 +19,8 @@ helm install agent-web oci://ghcr.io/kumarabd/charts/agent-web \
   --namespace agent-brain --create-namespace
 ```
 
-The chart's default image tag is `Chart.appVersion` (`0.1.0`). The shared
-agent-harness deployment uses the same image with its own `internal` tag.
+The chart's default image tag is `Chart.appVersion` (`0.1.0`); build and push that image in the deployment pipeline
+before installing. The shared agent-harness deployment uses the same image with its own `internal` tag.
 
 ## API modes
 
@@ -52,14 +52,16 @@ helm upgrade --install agent-web ./apps/web/charts/agent-web \
   --namespace agent-brain
 ```
 
-**Release image (GitHub tag `web-v*`):** set repository variable `VITE_CLERK_PUBLISHABLE_KEY=pk_live_...`.  
-API/MCP/install URLs are **baked in `Dockerfile`** for `agent-memory.nighthawklabs.org`.
+**Custom image:** the image is built outside this repository; the chart only references it. Build a local variant with
+the Clerk key for your environment:
 
 ```bash
 docker build -f apps/web/Dockerfile \
   --build-arg VITE_CLERK_PUBLISHABLE_KEY=pk_live_... \
   -t ghcr.io/kumarabd/mission-control-web:custom .
 ```
+
+API/MCP/install URLs are **baked in `Dockerfile`** for `agent-memory.nighthawklabs.org`.
 
 On agent-brain:
 
@@ -106,7 +108,7 @@ open http://localhost:3000/onboarding
 | Source | What |
 |--------|------|
 | **Dockerfile defaults** | `VITE_API_BASE_URL`, `VITE_MCP_SSE_URL`, `VITE_INSTALL_SCRIPT_URL`, `VITE_BASE_PATH` |
-| **GitHub variable** | `VITE_CLERK_PUBLISHABLE_KEY` only (per repo/environment) |
+| **Build environment** | `VITE_CLERK_PUBLISHABLE_KEY` (per environment, set by the image build) |
 | **Local override** | `docker build --build-arg VITE_*=...` for forks or staging |
 
 Runtime Helm `AGENT_BRAIN_API_URL` is nginx proxy upstream only; the SPA uses baked `VITE_API_BASE_URL` for API calls.

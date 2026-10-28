@@ -2,8 +2,9 @@ name: Publish web chart
 
 # Publish the standalone web Helm chart as an OCI artifact:
 #   git tag web-v0.1.0 && git push origin web-v0.1.0
-# This is separate from the image workflow and from the agent-harness
-# deployment chart, which is applied from source.
+# This packages only the chart. The container image is built by the
+# deployment pipeline, and the agent-harness deployment chart is applied
+# from source.
 on:
   push:
     tags:

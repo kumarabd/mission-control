@@ -18,17 +18,8 @@ Or `docker compose up -d` from `apps/web`.
 
 ## Publish
 
-Push a `web-v*` tag to publish `ghcr.io/kumarabd/mission-control-web` through `.github/workflows/web-image.yml`:
-
-```bash
-git tag web-v0.1.0
-git push origin web-v0.1.0
-```
-
-The workflow publishes the semver tag, the commit SHA, `internal` and `latest` for `linux/amd64` and `linux/arm64`.
-`internal` is the tag used by the shared agent-harness deployment chart. Set the repository variable
-`VITE_CLERK_PUBLISHABLE_KEY` before releasing. The Helm chart defaults to `Chart.appVersion` (`0.1.0`), which matches
-the first release tag. `workflow_dispatch` publishes the same tags without a semver tag.
+Container images are not published from this repository. Build and push the image in the deployment pipeline. The
+shared agent-harness chart expects `ghcr.io/kumarabd/mission-control-web:internal` (or the tag set in its values).
 
 Push to `main` runs the web lint, typecheck, test and build workflow (`.github/workflows/web.yml`); it does not publish
-an image.
+an image. The standalone Helm chart is published separately by `.github/workflows/web-chart.yml` on `web-v*` tags.

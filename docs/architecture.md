@@ -25,12 +25,11 @@ release discipline; they do not share UI code or build systems.
   web's `DESIGN.md` and the Apple `DESIGN.md` document each platform's implementation of the same system.
 - **Configuration:** each platform keeps its native configuration mechanism (Vite env, Xcode build settings, Gradle
   properties). Values and redirect URIs are documented rather than generated. Secrets never enter the repository.
-- **CI:** web, Android and foundations have path-scoped GitHub workflows. The web image publishes from
-  `.github/workflows/web-image.yml` on `web-v*` tags to `ghcr.io/kumarabd/mission-control-web`; the standalone web
-  chart publishes from `.github/workflows/web-chart.yml` to `oci://ghcr.io/kumarabd/charts`. The production deployment
-  chart is the `agentWeb` template in `agent-harness/deploy/helm/agent-harness-shared`, which is applied from source
-  and has no web dependency. Apple builds run locally with the commands in the root README and Makefile; macOS
-  runners are optional because of cost.
+- **CI:** web, Android and foundations have path-scoped GitHub workflows. The standalone web chart publishes from
+  `.github/workflows/web-chart.yml` to `oci://ghcr.io/kumarabd/charts`. Container images are built and pushed by the
+  deployment pipeline, not this repository. The production deployment chart is the `agentWeb` template in
+  `agent-harness/deploy/helm/agent-harness-shared`, which is applied from source and has no web dependency. Apple
+  builds run locally with the commands in the root README and Makefile; macOS runners are optional because of cost.
 
 ## Data flow
 
