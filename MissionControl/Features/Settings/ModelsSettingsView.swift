@@ -68,7 +68,7 @@ struct ModelsSettingsView: View {
             }
         }
         .screenBackground()
-        .navigationTitle("Models").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("Models").inlineNavigationTitle()
         .task { await load() }
         .refreshable { await load() }
     }

@@ -21,45 +21,36 @@ enum SemanticMemory {
         var id: String { rawValue }
         var title: String { self == .reflections ? "Reflections" : "About you" }
     }
+}
 
-    /// The three standing lenses on the person's world. The ids are API-layer
-    /// section names; the Explorer projects each from existing memory on read, so
-    /// the client never depends on a stored mental model.
-    enum Lens: String, CaseIterable, Identifiable {
-        case persona = "persona"
-        case intent = "intent"
-        case constraints = "constraints"
-
-        var id: String { rawValue }
-        var title: String {
-            switch self {
-            case .persona: "Persona"
-            case .intent: "Intent"
-            case .constraints: "Constraints"
-            }
+/// The world model: the person's entities with what is known about each (a free-form type and attributes) and
+/// the typed relations between them. A read-only projection from agent-brain's `/semantic/world`; the type and
+/// attribute names are free text, so the client shows them as they come and never switches on them.
+enum SemanticWorld {
+    struct Node: Codable, Equatable, Identifiable {
+        var id: String            // "entity:<uuid>"
+        var kind: String
+        var subtype: String?      // the profile's type, when one has been built
+        var label: String
+        var attributes: [String: String]?
+        var mentionCount: Int
+        var entityID: String { id.hasPrefix("entity:") ? String(id.dropFirst("entity:".count)) : id }
+        var typeName: String? { subtype.flatMap { $0.isEmpty ? nil : $0 } }
+        /// Attributes in a stable order, so the same entity always reads the same way.
+        var sortedAttributes: [(key: String, value: String)] {
+            (attributes ?? [:]).sorted { $0.key < $1.key }.map { (key: $0.key, value: $0.value) }
         }
-        /// SF Symbols only, one meaning per icon (DESIGN.md).
-        var symbol: String {
-            switch self {
-            case .persona: "person.text.rectangle"
-            case .intent: "target"
-            case .constraints: "square.dashed"
-            }
-        }
-        var blurb: String {
-            switch self {
-            case .persona: "Who you are, what you know, and how you like to work."
-            case .intent: "What you're trying to move forward right now."
-            case .constraints: "The limits, commitments, and conditions around your choices."
-            }
-        }
-        var emptyDetail: String {
-            switch self {
-            case .persona: "No memory has matched this lens yet. Retain something about who you are, and it will appear here."
-            case .intent: "No memory has matched this lens yet. Retain something about what you're working toward."
-            case .constraints: "No memory has matched this lens yet. Retain something about the limits you're working within."
-            }
-        }
+    }
+    struct Edge: Codable, Equatable, Identifiable {
+        var from: String; var to: String; var type: String; var label: String; var sourceCount: Int
+        var id: String { from + ">" + label + ">" + to }
+        /// "works_at" reads as "works at".
+        var phrase: String { label.replacingOccurrences(of: "_", with: " ") }
+    }
+    struct Graph: Codable, Equatable {
+        var schemaVersion: Int; var retrievedAt: Date; var bankAvailable: Bool
+        var nodes: [Node]; var edges: [Edge]; var truncated: Bool; var limit: Int
+        var relatedCount: Int { Set(edges.flatMap { [$0.from, $0.to] }).count }
     }
 }
 
@@ -107,8 +98,7 @@ struct MemoryService {
         try await page(section: section.rawValue, query: query, offset: offset)
     }
 
-    /// The three lens names are resolved by the API layer; any other section value
-    /// is a caller-chosen pinned mental-model id on the server.
+    /// Any section value other than reflections or about_you is a caller-chosen pinned mental-model id on the server.
     func page(section: String, query: String, offset: Int = 0, limit: Int = 20) async throws -> SemanticMemory.Page {
         let data = try await read(path: "/v1/explorer/semantic", query: [URLQueryItem(name: "section", value: section), URLQueryItem(name: "q", value: query), URLQueryItem(name: "limit", value: String(limit)), URLQueryItem(name: "offset", value: String(offset))])
         let page: SemanticMemory.Page
@@ -117,8 +107,13 @@ struct MemoryService {
         return page
     }
 
-    func lens(_ lens: SemanticMemory.Lens) async throws -> SemanticMemory.Page {
-        try await page(section: lens.rawValue, query: "", limit: 1)
+    /// The world model, GET /v1/explorer/semantic/world: entities with their profiles and the typed relations among them.
+    func world(limit: Int = 100) async throws -> SemanticWorld.Graph {
+        let data = try await read(path: "/v1/explorer/semantic/world", query: [URLQueryItem(name: "limit", value: String(limit))])
+        let graph: SemanticWorld.Graph
+        do { graph = try Wire.decoder.decode(SemanticWorld.Graph.self, from: data) } catch { throw MemoryReadError.invalidResponse }
+        guard graph.schemaVersion == 1, graph.limit > 0 else { throw MemoryReadError.invalidResponse }
+        return graph
     }
     func entityFacts(entityID: String, limit: Int = 20) async throws -> EntityMemory.Page {
         let data = try await read(path: "/v1/explorer/memory/facts", query: [URLQueryItem(name: "entity_id", value: entityID), URLQueryItem(name: "limit", value: String(limit))])

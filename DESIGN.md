@@ -1,6 +1,13 @@
-# Design system (iOS)
+# Design system (iOS and macOS)
 
-Operate mode, native iOS. Source of truth is code: `MissionControl/UI/`.
+Operate mode, native Apple clients. Source of truth is code: `MissionControl/UI/`.
+The macOS target compiles the same tokens through relative symlinks in
+`apps/macos/Sources/MissionControl/Shared/UI/`; its type scale is the desktop
+size, and its screens use split views instead of the iOS tab bar.
+
+The web console's implementation-level design system is [apps/web/DESIGN.md](apps/web/DESIGN.md). Both clients share
+the sage/warm-neutral palette, Hanken Grotesk and IBM Plex Mono; the shared token source and drift check are tracked in
+[docs/parity.md](docs/parity.md).
 
 - **Palette:** `MissionTheme` (sage tint on warm neutrals), with light, dark and increased-contrast values. New screens read it through `Tok` (`canvas`, `surface`, `raised`, `hairline`, `text`, `muted`, `accent`, `onAccent`, `warn`, `critical`).
 - **Meaning colors:** `MissionTone` (focus, scheduled, attention, reminder, completed) is the only way colour carries meaning, always paired with a symbol and a label.
@@ -61,24 +68,16 @@ Today, Goals, Chat and Memory are peers. Goals opens with Goals selected; Routin
 
 Chat is one ongoing conversation with the assistant: the iOS gateway gives a person a single session, so there is no list of conversations, and the gateway replays the recent tail whenever the socket opens. Voice and text take turns owning that socket, so the two never answer the same turn. A finished turn refreshes goals, plan, reminders and routines; workspace updates are receipts from returned records, with View and Change actions. Change prefills the composer; it does not parse prose or pretend the agent supports a structured plan preview. Screens that start a conversation (a new goal, a memory to correct or discuss) open Chat with their text in the composer.
 
-Journal and the local weekly-review screen are removed. Memory preserves browsing/search of existing local records and removes direct save/edit controls. Capture handles requests to remember or correct information. The accepted remote direction opens on Reflections with About you one tap away, powered by agent-brain semantic views; generated routine/reminder views remain a separate discussion. Goal trackers follow the accepted Life Engine catalog contract.
+Journal and the local weekly-review screen are removed. Memory preserves browsing of existing local records and removes direct save/edit controls. Capture handles requests to remember or correct information. Memory opens on Your world, powered by agent-brain semantic views; About you is marked coming soon and the Reflections feed is removed. Generated routine/reminder views remain a separate discussion. Goal trackers follow the accepted Life Engine catalog contract.
 
 ## Goal trackers
 
 The agent selects approved modules and headings; the client owns the presentation. Use the existing continuous card shape, hairlines, semantic palette and scalable fonts. iPhone presents purpose, a pending proposal review and up to four modules in a stack before More; iPad uses two columns except at accessibility sizes. Charts show recorded outcomes and desired targets separately. Check-ins use labeled native forms and disclosure for recent observations; revisions show a reason and preview before acceptance. Legacy goals and unsupported presentations retain basic review. Canonical contract and decisions live in Project Hub: `projects/life-engine/specs/goal-trackers.md` and `projects/mission-control/adr/0008-agent-composed-native-goal-trackers.md`.
 
-Memory is a read surface. Its three standing lenses and Reflections/About you are semantic projections of agent-brain; the harness retains ownership of memory reasoning and updates. Today, routine and tracker actions retain their existing native controls.
+Memory is a read surface. The World lens is a semantic projection of agent-brain; the harness retains ownership of memory reasoning and updates. About you is marked coming soon; the Reflections feed is removed. Today, routine and tracker actions retain their existing native controls.
 
 ## Memory
 
-Memory opens with **Your world**, three read-time lenses served by the memory API (`persona`, `intent`, `constraints`). They are projections over existing memory, not stored constructs: each lens lists the matching memories with dates, related entities and supporting-memory links. The lens catalog lives in the API layer; the client only reads it.
+Memory opens with **Your world**: the people, places and things agent-brain knows about, and how they connect, drawn as a diagram with a list alternative. Entity cards show free-form attributes and typed relations, and a drill-down lists what memory holds about one entity. The client only reads these projections; it never rewrites them.
 
-| Lens | Symbol | Says |
-|---|---|---|
-| Persona | `person.text.rectangle` | Who you are, what you know, and how you like to work. |
-| Intent | `target` | What you're trying to move forward right now. |
-| Constraints | `square.dashed` | The limits, commitments, and conditions around your choices. |
-
-Each row shows the lens's current summary and refresh date. A lens with no content says "Not formed" and its detail says "Not formed yet", with Chat as the next step. Reflections and About you remain below the lenses in the existing segmented view. Tapping a lens opens its document: icon, title, current content, related context and supporting memory. iPhone pushes; iPad keeps the list at 400pt and shows the lens in the right pane, falling back to one column at accessibility text sizes.
-
-Motion is one authored reveal, not a loop: the three rows arrive together in a 60ms stagger over 350ms ease-out, and the detail hero springs in once. Reduce Motion shows both immediately. Rows use `MissionPressStyle` for press feedback, and status is carried by text and shape, never colour alone.
+About you is shown as a coming-soon row, with Chat as the next step until the lens is ready. The Reflections feed and its search/pagination are removed, as are the older persona/intent/constraints lens rows. iPhone pushes World; iPad keeps the list at 400pt and shows the selected World or the About you placeholder in the right pane, falling back to one column at accessibility text sizes. Rows use `MissionPressStyle` for press feedback, and status is carried by text and shape, never colour alone.

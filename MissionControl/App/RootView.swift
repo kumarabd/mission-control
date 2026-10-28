@@ -81,7 +81,10 @@ struct MainTabs: View {
     var body: some View {
         Group {
             if let life {
-                TabView(selection: $tab) {
+                TabView(selection: Binding(get: { tab }, set: { new in
+                    if new == tab, new == .chat { chat.showLatest() }
+                    tab = new
+                })) {
                     TodayView(onSettings: { settings = true }).tabItem { Label("Today", systemImage: "sun.max") }.tag(Tab.today)
                     ProgressTab(onSettings: { settings = true }).tabItem { Label("Goals", systemImage: "chart.line.uptrend.xyaxis") }.tag(Tab.goals)
                     ChatView(onSettings: { settings = true }).tabItem { Label("Chat", systemImage: "bubble.left") }.badge(chat.unread).tag(Tab.chat)

@@ -21,6 +21,7 @@ struct ChatBubble: View {
     var agent = ChatParty(name: "Assistant")
     var you = ChatParty(name: "You")
     var onRetry: () -> Void = {}
+    var onExpand: (ChatTranscript.Item) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: item.role == .you ? .trailing : .leading, spacing: 3) {
@@ -28,15 +29,20 @@ struct ChatBubble: View {
                 if item.role == .you { Spacer(minLength: 24) }
                 else { avatar(agent) }
                 Group {
-                    if item.role == .assistant { MarkdownView(text: shown) }
-                    else { Text(item.text).font(.mission(.body)).foregroundStyle(Tok.text) }
+                    if item.role == .assistant {
+                        AssistantMessage(id: item.id, text: shown, streaming: item.streaming)
+                    } else {
+                        Text(item.text).font(.mission(.body)).foregroundStyle(Tok.text).textSelection(.enabled)
+                    }
                 }
-                .textSelection(.enabled)
                 .padding(Space.m)
                 .background(item.role == .you ? Tok.accent.opacity(0.14) : Tok.surface, in: MissionTheme.cardShape)
                 .overlay { MissionTheme.cardShape.strokeBorder(item.delivery == .failed ? Tok.critical.opacity(0.6) : Tok.hairline) }
                 .opacity(item.delivery == .sending ? 0.6 : 1)
                 .contextMenu {
+                    if item.role == .assistant {
+                        Button("Expand", systemImage: "arrow.up.left.and.arrow.down.right") { onExpand(item) }
+                    }
                     Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = shown }
                     if item.delivery == .failed { Button("Send again", systemImage: "arrow.clockwise", action: onRetry) }
                 }
@@ -47,8 +53,16 @@ struct ChatBubble: View {
         }
         .padding(.top, groupedAbove ? -Space.s + 2 : 0)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel((item.role == .you ? "You: " : "\(agent.name): ") + shown + (item.delivery == .failed ? ". Not delivered." : ""))
+        .accessibilityLabel((item.role == .you ? "You: " : "\(agent.name): ") + spoken + (item.delivery == .failed ? ". Not delivered." : ""))
         .accessibilityAction(named: "Send again") { if item.delivery == .failed { onRetry() } }
+        .accessibilityAction(named: "Expand message") { if item.role == .assistant { onExpand(item) } }
+    }
+
+    /// What is read aloud: what the bubble shows (the condensed text for a long reply), as words without markdown symbols.
+    private var spoken: String {
+        guard item.role == .assistant else { return item.text }
+        let compact = !item.streaming && MessageCondenser.isLong(shown)
+        return MessageCondenser.spoken(compact ? MessageCondenser.shared.cached(shown) ?? MessageCondenser.preview(shown) : shown)
     }
 
     /// The assistant's text without the tool-call transport it may be carrying.

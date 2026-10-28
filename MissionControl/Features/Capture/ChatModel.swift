@@ -38,6 +38,8 @@ final class ChatModel {
 
     private(set) var transcript = ChatTranscript()
     private(set) var question: Question?
+    /// The skill tasks still running, oldest first; a task leaves when its frame says it ended.
+    private(set) var tasks: [MobileGateway.TaskProgress] = []
     private(set) var link: Link = .connecting
     /// True a moment after the connection is lost, so a blink between two sockets does not flash a banner.
     private(set) var showsOffline = false
@@ -48,6 +50,9 @@ final class ChatModel {
     /// A draft another screen asked Chat to open with; `draftToken` changes so the view can notice.
     private(set) var pendingDraft: String?
     private(set) var draftToken = 0
+    /// Bumped when the Chat tab is tapped while already showing, so the thread returns to its newest message.
+    private(set) var latestToken = 0
+    func showLatest() { latestToken += 1 }
 
     /// Whether the Chat tab is showing. Showing it reads everything.
     var isVisible = false { didSet { if isVisible { unread = 0 } } }
@@ -141,7 +146,6 @@ final class ChatModel {
         let trimmed = text.trimmed
         guard !trimmed.isEmpty else { return }
         beginInteraction()
-        question = nil
         let id = gateway.sendMessage(trimmed, mode: "text")
         apply(.sent(clientID: id, text: trimmed))
     }
@@ -245,6 +249,9 @@ final class ChatModel {
             // clears it: an engine task's question belongs to the task, not to the chat turn that was running.
             question = Question(requestID: q.requestID, prompt: q.prompt, options: q.options, allowsFreeText: q.allowsFreeText)
             apply(.asked)
+        case .taskProgress(let progress):
+            tasks.removeAll { $0.taskID == progress.taskID }
+            if progress.isRunning { tasks.append(progress) }
         case .turnEnded(let turn, let status):
             apply(.ended(turn: turn, status: status))
             question = nil

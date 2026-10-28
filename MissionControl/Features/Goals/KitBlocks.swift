@@ -658,7 +658,7 @@ private struct LogBlock: View {
             VStack(alignment: .leading, spacing: Space.s) {
                 HStack(spacing: Space.s) {
                     TextField(observations.last.map { $0.value.formatted() } ?? "0", text: $text)
-                        .keyboardType(.decimalPad).focused($focused).font(.missionMono(.title3))
+                        .decimalKeyboard().focused($focused).font(.missionMono(.title3))
                         .padding(.horizontal, Space.m).frame(minHeight: 48)
                         .background(Tok.raised, in: MissionTheme.compactShape)
                         .accessibilityLabel("\(metric.label) in \(metric.unit)")

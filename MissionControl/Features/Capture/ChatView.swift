@@ -20,7 +20,15 @@ struct ChatView: View {
     /// Whether the end of the thread is in view. Replies do not pull you down from older messages you are reading.
     @State private var atBottom = true
     @State private var newBelow = 0
+    /// Older messages are asked for by pulling down past the top of the thread, not by reaching it: the system also scrolls a
+    /// scroll view to the top when its tab is tapped again, and that must never load anything.
+    @State private var pull: CGFloat = 0
+    @State private var pullPeak: CGFloat = 0
+    @State private var pullStartedAtTop = false
+    private static let pullToLoad: CGFloat = 120
     @State private var switching = false
+    /// The assistant message opened full-size over the blurred thread.
+    @State private var expandedMessage: ChatTranscript.Item?
     @FocusState private var focused: Bool
 
     private var voiceOn: Bool { voice.state != .idle && voice.state != .unavailable }
@@ -45,15 +53,15 @@ struct ChatView: View {
                     LazyVStack(alignment: .leading, spacing: Space.m) {
                         if chat.transcript.items.isEmpty && !chat.transcript.isRunning && !voiceOn { greeting }
                         if chat.transcript.hasMoreEarlier && !chat.transcript.items.isEmpty {
-                            // Reaching the top asks for the next page of older messages, and says so while it waits.
-                            earlierRow.onAppear { loadEarlier() }
+                            earlierRow
                         }
                         ForEach(ChatTranscript.rows(chat.transcript.displayed)) { row in
                             switch row {
                             case .day(let day): ChatDayHeading(day: day)
                             case .message(let item, let grouped, let showsTime, let endsRun):
-                                ChatBubble(item: item, groupedAbove: grouped, showsTime: showsTime, showsAvatar: endsRun, agent: agent, you: you,
-                                           onRetry: { chat.retry(item) }).id(item.id)
+                                ChatBubble(item: settled(item), groupedAbove: grouped, showsTime: showsTime, showsAvatar: endsRun, agent: agent, you: you,
+                                           onRetry: { chat.retry(item) },
+                                           onExpand: { expandedMessage = $0 }).id(item.id)
                             }
                         }
                         if voiceOn, !voice.conversationText.displayedUserText.isEmpty {
@@ -64,10 +72,12 @@ struct ChatView: View {
                             ChatBubble(item: .init(id: "voice:assistant", role: .assistant, text: voice.conversationText.assistantText, turn: 0, streaming: false),
                                        showsAvatar: true, agent: agent, you: you)
                         }
+                        ForEach(chat.tasks, id: \.taskID) { taskProgress($0) }
                         if busy { working }
                         if !receipts.isEmpty { receiptsBlock }
                         if let question = chat.question {
                             AskBubble(question: question, agent: agent, showsPrompt: !questionRepeatsLastReply,
+                                      onExpand: { expandedMessage = .init(id: "ask:" + question.requestID, role: .assistant, text: $0, turn: 0, streaming: false) },
                                       onOption: { q, option in chat.answer(q, optionID: option.id) },
                                       onText: { q, text in chat.answer(q, text: text) })
                         }
@@ -78,21 +88,51 @@ struct ChatView: View {
                             Text(failure).font(.mission(.callout)).foregroundStyle(Tok.critical)
                         }
                         Color.clear.frame(height: 1).id(Self.endID)
-                            .onAppear { atBottom = true; newBelow = 0 }
-                            .onDisappear { atBottom = false }
                     }
+                    .background(NoScrollsToTop())
                     .padding(.horizontal, Space.l).padding(.vertical, Space.m)
                     .frame(maxWidth: 760, alignment: .leading)
                     .frame(maxWidth: .infinity)   // centred column on iPad; full width on iPhone
                 }
                 .defaultScrollAnchor(.bottom)
+                // Measured, not inferred from a lazy row coming and going: a row that is recycled while content above it changes
+                // height would flip this and make the jump button flicker.
+                .onScrollGeometryChange(for: Bool.self) { g in
+                    g.contentOffset.y + g.containerSize.height - g.contentInsets.bottom >= g.contentSize.height - 80
+                } action: { _, near in
+                    atBottom = near
+                    if near { newBelow = 0 }
+                }
+                .onAppear { anchorToLatest(proxy) }
+                .onScrollGeometryChange(for: CGFloat.self) { g in max(0, -(g.contentOffset.y + g.contentInsets.top)) } action: { _, over in
+                    pull = over
+                    pullPeak = max(pullPeak, over)
+                }
+                // A pull counts only if the drag began with the thread already at its top, and loads only on release.
+                .onScrollPhaseChange { old, new in
+                    if new == .interacting { pullStartedAtTop = pull < 2; pullPeak = 0 }
+                    else if old == .interacting {
+                        if pullStartedAtTop, pullPeak >= Self.pullToLoad, chat.transcript.hasMoreEarlier,
+                           !chat.transcript.loadingEarlier { loadEarlier() }
+                        pullPeak = 0
+                    }
+                }
+                .overlay(alignment: .top) { pullIndicator }
+                // Tapping Chat's tab while it is showing stays on the newest message (the system's scroll-to-top is switched off below).
+                .onChange(of: chat.latestToken) { _, _ in
+                    atBottom = true; newBelow = 0
+                    proxy.scrollTo(Self.endID, anchor: .bottom)
+                }
                 .scrollDismissesKeyboard(.interactively)
                 .overlay(alignment: .bottomTrailing) { if !atBottom { jumpToLatest(proxy) } }
                 .onChange(of: chat.transcript.items.count) { old, new in
                     if atBottom || chat.transcript.items.last?.role == .you { scrollToEnd(proxy) }
                     else if new > old { newBelow += new - old }
                 }
-                .onChange(of: chat.transcript.items.last?.text) { _, _ in if atBottom { scrollToEnd(proxy) } }
+                .onChange(of: chat.transcript.items.last?.text) { _, _ in if atBottom { proxy.scrollTo(Self.endID, anchor: .bottom) } }
+                // The loader sits below the last message, so it is the end marker — not the last bubble — that has to
+                // be brought into view when the assistant starts working.
+                .onChange(of: busy) { _, working in if working, atBottom { scrollToEnd(proxy) } }
                 .onChange(of: chat.question?.requestID) { _, _ in if atBottom { scrollToEnd(proxy) } }
                 .onChange(of: chat.transcript.earlier.count) { old, new in
                     guard new > old, let id = keepAtTop else { return }
@@ -157,11 +197,22 @@ struct ChatView: View {
                 if new == .listening, old == .processing || old == .speaking { Task { await refresh() } }
             }
         }
+        .sheet(item: $expandedMessage) { message in
+            ExpandedMessage(message: message, agent: agent)
+                .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+        }
     }
 
     // MARK: The thread
 
     private static let endID = "chat.end"
+
+    /// A message is only streaming while a turn is running; a stream flag left over from a turn that ended or was dropped
+    /// must not keep the reply drawn in full.
+    private func settled(_ item: ChatTranscript.Item) -> ChatTranscript.Item {
+        guard item.streaming, !chat.transcript.isRunning else { return item }
+        var item = item; item.streaming = false; return item
+    }
 
     /// Said once the connection has been gone a moment: what happens to what you type meanwhile.
     private var offlineBanner: some View {
@@ -206,6 +257,25 @@ struct ChatView: View {
 
     /// The assistant is on it: its picture, the dots and, when it says, what it is doing. Shown for spoken turns too, where
     /// the text connection is not the one working.
+    /// A skill task's place in its steps, shown while it runs and gone when it ends.
+    private func taskProgress(_ task: MobileGateway.TaskProgress) -> some View {
+        VStack(alignment: .leading, spacing: Space.xs) {
+            HStack(spacing: Space.s) {
+                ProgressView().controlSize(.small)
+                Text(task.skill.replacingOccurrences(of: "-", with: " ").capitalized).font(.mission(.footnote, .semibold))
+                Spacer(minLength: 0)
+                Text("Step \(task.step) of \(task.total)").font(.mission(.footnote)).foregroundStyle(Tok.muted)
+            }
+            ProgressView(value: Double(task.step), total: Double(max(task.total, 1))).tint(Tok.muted)
+            if !task.title.isEmpty { Text(task.title).font(.mission(.caption)).foregroundStyle(Tok.muted) }
+        }
+        .padding(Space.m)
+        .background(Tok.surface, in: RoundedRectangle(cornerRadius: 14))
+        .overlay { RoundedRectangle(cornerRadius: 14).strokeBorder(Tok.hairline) }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .transition(.opacity)
+    }
+
     private var working: some View {
         HStack(alignment: .bottom, spacing: Space.s) {
             AvatarView(name: agent.name, url: agent.imageURL, size: ChatBubble.avatarSize, agent: true)
@@ -311,7 +381,6 @@ struct ChatView: View {
 
     private var canSend: Bool {
         !draft.trimmed.isEmpty
-            && (chat.question == nil || chat.question!.allowsFreeText || chat.question!.options.isEmpty)
     }
 
     private var voiceStatus: String {
@@ -331,7 +400,8 @@ struct ChatView: View {
         guard !text.isEmpty else { return }
         draft = ""
         receipts = []
-        if let question = chat.question { chat.answer(question, text: text) } else { chat.send(text) }
+        // Typed text answers a question that takes it; on an options-only question it is a message of its own.
+        if let question = chat.question, question.allowsFreeText || question.options.isEmpty { chat.answer(question, text: text) } else { chat.send(text) }
     }
 
     private func consumeDraft() {
@@ -352,15 +422,54 @@ struct ChatView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// What the pull shows: a ring that fills as the thread is dragged down, then the loader while a page is fetched.
+    @ViewBuilder private var pullIndicator: some View {
+        let progress = min(pull / Self.pullToLoad, 1)
+        if !chat.transcript.items.isEmpty, pull > 6 || chat.transcript.loadingEarlier {
+            HStack(spacing: Space.s) {
+                if chat.transcript.loadingEarlier {
+                    ProgressView()
+                    Text("Loading earlier messages\u{2026}")
+                } else if !chat.transcript.hasMoreEarlier {
+                    Text("This is the start of the conversation")
+                } else {
+                    Image(systemName: "arrow.down").rotationEffect(.degrees(progress >= 1 ? 180 : 0))
+                    Text(progress >= 1 ? "Release to load earlier" : "Keep pulling for earlier messages")
+                }
+            }
+            .font(.mission(.footnote, .medium)).foregroundStyle(Tok.muted)
+            .padding(.horizontal, Space.m).frame(minHeight: 36)
+            .background(Tok.surface, in: Capsule()).overlay { Capsule().strokeBorder(Tok.hairline) }
+            .overlay(alignment: .bottom) {
+                Capsule().fill(Tok.accent).frame(height: 2).scaleEffect(x: chat.transcript.loadingEarlier ? 1 : progress, anchor: .leading).padding(.horizontal, Space.m)
+            }
+            .padding(.top, Space.s)
+            .opacity(chat.transcript.loadingEarlier ? 1 : min(1, pull / 30))
+            .allowsHitTesting(false).transition(.opacity)
+        }
+    }
+
     private func loadEarlier() {
         keepAtTop = chat.transcript.displayed.first?.id
         chat.loadEarlier()
     }
 
     private func scrollToEnd(_ proxy: ScrollViewProxy) {
-        guard let last = chat.transcript.items.last?.id else { return }
-        if reduceMotion { proxy.scrollTo(last, anchor: .bottom) }
-        else { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(last, anchor: .bottom) } }
+        // The end marker is below the working loader, the question block and the receipts; anchoring it shows the
+        // newest thing on screen, whatever that is.
+        if reduceMotion { proxy.scrollTo(Self.endID, anchor: .bottom) }
+        else { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.endID, anchor: .bottom) } }
+    }
+
+    /// Opening Chat always starts at the newest message. The anchor is applied once the restored window has laid out;
+    /// only after that may the top row ask for older messages.
+    private func anchorToLatest(_ proxy: ScrollViewProxy) {
+        atBottom = true
+        newBelow = 0
+        Task { @MainActor in
+            await Task.yield()
+            proxy.scrollTo(Self.endID, anchor: .bottom)
+        }
     }
 
     private func refresh() async {
@@ -446,5 +555,34 @@ private struct AgentSwitcher: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// The whole of an assistant message, in a sheet over the thread. The system owns dismissing it: Done, or drag it down.
+private struct ExpandedMessage: View {
+    @Environment(\.dismiss) private var dismiss
+    let message: ChatTranscript.Item
+    let agent: ChatParty
+
+    var body: some View {
+        NavigationStack {
+            ScrollView { MarkdownView(text: ToolCallText.stripped(message.text)).padding(Space.l) }
+                .screenBackground()
+                .navigationTitle(agent.name).navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
+/// Switches off the system's scroll-to-top for the scroll view it sits in (a status-bar tap, or tapping the tab that is
+/// already showing). In a chat the top is the oldest message, so that gesture would fling the thread away from the
+/// newest one.
+private struct NoScrollsToTop: UIViewRepresentable {
+    func makeUIView(context: Context) -> UIView { UIView() }
+    func updateUIView(_ view: UIView, context: Context) {
+        DispatchQueue.main.async {
+            var up: UIView? = view
+            while let v = up { if let scroll = v as? UIScrollView { scroll.scrollsToTop = false; return }; up = v.superview }
+        }
     }
 }

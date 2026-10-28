@@ -82,7 +82,7 @@ struct KitScreen<Fallback: View>: View {
                         }.padding(Space.m).frame(maxWidth: 1000).frame(maxWidth: .infinity)
                     }
                     .refreshable { await refresh() }
-                    .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+                    .navigationTitle(title).inlineNavigationTitle()
                 } else {
                     VStack(spacing: 0) {
                         feedback.padding(.horizontal, Space.m)
@@ -103,13 +103,13 @@ struct KitScreen<Fallback: View>: View {
             } else { ContentUnavailableView("This is gone", systemImage: "flag") }
         }
         .screenBackground()
-        .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(title).inlineNavigationTitle()
         .task(id: subject) { loadComposeState(); await refresh() }
         // A goal with no view gets one composed as soon as the assistant is free; when its turn ends, the view is read.
         .onChange(of: chat.transcript.isRunning) { _, running in if !running { composeIfNeeded() } }
         .onChange(of: chat.completedTurns) { _, _ in Task { await refresh() } }
         .sheet(item: $edit, onDismiss: { Task { await refresh() } }) { selection in
-            if let tracker {
+            if tracker != nil {
                 MeasurementSheet(subject: subject, metric: selection.metric, measurement: selection.measurement)
                     .environment(life)
             }
@@ -266,7 +266,7 @@ private struct MeasurementSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Value in \(metric.unit)", text: $value).keyboardType(.numbersAndPunctuation)
+                    TextField("Value in \(metric.unit)", text: $value).numericKeyboard()
                         .accessibilityLabel("\(metric.label), in \(metric.unit)")
                     DatePicker("Observed", selection: $at, in: ...Date())
                     TextField("Notes (optional)", text: $notes, axis: .vertical).lineLimit(2...5)
@@ -285,9 +285,9 @@ private struct MeasurementSheet: View {
                     }
                 }
             }
-            .navigationTitle(measurement == nil ? "Check in" : "Edit observation").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(measurement == nil ? "Check in" : "Edit observation").inlineNavigationTitle()
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() }.disabled(busy) } }
-            .interactiveDismissDisabled(busy || pending != nil || deleting)
+            .dismissLocked(busy || pending != nil || deleting)
             .confirmationDialog("Remove this observation?", isPresented: $confirmDelete, titleVisibility: .visible) {
                 Button("Remove observation", role: .destructive) { remove() }
             }

@@ -19,8 +19,8 @@ enum PushLink {
 
     static func section(for entity: String) -> Section? {
         switch entity {
-        case "task", "event": .today
-        case "goal": .goals
+        case "task", "event", "plan_item": .today
+        case "goal", "routine", "reminder": .goals
         case "journal_entry", "note", "capture": .memory
         default: nil
         }

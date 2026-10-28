@@ -1,5 +1,5 @@
 {
-  "originHash" : "e6155bcb55384e0fcde0a157fe2ab6f9ec771195d96ecdac0026f000177a4685",
+  "originHash" : "f0d923480a0a38f3424b8160aeff761030bcff842c70089bef0d9d801a1ce316",
   "pins" : [
     {
       "identity" : "clerk-ios",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "059c48344d84e5c0867a9765b21f113327b4a709",
         "version" : "1.5.4"
+      }
+    },
+    {
+      "identity" : "forcegraph",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ianleon/ForceGraph.git",
+      "state" : {
+        "revision" : "55354c76d179a3ebbe58199544442d5f5f10765c",
+        "version" : "0.3.0"
       }
     },
     {

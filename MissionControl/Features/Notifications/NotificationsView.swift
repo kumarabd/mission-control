@@ -27,7 +27,7 @@ struct NotificationsView: View {
         }
         .readableWidth()
         .screenBackground()
-        .navigationTitle("Notifications").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("Notifications").inlineNavigationTitle()
         .task { if !model.loaded { await model.refresh() } }
         .toolbar {
             if model.unread > 0 {

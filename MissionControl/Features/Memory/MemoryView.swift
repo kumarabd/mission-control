@@ -7,18 +7,16 @@ struct MemoryView: View {
     @Environment(AuthService.self) private var auth
     @Environment(ChatModel.self) private var chat
     @Environment(\.scenePhase) private var scenePhase
-    @State private var section: SemanticMemory.Section = .reflections
-    @State private var query = ""
     @State private var model = MemoryModel()
     @State private var localRecords = false
-    @State private var selectedID: String?
-    @State private var selectedLens: SemanticMemory.Lens?
+    @State private var selection: MemorySelection = .world
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.dynamicTypeSize) private var typeSize
 
-    /// A split view only while the list and detail both have room. At
-    /// accessibility text sizes the iPad falls back to the phone's single column.
-    private var usesSplit: Bool { sizeClass == .regular && !typeSize.isAccessibilitySize }
+    /// The iPad gives the graph the full Memory surface; the World/About you
+    /// lenses live in a compact picker instead of a 400 pt list column.
+    /// Accessibility text sizes fall back to the phone's list.
+    private var usesExpanded: Bool { sizeClass == .regular && !typeSize.isAccessibilitySize }
 
     private var service: MemoryService {
         #if DEBUG
@@ -26,21 +24,18 @@ struct MemoryView: View {
         #endif
         return MemoryService(baseURL: Config.routerBaseURL + "/brain", token: { [auth] in await auth.token() })
     }
+
     var body: some View {
         NavigationStack {
             Group {
-                if usesSplit {
-                    HStack(spacing: 0) {
-                        memoryList.frame(width: 400)
-                        Divider()
-                        NavigationStack {
-                            if let lens = selectedLens {
-                                WorldLensDetail(lens: lens, service: service, initialItem: model.lensState(lens).item, onDiscuss: { discuss(lens) }).id(lens.id)
-                            } else if let item = model.items.first(where: { $0.id == selectedID }) {
-                                SemanticMemoryDetail(item: item, service: service, onDiscuss: { discuss(item) }).id(item.id)
-                            } else {
-                                ContentUnavailableView("Select a lens or insight", systemImage: "brain.head.profile", description: Text("The standing lenses and what your assistant remembers appear here."))
-                            }
+                if usesExpanded {
+                    VStack(spacing: 0) {
+                        lensPicker
+                        switch selection {
+                        case .world:
+                            WorldScreen(service: service, initial: model.world, onDiscuss: discussWorld)
+                        case .aboutYou:
+                            AboutYouComingSoon { discuss() }
                         }
                     }
                 } else {
@@ -49,143 +44,135 @@ struct MemoryView: View {
             }
             .screenBackground()
             .navigationTitle("Memory")
-            .searchable(text: $query, prompt: "Search \(section.title.lowercased())")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { AppMark() }
                 ToolbarItemGroup(placement: .primaryAction) {
                     Button("Discuss memory", systemImage: "bubble.left") { discuss() }.frame(minWidth: 44, minHeight: 44)
+                    if usesExpanded && !life.search("").isEmpty {
+                        Button("Saved on this device", systemImage: "internaldrive") { localRecords = true }
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
                     Button("Settings", systemImage: "person.crop.circle", action: onSettings).frame(minWidth: 44, minHeight: 44)
                 }
             }
             .navigationDestination(isPresented: $localRecords) { LocalMemoryRecords() }
-            .refreshable {
-                await reload()
-                await model.loadLenses(service: service, force: true)
-            }
-            .task { await model.loadLenses(service: service) }
-            .task(id: "\(section.rawValue):\(query):\(refreshToken)") {
-                if !query.isEmpty { try? await Task.sleep(for: .milliseconds(300)) }
-                guard !Task.isCancelled else { return }; await reload()
-            }
-            .task(id: refreshToken) { if refreshToken > 0 { await model.loadLenses(service: service, force: true) } }
+            .refreshable { await model.loadWorld(service: service, force: true) }
+            .task { await model.loadWorld(service: service) }
+            .task(id: refreshToken) { if refreshToken > 0 { await model.loadWorld(service: service, force: true) } }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active {
-                    Task {
-                        await reload()
-                        await model.loadLenses(service: service, force: true)
-                    }
-                }
+                if phase == .active { Task { await model.loadWorld(service: service, force: true) } }
             }
-            .onChange(of: selectedID) { _, id in if id != nil { selectedLens = nil } }
         }
     }
+
+    private var lensPicker: some View {
+        Picker("Memory lens", selection: $selection) {
+            ForEach(MemorySelection.allCases) { lens in
+                Text(lens.title).tag(lens)
+            }
+        }
+        .pickerStyle(.segmented)
+        .frame(maxWidth: 320)
+        .padding(.horizontal, Space.l)
+        .padding(.vertical, Space.s)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private var memoryList: some View {
-        List(selection: $selectedID) {
+        List {
             Section {
-                ForEach(Array(SemanticMemory.Lens.allCases.enumerated()), id: \.element.id) { index, lens in
-                    lensRow(lens, index: index)
-                }
+                worldRow
             } header: {
                 SectionHeading("Your world", detail: "Kept current")
             } footer: {
-                Text("Three standing views your assistant keeps up to date. They change as it learns more.")
+                Text("The people, places and things your assistant knows about, and how they connect. It changes as it learns more.")
                     .font(.mission(.footnote))
             }
             .listRowBackground(Tok.surface)
+
             Section {
-                Picker("Memory view", selection: $section) {
-                    ForEach(SemanticMemory.Section.allCases) { Text($0.title).tag($0) }
-                }.pickerStyle(.segmented)
-            }.listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-            if let failure = model.failure {
-                Section {
-                    Text(failure).font(.mission(.body)).foregroundStyle(Tok.muted)
-                    Button("Try again") { Task { await reload() } }.frame(minHeight: 44)
-                }.listRowBackground(Tok.surface)
+                aboutYouRow
+            } header: {
+                SectionHeading("More")
             }
-            if model.loading && model.items.isEmpty {
-                Section { ProgressView("Loading memory…").frame(minHeight: 80).frame(maxWidth: .infinity) }.listRowBackground(Tok.surface)
-            } else if model.loaded && model.items.isEmpty && model.failure == nil {
-                Section {
-                    VStack(alignment: .leading, spacing: Space.s) {
-                        Text(emptyTitle).font(.mission(.headline, .medium))
-                        Text(query.isEmpty ? "Your assistant's remembered context and understanding will appear here as it develops." : "Try another word or clear your search.")
-                            .font(.mission(.body)).foregroundStyle(Tok.muted)
-                        if query.isEmpty { Button("Talk with your assistant") { discuss() }.frame(minHeight: 44) }
-                    }.padding(.vertical, Space.s)
-                }.listRowBackground(Tok.surface)
-            }
-            if !model.items.isEmpty {
-                Section {
-                    ForEach(model.items) { item in
-                        if usesSplit { itemRow(item).tag(item.id) }
-                        else { NavigationLink { SemanticMemoryDetail(item: item, service: service, onDiscuss: { discuss(item) }) } label: { itemRow(item) } }
-                    }
-                    if model.hasMore { Button(model.loading ? "Loading…" : "More insights") { Task { await reload(more: true) } }.frame(minHeight: 44).disabled(model.loading) }
-                } footer: { Text("From your assistant's memory. Interpretations can change as more context is learned.").font(.mission(.footnote)) }
-                .listRowBackground(Tok.surface)
-            }
-            if let retrievedAt = model.retrievedAt {
-                Section { Text("Checked \(retrievedAt.formatted(date: .abbreviated, time: .shortened))").font(.mission(.caption)).foregroundStyle(Tok.muted) }.listRowBackground(Color.clear)
-            }
+            .listRowBackground(Tok.surface)
+
             if !life.search("").isEmpty {
                 Section { Button("Previously saved on this device") { localRecords = true }.frame(minHeight: 44) }.listRowBackground(Tok.surface)
             }
         }
         .scrollContentBackground(.hidden)
     }
+
     @ViewBuilder
-    private func lensRow(_ lens: SemanticMemory.Lens, index: Int) -> some View {
-        let row = WorldLensRow(lens: lens, state: model.lensState(lens), index: index, showsChevron: usesSplit)
-        if usesSplit {
-            Button {
-                selectedID = nil
-                selectedLens = lens
-            } label: { row }
-            .buttonStyle(MissionPressStyle())
-            .listRowBackground(selectedLens == lens ? Tok.accent.opacity(0.08) : Tok.surface)
-        } else {
-            NavigationLink {
-                WorldLensDetail(lens: lens, service: service, initialItem: model.lensState(lens).item, onDiscuss: { discuss(lens) })
-            } label: { row }
+    private var worldRow: some View {
+        NavigationLink {
+            WorldScreen(service: service, initial: model.world, onDiscuss: discussWorld)
+        } label: {
+            WorldRow(state: model.world, showsChevron: false)
         }
     }
-    private func itemRow(_ item: SemanticMemory.Item) -> some View {
-        VStack(alignment: .leading, spacing: Space.s) {
-            Text(item.label).font(.missionMono(.caption)).foregroundStyle(Tok.accent)
-            Text(item.title).font(.mission(.headline, .medium))
-            if let content = item.content, !content.isEmpty { Text(content).font(.mission(.subheadline)).foregroundStyle(Tok.muted).lineLimit(3) }
-            else { Text("No summary is available yet.").font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
-            if let date = item.updatedAt { Text("Updated \(date.formatted(date: .abbreviated, time: .omitted))").font(.mission(.caption)).foregroundStyle(Tok.muted) }
-        }.padding(.vertical, Space.s)
+
+    @ViewBuilder
+    private var aboutYouRow: some View {
+        let row = HStack(alignment: .top, spacing: Space.m) {
+            MissionIconBadge(symbol: "person.text.rectangle", padding: 10)
+            VStack(alignment: .leading, spacing: Space.xs) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("About you").font(.mission(.headline, .medium))
+                    Spacer(minLength: Space.s)
+                    Text("Coming soon").font(.missionMono(.caption)).foregroundStyle(Tok.muted)
+                }
+                Text("Who you are, what you know and how you like to work.")
+                    .font(.mission(.subheadline)).foregroundStyle(Tok.muted)
+            }
+        }
+        .padding(.vertical, Space.s)
+        .contentShape(Rectangle())
+        NavigationLink {
+            AboutYouComingSoon { discuss() }
+        } label: { row }
     }
-    private var emptyTitle: String {
-        if !query.isEmpty { return "No matching memory" }
-        if !model.bankAvailable { return "Your memory isn't ready here yet" }
-        return section == .reflections ? "Insights will take shape here" : "Your personal understanding is taking shape"
+
+    /// Asking about memory starts the conversation in Chat.
+    private func discuss() {
+        chat.request(draft: "About what you remember and understand about me: ")
     }
-    private func reload(more: Bool = false) async { await model.load(service: service, section: section, query: query, more: more) }
-    /// Asking about memory starts the conversation in Chat, with the item's context in the box.
-    private func discuss(_ item: SemanticMemory.Item? = nil) {
-        let context = item.map { "About memory item \($0.id), ‘\($0.title)’: " } ?? "About what you remember and understand about me: "
-        chat.request(draft: context)
-    }
-    private func discuss(_ lens: SemanticMemory.Lens) {
-        chat.request(draft: "About what you remember and understand about my \(lens.title.lowercased()): ")
+    private func discussWorld(_ entity: String?) {
+        chat.request(draft: entity.map { "About \($0) in my world: " } ?? "About the people, places and things in my world: ")
     }
 }
-private struct SemanticMemoryDetail: View {
-    let item: SemanticMemory.Item
-    var service: MemoryService
+
+private enum MemorySelection: String, CaseIterable, Identifiable {
+    case world, aboutYou
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .world: "World"
+        case .aboutYou: "About you"
+        }
+    }
+}
+
+private struct AboutYouComingSoon: View {
     var onDiscuss: () -> Void
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Space.l) {
-                Text(item.label).font(.missionMono(.caption)).foregroundStyle(Tok.accent)
-                if let date = item.updatedAt { Text("Updated \(date.formatted(date: .abbreviated, time: .shortened))").font(.mission(.subheadline)).foregroundStyle(Tok.muted) }
-                SemanticItemBody(item: item, service: service, onDiscuss: onDiscuss)
-            }.padding(Space.l).frame(maxWidth: 720).frame(maxWidth: .infinity, alignment: .leading)
-        }.screenBackground().navigationTitle(item.title).navigationBarTitleDisplayMode(.inline)
+        VStack(spacing: Space.m) {
+            Image(systemName: "person.text.rectangle")
+                .font(.system(size: 36))
+                .foregroundStyle(Tok.accent.opacity(0.8))
+                .accessibilityHidden(true)
+            Text("About you is coming soon").font(.mission(.title3, .medium))
+            Text("When it is ready, your assistant's understanding of who you are and how you like to work will appear here. Until then, ask it directly in Chat.")
+                .font(.mission(.body)).foregroundStyle(Tok.muted)
+                .multilineTextAlignment(.center).frame(maxWidth: 420)
+            Button("Talk with your assistant", action: onDiscuss).frame(minHeight: 44)
+        }
+        .padding(Space.xl).frame(maxWidth: .infinity, maxHeight: .infinity)
+        .screenBackground()
+        .navigationTitle("About you").navigationBarTitleDisplayMode(.inline)
     }
 }
 struct EntityMemoryDetail: View {

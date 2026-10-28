@@ -1,4 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// Semantic styling primitives used throughout Mission Control.
 /// All colors adapt to the system appearance and accessibility settings.
@@ -17,12 +22,20 @@ enum MissionTheme {
     static let reminder = adaptive(light: 0x9A4C3E, dark: 0xE6A18C, lightContrast: 0x4A1A11, darkContrast: 0xFFD0BF)
     static let telemetry = adaptive(light: 0x2E6F7E, dark: 0x74B9C8, lightContrast: 0x103638, darkContrast: 0xCFFAF3)
     static let health = adaptive(light: 0x5A302B, dark: 0xF2CCC4, lightContrast: 0x472017, darkContrast: 0xFFD7CF)
+    static let success = adaptive(light: 0x35734A, dark: 0x8FCE99, lightContrast: 0x1F4A2E, darkContrast: 0xB6E3BF)
+    /// The graph pane's recessed surface, shared with the web graph canvas.
+    static let graphCanvas = adaptive(light: 0xF1F3EC, dark: 0x151916, lightContrast: 0xEFF1E9, darkContrast: 0x0B0D0C)
+    #if canImport(UIKit)
     static let failure = Color(uiColor: .systemRed)
+    #else
+    static let failure = Color(nsColor: .systemRed)
+    #endif
 
     static let cardShape = RoundedRectangle(cornerRadius: 16, style: .continuous)
     static let compactShape = RoundedRectangle(cornerRadius: 12, style: .continuous)
 
     private static func adaptive(light: UInt32, dark: UInt32, lightContrast: UInt32, darkContrast: UInt32) -> Color {
+        #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
             let high = traits.accessibilityContrast == .high
             let value = traits.userInterfaceStyle == .dark ? (high ? darkContrast : dark) : (high ? lightContrast : light)
@@ -30,6 +43,20 @@ enum MissionTheme {
                            green: CGFloat((value >> 8) & 255) / 255,
                            blue: CGFloat(value & 255) / 255, alpha: 1)
         })
+        #else
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let value: UInt32
+            switch appearance.bestMatch(from: [.accessibilityHighContrastDarkAqua, .accessibilityHighContrastAqua, .darkAqua, .aqua]) {
+            case .accessibilityHighContrastDarkAqua: value = darkContrast
+            case .accessibilityHighContrastAqua: value = lightContrast
+            case .darkAqua: value = dark
+            default: value = light
+            }
+            return NSColor(red: CGFloat((value >> 16) & 255) / 255,
+                           green: CGFloat((value >> 8) & 255) / 255,
+                           blue: CGFloat(value & 255) / 255, alpha: 1)
+        })
+        #endif
     }
 }
 
@@ -166,6 +193,20 @@ extension Font {
 
 private extension Font.TextStyle {
     var missionSize: CGFloat {
+        #if os(macOS)
+        switch self {
+        case .largeTitle: 30
+        case .title: 26
+        case .title2: 20
+        case .title3: 17
+        case .headline, .body: 14
+        case .callout: 13
+        case .subheadline: 12
+        case .footnote, .caption: 11
+        case .caption2: 10
+        @unknown default: 14
+        }
+        #else
         switch self {
         case .largeTitle: 34
         case .title: 28
@@ -179,5 +220,6 @@ private extension Font.TextStyle {
         case .caption2: 11
         @unknown default: 17
         }
+        #endif
     }
 }

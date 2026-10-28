@@ -75,42 +75,51 @@ import Foundation
         let pending = try Wire.decoder.decode(SemanticMemory.Page.self, from: Data(contentsOf:dir.appendingPathComponent("profile_not_ready.json")))
         precondition(pending.items[0].availability == "not_ready")
 
-        // The three standing lenses read through the same page route, one pinned
-        // mental-model id at a time, and load together in the model.
-        let lensAPI = MemoryService(baseURL: api.baseURL, token: { "t" }, transport: { request in
-            let q = Dictionary(uniqueKeysWithValues: URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name,$0.value!) })
-            let section = q["section"]!
-            precondition(q["limit"] == "1", "\(q)")
-            var page = profilePage
-            page.section = section
-            return (try Wire.encoder.encode(page), response(request))
+        // The world model: one projection route, decoded as sent, loaded into the model, and kept on failure.
+        let worldJSON = """
+        {"schema_version":1,"retrieved_at":"2026-10-25T10:00:00Z","bank_available":true,"truncated":false,"limit":100,
+         "nodes":[{"id":"entity:a","kind":"entity","subtype":"person","label":"Dana","attributes":{"role":"lead","city":"Lisbon"},"mention_count":9},
+                  {"id":"entity:b","kind":"entity","subtype":"company","label":"Acme","mention_count":4},
+                  {"id":"entity:c","kind":"entity","label":"Mara","mention_count":1}],
+         "edges":[{"from":"entity:a","to":"entity:b","type":"relation","label":"works_at","source_count":2}]}
+        """
+        var worldPaths: [String] = []
+        let worldAPI = MemoryService(baseURL: api.baseURL, token: { "t" }, transport: { request in
+            worldPaths.append(request.url!.path)
+            let q = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!
+            precondition(q.first { $0.name == "limit" }?.value == "100")
+            return (Data(worldJSON.utf8), response(request))
         })
-        let persona = try await lensAPI.lens(SemanticMemory.Lens.persona)
-        precondition(persona.section == SemanticMemory.Lens.persona.rawValue && persona.items.count == 1)
-        let lensModel = MemoryModel()
-        await lensModel.loadLenses(service: lensAPI)
-        precondition(lensModel.lensesLoaded)
-        for lens in SemanticMemory.Lens.allCases {
-            precondition(lensModel.lensState(lens).item?.title == "About you", lens.rawValue)
-        }
-        let failingLenses = MemoryModel()
-        await failingLenses.loadLenses(service: offline)
-        for lens in SemanticMemory.Lens.allCases {
-            if case .failed = failingLenses.lensState(lens) {} else { preconditionFailure("expected \(lens.rawValue) to fail") }
-        }
-        var empty = profilePage
-        empty.items = []
-        let emptyAPI = MemoryService(baseURL: api.baseURL, token: { "t" }, transport: { request in
-            let section = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)!.queryItems!.first { $0.name == "section" }!.value!
-            var page = empty
-            page.section = section
-            return (try Wire.encoder.encode(page), response(request))
+        let graph = try await worldAPI.world()
+        precondition(worldPaths == ["/brain/v1/explorer/semantic/world"], "\(worldPaths)")
+        precondition(graph.nodes.count == 3 && graph.edges.count == 1)
+        precondition(graph.nodes[0].entityID == "a" && graph.nodes[0].typeName == "person")
+        precondition(graph.nodes[0].sortedAttributes.map(\.key) == ["city", "role"], "attributes read in a stable order")
+        precondition(graph.nodes[2].typeName == nil && graph.nodes[2].attributes == nil, "an entity with no profile has no type")
+        precondition(graph.edges[0].phrase == "works at" && graph.edges[0].sourceCount == 2)
+        precondition(graph.relatedCount == 2)
+        let worldModel = MemoryModel()
+        await worldModel.loadWorld(service: worldAPI)
+        precondition(worldModel.worldLoaded && worldModel.world.graph?.nodes.count == 3)
+        await worldModel.loadWorld(service: offline, force: true)
+        precondition(worldModel.world.graph?.nodes.count == 3, "a failed refresh keeps the last good world")
+        let failingWorld = MemoryModel()
+        await failingWorld.loadWorld(service: offline)
+        if case .failed = failingWorld.world {} else { preconditionFailure("a first load that fails shows the failure") }
+        let noWorld = MemoryService(baseURL: api.baseURL, token: { "t" }, transport: { request in
+            (Data(#"{"schema_version":1,"retrieved_at":"2026-10-25T10:00:00Z","bank_available":true,"nodes":[],"edges":[],"truncated":false,"limit":100}"#.utf8), response(request))
         })
-        let emptyModel = MemoryModel()
-        await emptyModel.loadLenses(service: emptyAPI)
-        for lens in SemanticMemory.Lens.allCases {
-            precondition(emptyModel.lensState(lens) == .empty, lens.rawValue)
-        }
-        print("Memory contract, auth, source, lens, cache and request ordering checks passed")
+        let emptyWorld = MemoryModel()
+        await emptyWorld.loadWorld(service: noWorld)
+        precondition(emptyWorld.world == .empty)
+        let oldServer = MemoryService(baseURL: api.baseURL, token: { "t" }, transport: { request in (Data(), response(request, 404)) })
+        do { _ = try await oldServer.world(); preconditionFailure("an older server has no world route") }
+        catch let error as MemoryReadError { precondition(error == .upgradeNeeded) }
+        let badSchema = MemoryService(baseURL: api.baseURL, token: { "t" }, transport: { request in
+            (Data(worldJSON.replacingOccurrences(of: "\"schema_version\":1", with: "\"schema_version\":2").utf8), response(request))
+        })
+        do { _ = try await badSchema.world(); preconditionFailure("an unknown schema is refused") }
+        catch let error as MemoryReadError { precondition(error == .invalidResponse) }
+        print("Memory contract, auth, source, world, cache and request ordering checks passed")
     }
 }

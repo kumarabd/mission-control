@@ -7,6 +7,13 @@ import UIKit
 /// Microphone capture, speech recognition, and speech synthesis stay on-device.
 @MainActor
 final class MobileGateway {
+    struct TaskProgress: Equatable, Sendable {
+        let taskID: String; let skill: String; let step: Int; let total: Int; let title: String
+        /// "running" until the task ends, then its outcome.
+        let state: String
+        var isRunning: Bool { state == "running" }
+    }
+
     enum Event {
         case turnStarted(Int)
         case delta(turnSequence: Int, text: String, replace: Bool, progress: Bool)
@@ -18,6 +25,8 @@ final class MobileGateway {
         case accepted(clientMessageID: String)
         case status(turnSequence: Int, text: String)
         case askUser(GatewayQuestion)
+        /// A skill task's place in its steps. It belongs to the task, not to a turn: the turn that started it has ended.
+        case taskProgress(TaskProgress)
         case turnEnded(Int, status: String)
         /// A page of older messages the gateway sent in answer to `requestHistory`, oldest first.
         case history(beforeTurn: Int, oldestTurn: Int, hasMore: Bool, messages: [HistoryMessage])
@@ -320,6 +329,10 @@ final class MobileGateway {
                 onEvent?(.askUser(.init(requestID: requestID, kind: frame.kind ?? "question", prompt: prompt,
                                         options: frame.options ?? [], allowsFreeText: frame.allowsFreeText ?? false)))
             }
+        case "task_progress":
+            if let id = frame.taskID, let skill = frame.skill, let step = frame.step, let total = frame.total, let state = frame.state {
+                onEvent?(.taskProgress(.init(taskID: id, skill: skill, step: step, total: total, title: frame.title ?? "", state: state)))
+            }
         case "turn_end":
             if let turn = frame.turnSequence {
                 if usesResumeCursor { UserDefaults.standard.set(max(turn, UserDefaults.standard.integer(forKey: cursorKey)), forKey: cursorKey) }
@@ -387,6 +400,7 @@ private struct ServerFrame: Decodable {
     let status: String?; let message: String?
     let beforeTurnSeq: Int?; let oldestTurnSeq: Int?; let hasMore: Bool?; let messages: [MobileGateway.HistoryMessage]?
     let throughTurnSeq: Int?
+    let taskID: String?; let skill: String?; let step: Int?; let total: Int?; let title: String?; let state: String?
     let retract: Bool?
     let createdAt: Date?
     enum CodingKeys: String, CodingKey {
@@ -396,6 +410,7 @@ private struct ServerFrame: Decodable {
         case throughTurnSeq = "through_turn_seq"
         case turnSequence = "turn_seq"; case sequence = "seq"; case clientMessageID = "client_msg_id"
         case requestID = "request_id"; case allowsFreeText = "allow_free_text"
+        case taskID = "task_id"; case skill, step, total, title, state
     }
 }
 

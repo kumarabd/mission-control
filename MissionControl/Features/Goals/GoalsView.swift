@@ -53,6 +53,7 @@ struct GoalRow: View {
             } else {
                 Text("No tasks yet").font(.mission(.subheadline)).foregroundStyle(Tok.muted)
             }
+            if let next = goal.next { Text("Next: \(next.title)").font(.mission(.subheadline)).foregroundStyle(Tok.muted).lineLimit(1) }
             if let ends = goal.endsOnText { Label(ends, systemImage: "calendar").font(.mission(.caption)).foregroundStyle(Tok.muted) }
         }
         .padding(.vertical, Space.xs)
@@ -109,6 +110,9 @@ struct GoalReview: View {
                     Button("Add an event", systemImage: "calendar.badge.plus") { adding = .event }.frame(minHeight: 44)
                     Button { chat.request(draft: "About my goal \u{201C}\(goal.title)\u{201D}: ") } label: {
                         Label("Change this with your assistant", systemImage: "bubble.left")
+                    }.frame(minHeight: 44)
+                    Button { chat.request(draft: "About my goal \u{201C}\(goal.title)\u{201D}: I keep putting this off. ") } label: {
+                        Label("I keep putting this off", systemImage: "clock.arrow.circlepath")
                     }.frame(minHeight: 44)
                     Button("Archive this goal", systemImage: "archivebox", role: .destructive) { confirmArchive = true }.frame(minHeight: 44)
                 } footer: { Text("Your assistant can also plan a goal out, and move dates when something changes.").font(.mission(.footnote)) }

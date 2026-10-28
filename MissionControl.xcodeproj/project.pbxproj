@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A10000000000000000000040 /* ClerkKit in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000041 /* ClerkKit */; };
+		A10000000000000000000046 /* ForceGraph in Frameworks */ = {isa = PBXBuildFile; productRef = A10000000000000000000047 /* ForceGraph */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000040 /* ClerkKit in Frameworks */,
+				A10000000000000000000046 /* ForceGraph in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,6 +73,7 @@
 			name = MissionControl;
 			packageProductDependencies = (
 				A10000000000000000000041 /* ClerkKit */,
+				A10000000000000000000047 /* ForceGraph */,
 			);
 			productName = MissionControl;
 			productReference = A10000000000000000000021 /* MissionControl.app */;
@@ -102,6 +105,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				A10000000000000000000042 /* XCRemoteSwiftPackageReference "clerk-ios" */,
+				A10000000000000000000048 /* XCRemoteSwiftPackageReference "ForceGraph" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A10000000000000000000025 /* Products */;
@@ -261,6 +265,14 @@
 				minimumVersion = 1.0.0;
 			};
 		};
+		A10000000000000000000048 /* XCRemoteSwiftPackageReference "ForceGraph" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ianleon/ForceGraph.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 0.3.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -268,6 +280,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A10000000000000000000042 /* XCRemoteSwiftPackageReference "clerk-ios" */;
 			productName = ClerkKit;
+		};
+		A10000000000000000000047 /* ForceGraph */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A10000000000000000000048 /* XCRemoteSwiftPackageReference "ForceGraph" */;
+			productName = ForceGraph;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

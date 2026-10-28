@@ -1,5 +1,6 @@
 import SwiftUI
 
+#if canImport(UIKit)
 extension Color {
     init(light: UInt32, dark: UInt32) {
         self.init(uiColor: UIColor { $0.userInterfaceStyle == .dark ? UIColor(hex: dark) : UIColor(hex: light) })
@@ -12,6 +13,7 @@ extension UIColor {
                   blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
     }
 }
+#endif
 
 /// New screens read the original Mission Control palette (sage green on warm neutrals) through these names.
 enum Tok {
@@ -26,6 +28,9 @@ enum Tok {
     static let live = MissionTheme.telemetry
     static let warn = MissionTheme.attention
     static let critical = MissionTheme.failure
+    static let success = MissionTheme.success
+    static let scheduled = MissionTheme.scheduled
+    static let graphCanvas = MissionTheme.graphCanvas
 }
 
 struct PrimaryButtonStyle: ButtonStyle {

@@ -17,6 +17,9 @@ extension MemoryService {
             case "/v1/explorer/memory/facts":
                 return (try Wire.encoder.encode(EntityMemory.Page(bankAvailable: true, items: [], hasMore: false, limit: 20, offset: 0)),
                         HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            case "/v1/explorer/semantic/world":
+                return (try Wire.encoder.encode(sampleWorld()),
+                        HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
             case "/v1/explorer/semantic":
                 page = samplePage(section: section)
             default:
@@ -25,6 +28,39 @@ extension MemoryService {
             return (try Wire.encoder.encode(page), HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         }
     )
+
+    /// A small believable world, so the diagram can be looked at without a workspace. Mirrors the real wire shape.
+    private static func sampleWorld() -> SemanticWorld.Graph {
+        func node(_ key: String, _ label: String, _ type: String?, _ attributes: [String: String], mentions: Int) -> SemanticWorld.Node {
+            SemanticWorld.Node(id: "entity:" + key, kind: "entity", subtype: type, label: label, attributes: attributes.isEmpty ? nil : attributes, mentionCount: mentions)
+        }
+        func edge(_ from: String, _ predicate: String, _ to: String, facts: Int) -> SemanticWorld.Edge {
+            SemanticWorld.Edge(from: "entity:" + from, to: "entity:" + to, type: "relation", label: predicate, sourceCount: facts)
+        }
+        return SemanticWorld.Graph(
+            schemaVersion: 1, retrievedAt: Date(), bankAvailable: true,
+            nodes: [
+                node("you", "You", "person", ["role": "founder and engineer", "city": "Lisbon", "rhythm": "decides in the morning"], mentions: 42),
+                node("agent-brain", "Agent Brain", "project", ["status": "active", "stack": "Postgres, Temporal"], mentions: 31),
+                node("mission-control", "Mission Control", "project", ["platform": "iOS and iPad"], mentions: 18),
+                node("dana", "Dana", "person", ["role": "designer"], mentions: 9),
+                node("acme", "Acme", "company", ["industry": "logistics"], mentions: 7),
+                node("lisbon", "Lisbon", "place", [:], mentions: 6),
+                node("postgres", "Postgres", "tool", [:], mentions: 5),
+                node("mara", "Mara", nil, [:], mentions: 2),
+            ],
+            edges: [
+                edge("you", "builds", "agent-brain", facts: 12),
+                edge("you", "builds", "mission-control", facts: 8),
+                edge("you", "lives_in", "lisbon", facts: 3),
+                edge("dana", "designs", "mission-control", facts: 4),
+                edge("you", "works_with", "dana", facts: 5),
+                edge("dana", "works_at", "acme", facts: 2),
+                edge("agent-brain", "uses", "postgres", facts: 6),
+            ],
+            truncated: false, limit: 100
+        )
+    }
 
     private static func samplePage(section: String) -> SemanticMemory.Page {
         let now = Date()
@@ -37,35 +73,6 @@ extension MemoryService {
         }
         let items: [SemanticMemory.Item]
         switch section {
-        case SemanticMemory.Lens.persona.rawValue:
-            items = [item("lens:persona", "lens", "Persona", """
-            # Persona
-
-            You are a founder and engineer building agent infrastructure. You move quickly, prefer direct language, and think in systems.
-
-            - **Work:** product and engineering, close to the code.
-            - **Rhythm:** short check-ins, decisions in the morning, deep work when the day allows.
-            - **Communication:** plain, specific, no ceremony.
-            """, days: 1)]
-        case SemanticMemory.Lens.intent.rawValue:
-            items = [item("lens:intent", "lens", "Intent", """
-            # Intent
-
-            You are designing a composable semantic memory layer for agents, and deciding how much of it the current system already provides.
-
-            - **Now:** evaluate the existing memory surface against the proposed architecture.
-            - **Next:** pull persona, intent, and constraints into a study view.
-            - **Not now:** build guarantees the system does not need yet.
-            """, days: 1)]
-        case SemanticMemory.Lens.constraints.rawValue:
-            items = [item("lens:constraints", "lens", "Constraints", """
-            # Constraints
-
-            - **Time:** short sessions between other work; decisions need to be quick.
-            - **Stack:** Postgres, pgvector, Temporal, SwiftUI.
-            - **Principle:** avoid speculative complexity; keep the current system's behaviour.
-            - **Privacy:** personal memory stays read-only on the phone.
-            """, days: 2)]
         case "about_you":
             items = [item("model:about-you", "personal_model", "About you", """
             # About you

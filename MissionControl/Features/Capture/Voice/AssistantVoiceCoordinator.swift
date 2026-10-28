@@ -142,6 +142,8 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
     // The durable assistant-message frame is a fallback speech source for
     // follow-ups which arrive without a token stream.
     private var pendingAssistantMessageSpeech: (turn: Int, content: String)?
+    /// On-device condensation of a turn's reply, started when the message arrives so the spoken line is ready by turn end.
+    private var speechTasks: [Int: Task<String, Never>] = [:]
     private var pendingUserMessages = Set<String>()
     private var pendingQuestion: MobileGateway.GatewayQuestion?
 
@@ -805,7 +807,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
         case .status(let turn, _): return turn == activeTurnSequence
         case .turnEnded(let turn, _): return turn == activeTurnSequence
         case .askUser: return true
-        case .accepted, .synchronizing, .offline, .historyLoaded, .error, .history, .retract: return false
+        case .accepted, .synchronizing, .offline, .historyLoaded, .error, .history, .retract, .taskProgress: return false
         }
     }
 
@@ -836,7 +838,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
             historyLoaded = false
         case .historyLoaded:
             historyLoaded = true
-        case .history, .retract, .offline, .accepted:
+        case .history, .retract, .offline, .accepted, .taskProgress:
             break    // the text chat's: it pages through older messages and asks for only what is for the person
         case .turnStarted(let turn):
             // While a new user frame is pending, accept only its canonical
@@ -892,7 +894,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
             flushSpeechBuffer()
             if let fallback = pendingAssistantMessageSpeech, fallback.turn == turn {
                 pendingAssistantMessageSpeech = nil
-                speak(fallback.content)
+                speakCondensed(turn: fallback.turn, content: fallback.content)
             }
             refreshState()
         case .error(let error):
@@ -906,6 +908,8 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
         flow.awaitingResponse = true
         streamBuffer = ""; speechBuffer = ""
         pendingAssistantMessageSpeech = nil
+        speechTasks.values.forEach { $0.cancel() }
+        speechTasks.removeAll()
         clearProgressNarration()
         refreshState()
     }
@@ -921,6 +925,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
     private func speakAssistantMessageIfNeeded(turn: Int, content: String) {
         let normalized = content.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return }
+        startCondensation(for: turn, content: normalized)
 
         // Persist normally writes a final assistant message after its token
         // deltas. That snapshot is visual-only because the deltas have
@@ -931,7 +936,7 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
                 appendSpeakableText(String(content.dropFirst(streamBuffer.count)), replacing: false)
                 streamBuffer = content
             } else {
-                speak(normalized)
+                speakCondensed(turn: turn, content: normalized)
             }
             return
         }
@@ -942,7 +947,32 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
         } else {
             // This arrived after the first response completed, so there is no
             // stream left to speak it for us.
-            speak(normalized)
+            speakCondensed(turn: turn, content: normalized)
+        }
+    }
+
+    /// The reply as it is heard: the on-device condensation when there is one, the message itself otherwise.
+    private nonisolated static func condensed(_ text: String) async -> String {
+        guard text.count > MessageCondenser.compactLength else { return text }
+        return await MessageCondenser.shared.summary(of: text) ?? text
+    }
+
+    /// Start condensing as soon as the durable message arrives, so the spoken line is ready by the time the turn ends.
+    private func startCondensation(for turn: Int, content: String) {
+        speechTasks[turn]?.cancel()
+        speechTasks[turn] = Task { await Self.condensed(content) }
+    }
+
+    /// Speaks the compact, conversational version of the reply; the full message stays on screen.
+    private func speakCondensed(turn: Int, content: String) {
+        let text = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard flow.active, !text.isEmpty else { return }
+        let task = speechTasks.removeValue(forKey: turn) ?? Task { await Self.condensed(text) }
+        Task { [weak self] in
+            let spoken = await task.value
+            guard let self, flow.active, activeTurnSequence == turn else { return }
+            conversationText.updateAssistant(spoken)
+            speak(spoken)
         }
     }
 
@@ -1095,6 +1125,8 @@ final class AssistantVoiceCoordinator: NSObject, ObservableObject {
         playbackStartTask?.cancel(); playbackStartTask = nil
         activeUtterance = nil
         queuedSpeech.removeAll()
+        speechTasks.values.forEach { $0.cancel() }
+        speechTasks.removeAll()
         speechBuffer = ""
         flow.paused = false
         flow.playing = false

@@ -10,6 +10,46 @@ extension View {
     /// On a wide screen (iPad) a list or column of text reads best at a measure, centred on the canvas, not run edge to edge.
     /// A no-op on iPhone, where the screen is already narrower than the cap.
     func readableWidth(_ max: CGFloat = 720) -> some View { frame(maxWidth: max).frame(maxWidth: .infinity) }
+    /// iOS draws compact navigation titles inline; macOS has no such setting.
+    @ViewBuilder func inlineNavigationTitle() -> some View {
+        #if os(iOS)
+        navigationBarTitleDisplayMode(.inline)
+        #else
+        self
+        #endif
+    }
+    /// The phone opens a numeric keyboard; hardware keyboards need no hint.
+    @ViewBuilder func decimalKeyboard() -> some View {
+        #if os(iOS)
+        keyboardType(.decimalPad)
+        #else
+        self
+        #endif
+    }
+    @ViewBuilder func numericKeyboard() -> some View {
+        #if os(iOS)
+        keyboardType(.numbersAndPunctuation)
+        #else
+        self
+        #endif
+    }
+    /// A sheet that must not be swiped away mid-write; macOS sheets have no
+    /// interactive dismissal to disable.
+    @ViewBuilder func dismissLocked(_ locked: Bool) -> some View {
+        #if os(iOS)
+        interactiveDismissDisabled(locked)
+        #else
+        self
+        #endif
+    }
+    /// Identifiers and tokens are never auto-capitalised or corrected.
+    @ViewBuilder func plainTextInput() -> some View {
+        #if os(iOS)
+        autocorrectionDisabled().textInputAutocapitalization(.never)
+        #else
+        self
+        #endif
+    }
 }
 
 struct SecondaryButtonStyle: ButtonStyle {

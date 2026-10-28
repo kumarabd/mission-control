@@ -26,18 +26,18 @@ enum AgentMarkArtwork {
     static func animatedImage(state: AssistantVoiceCoordinator.State, size: CGFloat = 140) -> UIImage {
         let key = "animated-\(state)-\(Int(size))" as NSString
         if let cached = cache.object(forKey: key) { return cached }
-        let frames = 8
-        let duration: Double = 1.6
-        let animation = { (scheme: ColorScheme) -> UIImage in
-            let images = (0..<frames).map { frame in
-                render(state: state, size: size, phase: Double(frame) / Double(frames) * duration, scheme: scheme)
-            }
-            return UIImage.animatedImage(with: images, duration: duration) ?? images[0]
+        // CarPlay plays an animated image only when each frame is shown for at least 0.3 s. Eight frames over 1.6 s was
+        // 0.2 s each, so the system treated it as a still. Sixteen frames at 0.3 s each sits inside the rule, and the
+        // extra keyframes keep the loop from reading as a stutter.
+        let frames = 16
+        let frameDuration: Double = 0.3
+        let duration = Double(frames) * frameDuration
+        let scheme: ColorScheme = UITraitCollection.current.userInterfaceStyle == .dark ? .dark : .light
+        let images = (0..<frames).map { frame in
+            render(state: state, size: size, phase: Double(frame) * frameDuration, scheme: scheme)
         }
-        let asset = UIImageAsset()
-        asset.register(animation(.light), with: UITraitCollection(userInterfaceStyle: .light))
-        asset.register(animation(.dark), with: UITraitCollection(userInterfaceStyle: .dark))
-        let image = asset.image(with: UITraitCollection.current)
+        // Return the animated image itself: wrapping it in a UIImageAsset can flatten it to one frame.
+        let image = UIImage.animatedImage(with: images, duration: duration) ?? images[0]
         cache.setObject(image, forKey: key)
         return image
     }

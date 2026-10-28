@@ -62,7 +62,7 @@ struct ConnectionsSettingsView: View {
             }
         }
         .screenBackground()
-        .navigationTitle("Connections").navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("Connections").inlineNavigationTitle()
         .task { await load() }
         .task { await pollWhileVisible() }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await load() } } }
@@ -230,11 +230,11 @@ private struct ConnectionDetailSheet: View {
                 if needsClientCredentials {
                     Section("Client credentials") {
                         TextField(item.connected ? "Client ID (leave blank to reuse saved)" : "Client ID", text: $clientID)
-                            .disabled(busy).autocorrectionDisabled().textInputAutocapitalization(.never)
+                            .disabled(busy).plainTextInput()
                         SecureField(item.connected ? "Client secret (leave blank to reuse saved)" : "Client secret", text: $clientSecret)
                             .disabled(busy)
                         TextField("Scopes (optional, space-separated)", text: $scopes)
-                            .disabled(busy).autocorrectionDisabled().textInputAutocapitalization(.never)
+                            .disabled(busy).plainTextInput()
                     }
                 }
                 if let error { Section { Text(error).foregroundStyle(Tok.critical) } }
@@ -254,7 +254,7 @@ private struct ConnectionDetailSheet: View {
                     }
                 }
             }
-            .navigationTitle(item.shownName).navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(item.shownName).inlineNavigationTitle()
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
             .confirmationDialog("Disconnect \(item.shownName)? Your assistant will lose access to its tools. Provider access is not revoked.",
                                  isPresented: $confirmingDisconnect, titleVisibility: .visible) {

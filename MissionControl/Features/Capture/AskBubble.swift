@@ -8,6 +8,7 @@ struct AskBubble: View {
     let question: ChatModel.Question
     var agent = ChatParty(name: "Assistant")
     var showsPrompt = true
+    var onExpand: (String) -> Void = { _ in }
     let onOption: (ChatModel.Question, MobileGateway.GatewayQuestion.Option) -> Void
     let onText: (ChatModel.Question, String) -> Void
 
@@ -22,7 +23,8 @@ struct AskBubble: View {
             AvatarView(name: agent.name, url: agent.imageURL, size: ChatBubble.avatarSize, agent: true)
             VStack(alignment: .leading, spacing: Space.m) {
                 if showsPrompt, !prompt.isEmpty {
-                    MarkdownView(text: prompt)
+                    AssistantMessage(id: "ask:" + question.requestID, text: prompt, streaming: false)
+                        .contextMenu { Button("Expand", systemImage: "arrow.up.left.and.arrow.down.right") { onExpand(prompt) } }
                 }
                 if !question.options.isEmpty { options }
                 if question.allowsFreeText { answerField }

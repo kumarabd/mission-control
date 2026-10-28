@@ -3,17 +3,15 @@ import Observation
 
 @MainActor @Observable
 final class MemoryModel {
-    /// A standing lens is one pinned mental model. It is deliberately separate
-    /// from the feed's pagination state: three lenses load together, once, and
-    /// keep their content if a later refresh fails.
-    enum LensState: Equatable {
+    /// The world model loads on its own, apart from the feed's pagination, and keeps its last good picture if a
+    /// later refresh fails.
+    enum WorldState: Equatable {
         case idle, loading
-        case ready(SemanticMemory.Item)
+        case ready(SemanticWorld.Graph)
         case empty
         case failed(String)
 
-        var item: SemanticMemory.Item? { if case .ready(let item) = self { return item }; return nil }
-        var isLoading: Bool { self == .loading }
+        var graph: SemanticWorld.Graph? { if case .ready(let graph) = self { return graph }; return nil }
     }
 
     private(set) var items: [SemanticMemory.Item] = []
@@ -23,9 +21,9 @@ final class MemoryModel {
     private(set) var hasMore = false
     private(set) var bankAvailable = true
     private(set) var retrievedAt: Date?
-    private(set) var lenses: [SemanticMemory.Lens: LensState] = [:]
-    private(set) var lensesLoaded = false
-    private var lensesLoading = false
+    private(set) var world: WorldState = .idle
+    private(set) var worldLoaded = false
+    private var worldLoading = false
     private var generation = 0
     private var offset = 0
     private var key = ""
@@ -54,41 +52,19 @@ final class MemoryModel {
         }
     }
 
-    func lensState(_ lens: SemanticMemory.Lens) -> LensState { lenses[lens] ?? .idle }
-
-    /// Reads all three lenses concurrently. A failed lens keeps its last good
-    /// value; only a lens with nothing cached shows the failure.
-    func loadLenses(service: MemoryService, force: Bool = false) async {
-        guard !lensesLoading, force || !lensesLoaded else { return }
-        lensesLoading = true
-        for lens in SemanticMemory.Lens.allCases where lenses[lens]?.item == nil {
-            lenses[lens] = .loading
+    /// Reads the world model. A failed refresh keeps the last good picture; only a first load shows the failure.
+    func loadWorld(service: MemoryService, force: Bool = false) async {
+        guard !worldLoading, force || !worldLoaded else { return }
+        worldLoading = true
+        defer { worldLoading = false }
+        if world.graph == nil { world = .loading }
+        do {
+            let graph = try await service.world()
+            world = graph.bankAvailable && !graph.nodes.isEmpty ? .ready(graph) : .empty
+            worldLoaded = true
+        } catch {
+            if Task.isCancelled { if world == .loading { world = .idle }; return }
+            if world.graph == nil { world = .failed((error as? MemoryReadError)?.message ?? "Couldn't load your world.") }
         }
-        let results = await withTaskGroup(of: (SemanticMemory.Lens, Result<SemanticMemory.Page, Error>).self) { group in
-            for lens in SemanticMemory.Lens.allCases {
-                group.addTask {
-                    do { return (lens, .success(try await service.lens(lens))) }
-                    catch { return (lens, .failure(error)) }
-                }
-            }
-            var values: [(SemanticMemory.Lens, Result<SemanticMemory.Page, Error>)] = []
-            for await value in group { values.append(value) }
-            return values
-        }
-        for (lens, result) in results {
-            switch result {
-            case .success(let page):
-                if page.bankAvailable, let item = page.items.first,
-                   let content = item.content, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    lenses[lens] = .ready(item)
-                } else { lenses[lens] = .empty }
-            case .failure(let error):
-                if lenses[lens]?.item == nil {
-                    lenses[lens] = .failed((error as? MemoryReadError)?.message ?? "Couldn't load \(lens.title.lowercased()).")
-                }
-            }
-        }
-        lensesLoaded = true
-        lensesLoading = false
     }
 }

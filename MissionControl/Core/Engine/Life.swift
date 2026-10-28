@@ -76,7 +76,9 @@ final class Life {
         do {
             _ = try await service.create(kind, draft); error = nil
             await loadDay(); await loadGoals()
+            #if os(iOS)
             if draft.alertBeforeMinutes != nil { await PushRegistrar.shared.askToNotify() }
+            #endif
             return true
         } catch { self.error = Self.message(error, "that"); return false }
     }
@@ -84,7 +86,9 @@ final class Life {
     @discardableResult
     func save(_ item: Wire.Item, _ draft: ItemsService.Draft) async -> Bool {
         let saved = await act(item.id) { _ = try await $0.update(item, draft) } != nil
+        #if os(iOS)
         if saved, draft.alertBeforeMinutes != nil { await PushRegistrar.shared.askToNotify() }
+        #endif
         return saved
     }
 
