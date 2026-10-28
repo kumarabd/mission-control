@@ -2,6 +2,10 @@
 
 MissionControl — the console for agent data (nginx + static SPA): Clerk login, workspace settings, and external system connections.
 
+This is the standalone web chart distributed from the monorepo. The production deployment is the `agentWeb` template
+inside `agent-harness/deploy/helm/agent-harness-shared`; that chart has no web dependency, so it is updated separately
+by changing its `agentWeb.image.repository` value.
+
 Requires agent-brain HTTP in-cluster or reachable from the browser (direct API mode).
 
 ## API modes
