@@ -217,7 +217,7 @@ class AssistantGateway(
 
     companion object {
         private const val GOING_AWAY = 1001
-        private const val DEFAULT_ENDPOINT = "wss://abishekk-gateway.nighthawklabs.org/android/ws"
+        private const val DEFAULT_ENDPOINT = "wss://api.nighthawklabs.org/gateway/android/ws"
 
         fun deviceId(context: Context): String {
             val preferences = context.getSharedPreferences("assistant_gateway", Context.MODE_PRIVATE)

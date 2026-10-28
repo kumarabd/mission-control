@@ -27,7 +27,7 @@
         <string>IBMPlexMono-Medium.ttf</string>
     </array>
     <key>RouterBaseURL</key>
-    <string>https://harness-router.nighthawklabs.org</string>
+    <string>https://api.nighthawklabs.org</string>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>

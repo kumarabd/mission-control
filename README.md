@@ -117,5 +117,5 @@ Before signing in, configure the following outside source control:
 4. In Clerk Native Applications, allowlist `com.kumarabd.MissionControl://callback` for mobile SSO redirects.
 
 The gateway client sends a freshly acquired Clerk session token in its required first WebSocket frame, then exchanges
-text turns and streamed response deltas over `wss://harness-router.nighthawklabs.org/gateway/ios/ws`. Voice I/O stays
+text turns and streamed response deltas over `wss://api.nighthawklabs.org/gateway/ios/ws`. Voice I/O stays
 on-device.

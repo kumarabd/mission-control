@@ -190,7 +190,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Mission Control";
 				INFOPLIST_KEY_ClerkPublishableKey = "$(CLERK_PUBLISHABLE_KEY)";
-				INFOPLIST_KEY_RouterBaseURL = "https://harness-router.nighthawklabs.org";
+				INFOPLIST_KEY_RouterBaseURL = "https://api.nighthawklabs.org";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Mission Control reads your calendar only to show events beside your day.";
@@ -216,7 +216,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Mission Control";
 				INFOPLIST_KEY_ClerkPublishableKey = "$(CLERK_PUBLISHABLE_KEY)";
-				INFOPLIST_KEY_RouterBaseURL = "https://harness-router.nighthawklabs.org";
+				INFOPLIST_KEY_RouterBaseURL = "https://api.nighthawklabs.org";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Mission Control reads your calendar only to show events beside your day.";

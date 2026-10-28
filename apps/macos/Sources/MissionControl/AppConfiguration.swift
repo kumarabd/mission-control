@@ -3,7 +3,7 @@ import ClerkKit
 
 enum AppConfiguration {
     private static let defaultClerkPublishableKey = "pk_live_Y2xlcmsubmlnaHRoYXdrbGFicy5vcmck"
-    private static let defaultRouterBaseURL = "https://harness-router.nighthawklabs.org"
+    private static let defaultRouterBaseURL = "https://api.nighthawklabs.org"
 
     static var clerkPublishableKey: String {
         configuredValue(infoKey: "ClerkPublishableKey", environmentKey: "CLERK_PUBLISHABLE_KEY")

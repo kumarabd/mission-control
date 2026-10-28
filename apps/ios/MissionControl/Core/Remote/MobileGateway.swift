@@ -97,7 +97,7 @@ final class MobileGateway {
     }
 
     private let authentication: any AgentGatewayAuthenticating = ClerkGatewayAuthentication()
-    private let gatewayURL = URL(string: "https://harness-router.nighthawklabs.org/gateway/ios/ws")!
+    private let gatewayURL = URL(string: "wss://api.nighthawklabs.org/gateway/ios/ws")!
     private let deviceID = GatewayDeviceIdentity.value
     // Versioned per platform so the old shared-mobile cursor cannot skip the
     // first turns when this client enters its new iOS-only history.
