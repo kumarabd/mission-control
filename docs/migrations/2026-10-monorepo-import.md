@@ -29,6 +29,7 @@ The web console and the Android app now live with the Apple clients in `mission-
 - The web Dockerfile now builds from the repository root; compose uses the root context.
 - The web image publishes from `.github/workflows/web-image.yml` on `web-v*` tags to
   `ghcr.io/kumarabd/mission-control-web`; the Helm chart defaults its tag to `Chart.appVersion` (`0.1.0`).
+  The first release (`web-v0.1.0`) still needs to be tagged to produce that image.
 - Android's Clerk publishable key moved out of `app/build.gradle.kts` into a Gradle property.
 - The iOS project and sources moved to `apps/ios`; the macOS `Shared` symlinks now point into
   `apps/ios/MissionControl/`.
@@ -45,5 +46,4 @@ The web console and the Android app now live with the Apple clients in `mission-
 
 ## Still to do
 
-1. Archive/remove the old `agent-web` and AndroidStudioProjects copies after the monorepo is committed.
-2. Android feature parity against the shared contracts.
+1. Android feature parity against the shared contracts.
