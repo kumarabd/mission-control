@@ -39,6 +39,7 @@ jobs:
             type=match,pattern=web-v(\d+\.\d+\.\d+),group=1
             type=match,pattern=web-v(\d+\.\d+),group=1
             type=match,pattern=web-v(\d+),group=1
+            type=raw,value=internal
             type=sha,prefix=
             type=raw,value=latest
 

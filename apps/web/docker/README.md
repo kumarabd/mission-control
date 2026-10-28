@@ -25,10 +25,10 @@ git tag web-v0.1.0
 git push origin web-v0.1.0
 ```
 
-The workflow publishes the semver tag, the commit SHA and `latest` for `linux/amd64` and `linux/arm64`. Set the
-repository variable `VITE_CLERK_PUBLISHABLE_KEY` before releasing. The Helm chart defaults to `Chart.appVersion`
-(`0.1.0`), which matches the first release tag. `workflow_dispatch` publishes a SHA and `latest` build without a
-semver tag.
+The workflow publishes the semver tag, the commit SHA, `internal` and `latest` for `linux/amd64` and `linux/arm64`.
+`internal` is the tag used by the shared agent-harness deployment chart. Set the repository variable
+`VITE_CLERK_PUBLISHABLE_KEY` before releasing. The Helm chart defaults to `Chart.appVersion` (`0.1.0`), which matches
+the first release tag. `workflow_dispatch` publishes the same tags without a semver tag.
 
 Push to `main` runs the web lint, typecheck, test and build workflow (`.github/workflows/web.yml`); it does not publish
 an image.

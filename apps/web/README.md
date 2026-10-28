@@ -89,9 +89,10 @@ git push origin web-v0.1.0
 ```
 
 The workflow builds `apps/web/Dockerfile` with the root workspace context and publishes
-`ghcr.io/kumarabd/mission-control-web` (semver, commit SHA and `latest`) for `linux/amd64` and `linux/arm64`.
-Set the repository variable `VITE_CLERK_PUBLISHABLE_KEY` so the published bundle carries the Clerk key; the remaining
-URLs are Dockerfile defaults. The Helm chart defaults its image tag to `Chart.appVersion` (currently `0.1.0`).
+`ghcr.io/kumarabd/mission-control-web` (semver, commit SHA, `internal` and `latest`) for `linux/amd64` and
+`linux/arm64`. The `internal` tag is the shared agent-harness deployment channel. Set the repository variable
+`VITE_CLERK_PUBLISHABLE_KEY` so the published bundle carries the Clerk key; the remaining URLs are Dockerfile defaults.
+The Helm chart defaults its image tag to `Chart.appVersion` (currently `0.1.0`).
 
 ## Kubernetes (Helm)
 
