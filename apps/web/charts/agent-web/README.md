@@ -8,6 +8,20 @@ by changing its `agentWeb.image.repository` value.
 
 Requires agent-brain HTTP in-cluster or reachable from the browser (direct API mode).
 
+## Published chart
+
+`.github/workflows/web-chart.yml` packages this chart and publishes it to
+`oci://ghcr.io/kumarabd/charts` on `web-v*` tags (and on manual dispatch):
+
+```bash
+helm install agent-web oci://ghcr.io/kumarabd/charts/agent-web \
+  --version 0.1.0 \
+  --namespace agent-brain --create-namespace
+```
+
+The chart's default image tag is `Chart.appVersion` (`0.1.0`). The shared
+agent-harness deployment uses the same image with its own `internal` tag.
+
 ## API modes
 
 | `frontend.apiMode` | Browser calls | Helm / image |

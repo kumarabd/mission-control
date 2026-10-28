@@ -1,0 +1,38 @@
+name: Publish web chart
+
+# Publish the standalone web Helm chart as an OCI artifact:
+#   git tag web-v0.1.0 && git push origin web-v0.1.0
+# This is separate from the image workflow and from the agent-harness
+# deployment chart, which is applied from source.
+on:
+  push:
+    tags:
+      - "web-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Package the chart
+        run: helm package apps/web/charts/agent-web --destination .chart-dist
+
+      - name: Push the chart
+        run: |
+          helm push .chart-dist/agent-web-*.tgz \
+            "oci://ghcr.io/${{ github.repository_owner }}/charts"
