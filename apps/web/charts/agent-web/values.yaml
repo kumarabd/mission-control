@@ -9,9 +9,9 @@
 
 image:
   registry: ghcr.io
-  repository: realnighthawk/agent-web
-  # Defaults to Chart.appVersion when empty.
-  tag: "7d6c7e1"
+  repository: kumarabd/mission-control-web
+  # Defaults to Chart.appVersion (0.1.0). Publish with a web-v* tag.
+  tag: ""
   pullPolicy: IfNotPresent
   # Official image: URLs baked in Dockerfile. Rebuild with viteClerkPublishableKey or GitHub var VITE_CLERK_PUBLISHABLE_KEY.
   buildArgs:

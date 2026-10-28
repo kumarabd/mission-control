@@ -18,9 +18,17 @@ Or `docker compose up -d` from `apps/web`.
 
 ## Publish
 
-The previous repository published `ghcr.io/<owner>/agent-web` on `v*` tags. Image publishing is intentionally not
-wired into the monorepo yet: the target image coordinate (new package name vs. preserving the old one) is part of the
-repository cutover. The Helm chart still pins the existing artifact until that lands.
+Push a `web-v*` tag to publish `ghcr.io/kumarabd/mission-control-web` through `.github/workflows/web-image.yml`:
+
+```bash
+git tag web-v0.1.0
+git push origin web-v0.1.0
+```
+
+The workflow publishes the semver tag, the commit SHA and `latest` for `linux/amd64` and `linux/arm64`. Set the
+repository variable `VITE_CLERK_PUBLISHABLE_KEY` before releasing. The Helm chart defaults to `Chart.appVersion`
+(`0.1.0`), which matches the first release tag. `workflow_dispatch` publishes a SHA and `latest` build without a
+semver tag.
 
 Push to `main` runs the web lint, typecheck, test and build workflow (`.github/workflows/web.yml`); it does not publish
 an image.

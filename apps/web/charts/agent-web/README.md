@@ -16,9 +16,9 @@ Requires agent-brain HTTP in-cluster or reachable from the browser (direct API m
 **Proxy mode** (split agent-brain):
 
 ```bash
-helm upgrade --install agent-web ./charts/agent-web \
+helm upgrade --install agent-web ./apps/web/charts/agent-web \
   --namespace agent-brain --create-namespace \
-  --set image.tag=0.1.4 \
+  --set image.tag=0.1.0 \
   --set agentBrain.apiUrl=http://agent-brain-memory-api:8080
 ```
 
@@ -29,18 +29,18 @@ helm upgrade --install agent-brain ./charts/agent-brain \
   -f charts/agent-brain/values-minimal.yaml \
   --namespace agent-brain --create-namespace
 
-helm upgrade --install agent-web ./charts/agent-web \
-  -f charts/agent-web/values-minimal.yaml \
+helm upgrade --install agent-web ./apps/web/charts/agent-web \
+  -f apps/web/charts/agent-web/values-minimal.yaml \
   --namespace agent-brain
 ```
 
-**Release image (GitHub tag `v*`):** set repository variable `VITE_CLERK_PUBLISHABLE_KEY=pk_live_...`.  
+**Release image (GitHub tag `web-v*`):** set repository variable `VITE_CLERK_PUBLISHABLE_KEY=pk_live_...`.  
 API/MCP/install URLs are **baked in `Dockerfile`** for `agent-memory.nighthawklabs.org`.
 
 ```bash
-docker build -f Dockerfile \
+docker build -f apps/web/Dockerfile \
   --build-arg VITE_CLERK_PUBLISHABLE_KEY=pk_live_... \
-  -t ghcr.io/you/agent-web:custom .
+  -t ghcr.io/kumarabd/mission-control-web:custom .
 ```
 
 On agent-brain:
@@ -57,7 +57,7 @@ explorer:
 
 | Key | Description |
 |-----|-------------|
-| `image.*` | Container image (`ghcr.io/realnighthawk/agent-web`) |
+| `image.*` | Container image (`ghcr.io/kumarabd/mission-control-web`; tag defaults to `Chart.appVersion`) |
 | `image.buildArgs.*` | Vite build args for custom images (see `Dockerfile`) |
 | `agentBrain.apiUrl` | nginx upstream for `/v1`, `/readyz`, `/healthz` (proxy mode) |
 | `frontend.apiMode` | `proxy` or `direct` (documentation; direct needs custom image) |

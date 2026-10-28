@@ -25,8 +25,10 @@ release discipline; they do not share UI code or build systems.
   web's `DESIGN.md` and the Apple `DESIGN.md` document each platform's implementation of the same system.
 - **Configuration:** each platform keeps its native configuration mechanism (Vite env, Xcode build settings, Gradle
   properties). Values and redirect URIs are documented rather than generated. Secrets never enter the repository.
-- **CI:** web and Android have path-scoped GitHub workflows. Apple builds run locally with the commands in the root
-  README and Makefile; macOS runners are optional because of cost.
+- **CI:** web, Android and foundations have path-scoped GitHub workflows. The web image publishes from
+  `.github/workflows/web-image.yml` on `web-v*` tags to `ghcr.io/kumarabd/mission-control-web`; the Helm chart
+  defaults to `Chart.appVersion`. Apple builds run locally with the commands in the root README and Makefile; macOS
+  runners are optional because of cost.
 
 ## Data flow
 

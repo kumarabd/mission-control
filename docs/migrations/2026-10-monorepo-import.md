@@ -26,8 +26,9 @@ The web console and the Android app now live with the Apple clients in `mission-
 - `Makefile` for web, Android and Apple checks.
 - Path-scoped GitHub workflows: `.github/workflows/web.yml`, `.github/workflows/android.yml`.
 - `docs/architecture.md`, `docs/parity.md`, and a root README that points at every client.
-- The web Dockerfile now builds from the repository root; compose uses the root context. The image publish workflow is
-  deliberately not ported yet (image-coordinate decision pending).
+- The web Dockerfile now builds from the repository root; compose uses the root context.
+- The web image publishes from `.github/workflows/web-image.yml` on `web-v*` tags to
+  `ghcr.io/kumarabd/mission-control-web`; the Helm chart defaults its tag to `Chart.appVersion` (`0.1.0`).
 - Android's Clerk publishable key moved out of `app/build.gradle.kts` into a Gradle property.
 - The iOS project and sources moved to `apps/ios`; the macOS `Shared` symlinks now point into
   `apps/ios/MissionControl/`.
@@ -44,6 +45,5 @@ The web console and the Android app now live with the Apple clients in `mission-
 
 ## Still to do
 
-1. Decide the web image coordinate, port the publish workflow, and update the Helm values.
-2. Archive/remove the old `agent-web` and AndroidStudioProjects copies after the monorepo is committed.
-3. Android feature parity against the shared contracts.
+1. Archive/remove the old `agent-web` and AndroidStudioProjects copies after the monorepo is committed.
+2. Android feature parity against the shared contracts.
