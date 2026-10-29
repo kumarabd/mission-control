@@ -37,9 +37,9 @@ struct ProvisionGate: View {
             return
         }
         #endif
-        // Same test as Treasure and AutoTelemetry: an authenticated call through the router. The workspace is per person,
-        // so one that exists from another app answers here too. Only the router's "no_tenant" means set it up; done,
-        // offline or any other answer goes straight in.
+        // Same probe the web console uses (`/brain/v1/explorer/me`): an authenticated call through the router
+        // that answers `404 no_tenant` only when the signed-in person has no workspace. The router has no
+        // `/missioncontrol/...` route, so probing one answered a plain 404 and skipped setup for new accounts.
         if await Provisioning.isMissing(token: await auth.token()) {
             stage = .onboarding(OnboardingModel(api: LiveOnboardingAPI(token: { [auth] in await auth.token() }), owner: userId))
         } else {
@@ -49,16 +49,17 @@ struct ProvisionGate: View {
 }
 
 enum Provisioning {
-    /// The router answers 404 `no_tenant` to any service route when the signed-in person has no workspace.
+    /// The router answers 404 `no_tenant` to an authenticated service route when the signed-in person has no workspace.
     static func isMissing(status: Int, body: Data) -> Bool {
         status == 404 && String(decoding: body, as: UTF8.self).contains("no_tenant")
     }
 
     static func isMissing(token: String?) async -> Bool {
-        guard let token, let url = URL(string: Config.routerBaseURL + "/missioncontrol/api/v1/operations/profile_get") else { return false }
+        guard let token,
+              let url = URL(string: Config.routerBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/brain/v1/explorer/me")
+        else { return false }
         var req = URLRequest(url: url, timeoutInterval: 20)
-        req.httpMethod = "POST"; req.httpBody = Data("{}".utf8)
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpMethod = "GET"
         req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         guard let (data, resp) = try? await URLSession.shared.data(for: req), let http = resp as? HTTPURLResponse else { return false }
         return isMissing(status: http.statusCode, body: data)
