@@ -20,8 +20,17 @@ struct RootView: View {
 
 struct WelcomeView: View {
     @Environment(AuthService.self) private var auth
+    @State private var email = ""
+    @State private var password = ""
     @State private var error: String?
-    @State private var busy = false
+    @State private var pending: Step?
+
+    private enum Step { case email, google, apple }
+    private var busy: Bool { pending != nil }
+
+    private var canSignIn: Bool {
+        !email.trimmingCharacters(in: .whitespaces).isEmpty && !password.isEmpty
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -31,23 +40,68 @@ struct WelcomeView: View {
             Text("Make progress on what matters, one day at a time.").font(.body).foregroundStyle(Tok.muted).padding(.top, 8)
             Spacer()
             if let error { Text(error).font(.callout).foregroundStyle(Tok.critical).padding(.bottom, 12) }
-            Button {
-                busy = true
-                Task { error = await auth.signInWithGoogle(); busy = false }
-            } label: {
-                if busy { ProgressView().tint(Tok.onAccent) } else { Text("Continue with Google") }
+            PlainInput(label: "Email", text: $email, placeholder: "you@example.com", keyboard: .emailAddress)
+            SecretInput(label: "Password", text: $password).padding(.top, 10)
+                .submitLabel(.go)
+                .onSubmit { signIn() }
+            Button { signIn() } label: {
+                if pending == .email { ProgressView().tint(Tok.onAccent) } else { Text("Sign in") }
             }
-            .buttonStyle(PrimaryButtonStyle()).disabled(busy)
+            .buttonStyle(PrimaryButtonStyle()).disabled(busy || !canSignIn).padding(.top, 14)
+            HStack(spacing: 12) {
+                Rectangle().fill(Tok.hairline).frame(height: 1)
+                Text("or").font(.footnote).foregroundStyle(Tok.muted)
+                Rectangle().fill(Tok.hairline).frame(height: 1)
+            }.padding(.vertical, 16)
             Button {
-                busy = true
-                Task { error = await auth.signInWithApple(); busy = false }
+                pending = .google
+                Task { error = await auth.signInWithGoogle(); pending = nil }
             } label: {
-                Label("Continue with Apple", systemImage: "apple.logo").frame(maxWidth: .infinity)
+                ZStack {
+                    HStack {
+                        Image("GoogleG").resizable().scaledToFit().frame(width: 20, height: 20).padding(.leading, 18)
+                        Spacer()
+                    }
+                    if pending == .google {
+                        ProgressView().tint(Tok.accent)
+                    } else {
+                        Text("Continue with Google").font(.mission(.headline, .medium)).foregroundStyle(Color(light: 0x3C4043, dark: 0x3C4043))
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(.white, in: Capsule())
+                .overlay(Capsule().strokeBorder(Tok.hairline, lineWidth: 1))
             }
-            .buttonStyle(.bordered).controlSize(.large).tint(Tok.accent).disabled(busy).padding(.top, 10)
+            .buttonStyle(.plain).disabled(busy).opacity(busy && pending != .google ? 0.4 : 1)
+            Button {
+                pending = .apple
+                Task { error = await auth.signInWithApple(); pending = nil }
+            } label: {
+                Group {
+                    if pending == .apple {
+                        ProgressView().tint(.white)
+                    } else {
+                        HStack(spacing: 8) {
+                            Image(systemName: "apple.logo").font(.system(size: 19, weight: .medium))
+                            Text("Continue with Apple").font(.mission(.headline, .medium))
+                        }
+                    }
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(.black, in: Capsule())
+                .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 1))
+            }
+            .buttonStyle(.plain).disabled(busy).opacity(busy && pending != .apple ? 0.4 : 1).padding(.top, 10)
         }
         .padding(24)
         .background(Tok.background.ignoresSafeArea())
+    }
+
+    private func signIn() {
+        guard canSignIn, !busy else { return }
+        pending = .email
+        Task { error = await auth.signIn(email: email, password: password); pending = nil }
     }
 }
 

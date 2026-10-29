@@ -47,6 +47,23 @@ final class AuthService {
         }
     }
 
+    /// Signs in with an email and password, for accounts that have one (the App Review demo account).
+    /// Returns an error message to show, or nil on success.
+    func signIn(email: String, password: String) async -> String? {
+        do {
+            try await Clerk.shared.auth.signInWithPassword(
+                identifier: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                password: password
+            )
+            // A second factor stops here; the welcome screen has no way to complete it.
+            guard Clerk.shared.user != nil else { return "This account needs extra verification. Use Google or Apple sign-in." }
+            return nil
+        } catch {
+            if let clerkError = error as? ClerkError, let message = clerkError.message { return "Sign in failed: \(message)" }
+            return "Sign in failed: \(error.localizedDescription)"
+        }
+    }
+
     /// Opens Sign in with Apple (Clerk). Returns an error message to show, or nil on success.
     func signInWithApple() async -> String? {
         do {
