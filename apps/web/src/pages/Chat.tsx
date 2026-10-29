@@ -16,14 +16,8 @@ import { listPersonas, SELECTED_PERSONA_STORAGE_KEY } from '../lib/gateway'
 import { useChatDraft } from '../lib/chatDraft'
 import { useVoiceInput } from '../voice/voice-context'
 import { useLiveVoice } from '../voice/useLiveVoice'
-import {
-  diffWorkspace,
-  life,
-  lifeKeys,
-  workspaceSnapshot,
-  type WorkspaceSnapshot,
-  type WorkspaceUpdate,
-} from '../lib/life'
+import { personal, personalKeys } from '../lib/life/personal'
+import { diffWorkspace, workspaceSnapshot, type WorkspaceSnapshot, type WorkspaceUpdate } from '../lib/life/workspace'
 
 function stateLabel(state: AssistantState): string {
   switch (state) {
@@ -113,13 +107,13 @@ function LiveVoiceBar({
 }
 
 const KIND_LABEL: Record<WorkspaceUpdate['kind'], string> = {
-  goal: 'goal',
+  intention: 'intention',
   task: 'task',
   event: 'event',
 }
 
 function updatePath(update: WorkspaceUpdate): string {
-  return update.kind === 'goal' ? `/goals/${update.id}` : `/today?item=${update.id}`
+  return update.kind === 'intention' ? '/life' : '/today'
 }
 
 /**
@@ -134,23 +128,23 @@ function useWorkspaceReceipts() {
 
   const refresh = useCallback(async () => {
     try {
-      const [tasks, events, goals] = await Promise.all([
-        life.tasksList({ status: 'all', limit: 200 }),
-        life.eventsList({ limit: 200 }),
-        life.goalsList({ limit: 100 }),
+      const [tasks, events, intentions] = await Promise.all([
+        personal.tasksList({ status: 'all', limit: 200 }),
+        personal.eventsList({ status: 'all', limit: 200 }),
+        personal.intentionsList({ limit: 100 }),
       ])
       const after = workspaceSnapshot({
-        goals: goals.items ?? [],
+        intentions: intentions.items ?? [],
         tasks: tasks.items ?? [],
         events: events.items ?? [],
       })
       const before = snapshotRef.current
       snapshotRef.current = after
-      qc.setQueryData(lifeKeys.tasks(), tasks)
-      qc.setQueryData(lifeKeys.events(), events)
-      qc.setQueryData(lifeKeys.goals(), goals)
-      void qc.invalidateQueries({ queryKey: lifeKeys.day() })
-      void qc.invalidateQueries({ queryKey: lifeKeys.trackers() })
+      qc.setQueryData(personalKeys.tasks(), tasks)
+      qc.setQueryData(personalKeys.openTasks(), tasks)
+      qc.setQueryData(personalKeys.intentions(), intentions)
+      void qc.invalidateQueries({ queryKey: personalKeys.day() })
+      void qc.invalidateQueries({ queryKey: personalKeys.attention() })
       return { before, after }
     } catch {
       return null
