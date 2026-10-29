@@ -94,6 +94,12 @@ private struct SignInView: View {
     @Environment(Clerk.self) private var clerk
     @State private var isSigningIn = false
     @State private var errorMessage: String?
+    @State private var email = ""
+    @State private var password = ""
+
+    private var canSignIn: Bool {
+        !email.trimmingCharacters(in: .whitespaces).isEmpty && !password.isEmpty
+    }
 
     var body: some View {
         ZStack {
@@ -113,13 +119,35 @@ private struct SignInView: View {
                             .font(.mission(.caption))
                             .foregroundStyle(MissionTheme.quietText)
                     }
+                    VStack(spacing: 10) {
+                        TextField("Email", text: $email)
+                            .textContentType(.emailAddress)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(minWidth: 250)
+                        SecureField("Password", text: $password)
+                            .textContentType(.password)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(minWidth: 250)
+                            .onSubmit { signInWithPassword() }
+                        Button {
+                            signInWithPassword()
+                        } label: {
+                            Text("Sign in").frame(minWidth: 250, minHeight: 26)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .disabled(isSigningIn || !canSignIn)
+                    }
+                    Text("or")
+                        .font(.mission(.caption))
+                        .foregroundStyle(MissionTheme.quietText)
                     Button {
                         signInWithApple()
                     } label: {
                         Label("Continue with Apple", systemImage: "apple.logo")
                             .frame(minWidth: 250, minHeight: 30)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.bordered)
                     .controlSize(.large)
                     .disabled(isSigningIn)
                     Button {
@@ -145,6 +173,24 @@ private struct SignInView: View {
             Button("OK") { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "Please try again.")
+        }
+    }
+
+    private func signInWithPassword() {
+        guard canSignIn, !isSigningIn else { return }
+        isSigningIn = true
+        Task {
+            defer { isSigningIn = false }
+            do {
+                try await clerk.auth.signInWithPassword(
+                    identifier: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                    password: password
+                )
+                if clerk.user == nil { errorMessage = "This account needs extra verification. Use Apple or Google sign-in." }
+            } catch {
+                if let clerkError = error as? ClerkError, let message = clerkError.message { errorMessage = message }
+                else { errorMessage = error.localizedDescription }
+            }
         }
     }
 

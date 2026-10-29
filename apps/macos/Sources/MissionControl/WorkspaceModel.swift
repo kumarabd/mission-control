@@ -247,17 +247,16 @@ final class WorkspaceModel {
         provisioning = .ready
     }
 
-    /// The router answers 404 `no_tenant` when the signed-in person has no
+    /// The router answers 404 `no_tenant` to `/brain/v1/explorer/me` (the
+    /// same probe the web console uses) when the signed-in person has no
     /// workspace. Anything else — offline, a hiccup, an existing account —
     /// goes straight in, so setup never blocks a working workspace.
     private static func workspaceMissing() async -> Bool {
         guard let token = try? await Clerk.shared.auth.getToken(), !token.isEmpty,
               let url = URL(string: Config.routerBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                            + "/missioncontrol/api/v1/operations/profile_get") else { return false }
+                            + "/brain/v1/explorer/me") else { return false }
         var request = URLRequest(url: url, timeoutInterval: 20)
-        request.httpMethod = "POST"
-        request.httpBody = Data("{}".utf8)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               let http = response as? HTTPURLResponse else { return false }
