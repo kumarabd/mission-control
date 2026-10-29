@@ -23,10 +23,21 @@ final class DevWorld: @unchecked Sendable {
                  item("t4", "task", "Pay the electricity bill", at: nil, minutes: 5, done: true),
                  item("t5", "task", "Take vitamins", at: now.addingTimeInterval(-3 * 3600), repeats: true, alert: 0),
                  item("t6", "task", "File the expense report", at: now.addingTimeInterval(-2 * 86_400)),
+                 item("t7", "task", "Do 3 sets of pull-ups", at: nil, minutes: 20, goal: "g2"),
+                 item("t8", "task", "Read 20 pages", at: nil, minutes: 20, goal: "g3", repeats: true),
+                 item("t9", "task", "Run 5 km", at: nil, minutes: 30, goal: "g4"),
                  item("e1", "event", "Team standup", at: now.addingTimeInterval(2 * 3600), minutes: 15, repeats: true),
                  item("e2", "event", "Flight to Lisbon", at: now.addingTimeInterval(3 * 86_400), minutes: 150, goal: "g1", alert: 180)]
-        goals = [Wire.Goal(id: "g1", subject: "person", title: "Lisbon trip", notes: "Take the coolers", endsOn: DevWorld.dayString(now.addingTimeInterval(10 * 86_400)),
-                           progress: .init(done: 0, total: 1), next: nil, version: 1, deletedAt: nil)]
+        goals = [
+            Wire.Goal(id: "g1", subject: "person", title: "Lisbon trip", notes: "Take the coolers", endsOn: DevWorld.dayString(now.addingTimeInterval(10 * 86_400)),
+                      progress: .init(done: 2, total: 4), next: nil, version: 1, deletedAt: nil),
+            Wire.Goal(id: "g2", subject: "person", title: "Get to 5 pull-ups by spring", notes: "Small sets, every other day", endsOn: DevWorld.dayString(now.addingTimeInterval(120 * 86_400)),
+                      progress: .init(done: 2, total: 4), next: nil, version: 1, deletedAt: nil),
+            Wire.Goal(id: "g3", subject: "person", title: "Read 12 books this year", notes: "One chapter at a time", endsOn: DevWorld.dayString(now.addingTimeInterval(200 * 86_400)),
+                      progress: .init(done: 3, total: 12), next: nil, version: 1, deletedAt: nil),
+            Wire.Goal(id: "g4", subject: "person", title: "Run a half marathon", notes: "Build the weekly long run", endsOn: DevWorld.dayString(now.addingTimeInterval(180 * 86_400)),
+                      progress: .init(done: 1, total: 5), next: nil, version: 1, deletedAt: nil),
+        ]
     }
 
     static func dayString(_ d: Date) -> String {

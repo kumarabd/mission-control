@@ -69,7 +69,42 @@ final class ChatModel {
         agentID = Self.selectedAgent()
         gateway.onEvent = { [weak self] event in self?.handle(event) }
         restoreSaved()
+        #if DEBUG
+        if Config.devEngine { seedDevConversation() }
+        #endif
     }
+
+    #if DEBUG
+    /// Sample screenshots need a conversation, not a sign-in prompt. This is
+    /// DEBUG-only and never reaches the gateway.
+    private func seedDevConversation() {
+        transcript = ChatTranscript()
+        let now = Date()
+        let lines: [(Int, Int, String, String, TimeInterval)] = [
+            (1, 1, "user", "I want to plan the Lisbon trip for two weeks from now. Keep it under €2,000.", -900),
+            (1, 2, "assistant", "I’ve set up the Lisbon trip goal and a €2,000 budget tracker. I added the flight and a packing task, and I’ll check in before you book.", -840),
+            (2, 1, "user", "Remind me to book the flight on Friday morning.", -600),
+            (2, 2, "assistant", "Done — Friday at 9:00. The reminder is linked to the trip goal, so it will show up in Today.", -540),
+            (3, 1, "user", "What should I pack?", -480),
+            (3, 2, "assistant", "Light layers, the coolers, and your running shoes. I can turn that into a checklist.", -420),
+            (4, 1, "user", "Yes, make it a checklist.", -360),
+            (4, 2, "assistant", "Done — five items in the packing task. I’ll keep the trip goal in Today while you plan.", -300),
+            (5, 1, "user", "What’s left before I book?", -240),
+            (5, 2, "assistant", "Two things: confirm the dates and book the flight. The budget tracker and packing list are ready.", -180),
+            (6, 1, "user", "Can you check the weather in Lisbon?", -120),
+            (6, 2, "assistant", "Mild and sunny, 18–22°C. Light layers will be enough.", -90),
+            (7, 1, "user", "Add a reminder to check in online 24 hours before.", -60),
+            (7, 2, "assistant", "Added — 24 hours before the flight, linked to the trip.", -40),
+            (8, 1, "user", "What does the budget look like?", -20),
+            (8, 2, "assistant", "You’ve saved €1,100 of €2,000. The flight and hotel are the two big remaining costs.", -10),
+        ]
+        for (turn, seq, role, text, offset) in lines {
+            transcript.apply(.message(turn: turn, seq: seq, role: role, content: text,
+                                      clientMessageID: nil, at: now.addingTimeInterval(offset)))
+        }
+        link = .live
+    }
+    #endif
 
     private func restoreSaved() {
         do { transcript.restore(try ChatStore.load(owner: owner, agent: agentID)) }
@@ -123,6 +158,12 @@ final class ChatModel {
     }
 
     private func reconcile() {
+        #if DEBUG
+        if Config.devEngine {
+            link = .live
+            return
+        }
+        #endif
         if inForeground && !voiceHasIt { beginInteraction() } else { endInteraction() }
     }
 

@@ -28,6 +28,8 @@
     </array>
     <key>RouterBaseURL</key>
     <string>https://api.nighthawklabs.org</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>

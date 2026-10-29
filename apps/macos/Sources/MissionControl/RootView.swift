@@ -13,12 +13,23 @@ struct RootView: View {
 
     var body: some View {
         Group {
+            #if DEBUG
+            if Config.devEngine {
+                // Developer mode skips Clerk and the router, like the phone builds.
+                WorkspaceView(userId: "dev-user")
+            } else if let user = clerk.user {
+                WorkspaceView(userId: user.id).id(user.id)
+            } else {
+                SignInView()
+            }
+            #else
             if let user = clerk.user {
                 WorkspaceView(userId: user.id)
                     .id(user.id)
             } else {
                 SignInView()
             }
+            #endif
         }
         .environment(lock)
         .foregroundStyle(MissionTheme.ink)
@@ -103,12 +114,21 @@ private struct SignInView: View {
                             .foregroundStyle(MissionTheme.quietText)
                     }
                     Button {
-                        signIn()
+                        signInWithApple()
+                    } label: {
+                        Label("Continue with Apple", systemImage: "apple.logo")
+                            .frame(minWidth: 250, minHeight: 30)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(isSigningIn)
+                    Button {
+                        signInWithGoogle()
                     } label: {
                         Label("Continue with Google", systemImage: "person.crop.circle.badge.checkmark")
                             .frame(minWidth: 250, minHeight: 30)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.bordered)
                     .controlSize(.large)
                     .disabled(isSigningIn)
                     if isSigningIn { ProgressView().controlSize(.small) }
@@ -128,7 +148,16 @@ private struct SignInView: View {
         }
     }
 
-    private func signIn() {
+    private func signInWithApple() {
+        isSigningIn = true
+        Task {
+            defer { isSigningIn = false }
+            do { try await clerk.auth.signInWithApple() }
+            catch { errorMessage = error.localizedDescription }
+        }
+    }
+
+    private func signInWithGoogle() {
         isSigningIn = true
         Task {
             defer { isSigningIn = false }

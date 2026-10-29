@@ -21,8 +21,14 @@ struct ProgressTab: View {
         #if DEBUG
         // `-start-segment tasks` opens a developer build on that segment, like `-start-tab`.
         if let name = UserDefaults.standard.string(forKey: "start-segment"), let s = Segment(rawValue: name.capitalized) { _segment = State(initialValue: s) }
-        // `-open-goal g1` opens that goal's screen.
-        if let id = UserDefaults.standard.string(forKey: "open-goal") { _path = State(initialValue: NavigationPath([GoalRef(id: id)])) }
+        // `-open-goal g1` pushes that goal's screen (iPhone).
+        if let id = UserDefaults.standard.string(forKey: "open-goal") {
+            _path = State(initialValue: NavigationPath([GoalRef(id: id)]))
+        }
+        // `-select-goal g1` selects it in the iPad split without pushing a stack.
+        if let id = UserDefaults.standard.string(forKey: "select-goal") {
+            _selectedGoal = State(initialValue: GoalRef(id: id))
+        }
         #endif
     }
 

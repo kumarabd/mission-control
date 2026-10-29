@@ -93,12 +93,20 @@ final class WorkspaceModel {
         chatModel = ChatModel(store: chat)
         token = { try? await Clerk.shared.auth.getToken() }
         chatModel.workspace = self
+        #if DEBUG
+        // `-start-page chat` opens a developer build on that surface, like `-start-tab` on the phone.
+        if let name = UserDefaults.standard.string(forKey: "start-page"),
+           let page = Destination(rawValue: name.lowercased()) { destination = page }
+        #endif
     }
 
     var routerBase: String { Config.routerBaseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) }
 
     var memoryService: MemoryService {
-        MemoryService(baseURL: routerBase + "/brain", token: token)
+        #if DEBUG
+        if Config.devEngine { return .devSample }
+        #endif
+        return MemoryService(baseURL: routerBase + "/brain", token: token)
     }
 
     var agentsAPI: GatewayAgentsAPI {
@@ -111,6 +119,9 @@ final class WorkspaceModel {
             return
         }
         started = true
+        #if DEBUG
+        if Config.devEngine { await attachDevWorkspace(); return }
+        #endif
         guard !routerBase.isEmpty else { provisioning = .ready; return }
 
         if await Self.workspaceMissing() {
@@ -119,6 +130,21 @@ final class WorkspaceModel {
         }
         await attachAndLoad()
     }
+
+    #if DEBUG
+    /// Developer mode serves sample data in place of a workspace, so every
+    /// screen can be run and looked at without an account. Never ships.
+    private func attachDevWorkspace() async {
+        let api = DevWorld().api()
+        life.attachWorkspace(items: ItemsService(api: api), day: DayService(api: api), goals: GoalsService(api: api))
+        life.attachSettings(SettingsService(api: api))
+        servicesAttached = true
+        chat.start()
+        await life.load()
+        await life.refreshWorkspace()
+        provisioning = .ready
+    }
+    #endif
 
     /// Called by the setup screen once provisioning reports completed.
     func finishOnboarding() async {

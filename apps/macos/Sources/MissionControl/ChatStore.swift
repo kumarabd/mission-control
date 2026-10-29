@@ -45,6 +45,9 @@ final class ChatStore {
     func start() {
         guard !started else { return }
         started = true
+        #if DEBUG
+        if Config.devEngine { seedDevConversation(); return }
+        #endif
         let client = GatewayClient(baseURL: AppConfiguration.gatewayBaseURL) {
             try await Clerk.shared.auth.getToken()
         }
@@ -70,6 +73,39 @@ final class ChatStore {
         client?.disconnect()
         started = false
     }
+
+    #if DEBUG
+    /// Developer mode shows a conversation instead of an empty socket, so the
+    /// chat can be run and looked at without a workspace. Never ships.
+    private func seedDevConversation() {
+        let lines: [(String, String)] = [
+            ("user", "I want to plan the Lisbon trip for two weeks from now. Keep it under €2,000."),
+            ("assistant", "I’ve set up the Lisbon trip goal and a €2,000 budget tracker. I added the flight and a packing task, and I’ll check in before you book."),
+            ("user", "Remind me to book the flight on Friday morning."),
+            ("assistant", "Done — Friday at 9:00. The reminder is linked to the trip goal, so it will show up in Today."),
+            ("user", "What’s left before I book?"),
+            ("assistant", "Two things: confirm the dates and book the flight. The budget tracker and packing list are ready."),
+            ("user", "Can you check the weather in Lisbon?"),
+            ("assistant", "Mild and sunny, 18–22°C. Light layers will be enough."),
+            ("user", "What does the budget look like?"),
+            ("assistant", "You’ve saved €1,100 of €2,000. The flight and hotel are the two big remaining costs."),
+        ]
+        var turn = 0
+        messages = lines.enumerated().map { index, line in
+            if line.0 == "user" { turn += 1 }
+            return ConversationMessage(
+                id: "dev-\(index)",
+                turnSequence: turn,
+                sequence: index + 1,
+                role: line.0 == "user" ? .user : .assistant,
+                text: line.1,
+                isComplete: true
+            )
+        }
+        connectionState = .live
+        assistantState = .ready
+    }
+    #endif
 
     func refreshSessions() async {
         guard let client else { return }

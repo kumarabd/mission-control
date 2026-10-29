@@ -41,3 +41,9 @@ make foundations  # fail if any bundled copy has drifted
 
 `app-icons/source/` holds the SVG sources for the iOS, macOS and Android app marks. Export platform assets from
 these sources; keep the generated icon sets in the platform projects.
+
+## Marketing
+
+`marketing/` holds the generated Mission Control launch renders. They are reference/marketing assets, not client
+runtime assets, and are not included in the web image.
+

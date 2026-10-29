@@ -14,13 +14,13 @@ extension MemoryService {
             let section = query.first { $0.name == "section" }?.value ?? "reflections"
             let page: SemanticMemory.Page
             switch url.path {
-            case "/v1/explorer/memory/facts":
+            case let path where path.hasSuffix("/v1/explorer/memory/facts"):
                 return (try Wire.encoder.encode(EntityMemory.Page(bankAvailable: true, items: [], hasMore: false, limit: 20, offset: 0)),
                         HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-            case "/v1/explorer/semantic/world":
+            case let path where path.hasSuffix("/v1/explorer/semantic/world"):
                 return (try Wire.encoder.encode(sampleWorld()),
                         HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-            case "/v1/explorer/semantic":
+            case let path where path.hasSuffix("/v1/explorer/semantic"):
                 page = samplePage(section: section)
             default:
                 return (Data(), HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil)!)

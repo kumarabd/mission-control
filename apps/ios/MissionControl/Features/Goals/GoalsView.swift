@@ -47,7 +47,7 @@ struct GoalRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s) {
-            Text(goal.title).font(.mission(.headline, .medium))
+            Text(goal.title).font(.mission(.headline, .medium)).foregroundStyle(Tok.text)
             if goal.progress.total > 0 {
                 MissionProgressBar(fraction: Double(goal.progress.done) / Double(goal.progress.total), label: "\(goal.progress.done) of \(goal.progress.total) tasks done")
             } else {

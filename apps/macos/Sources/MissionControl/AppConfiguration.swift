@@ -21,11 +21,9 @@ enum AppConfiguration {
 
     static var gatewayBaseURL: URL { routerBaseURL.appending(path: "gateway") }
 
-    /// The macOS bundle has its own identifier, so ClerkKit's default redirect
-    /// would be `com.kumarabd.MissionControlMac://callback` — not yet authorized
-    /// on this instance. Use the existing authorized iOS native redirect until
-    /// the macOS native application is registered in Clerk. Override with
-    /// `CLERK_REDIRECT_URL` once that redirect is allowlisted.
+    /// Both Apple clients ship under one bundle ID, so ClerkKit's default
+    /// redirect is the authorized native one. Override with `CLERK_REDIRECT_URL`
+    /// only for another Clerk instance.
     private static let defaultClerkRedirectURL = "com.kumarabd.MissionControl://callback"
 
     static var clerkRedirectURL: String {

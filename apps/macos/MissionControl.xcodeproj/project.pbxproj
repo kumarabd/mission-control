@@ -183,6 +183,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLERK_PUBLISHABLE_KEY = pk_live_Y2xlcmsubmlnaHRoYXdrbGFicy5vcmck;
+				CODE_SIGN_ENTITLEMENTS = MissionControl.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D9B866T935;
@@ -192,12 +193,13 @@
 				INFOPLIST_KEY_ClerkPublishableKey = "$(CLERK_PUBLISHABLE_KEY)";
 				INFOPLIST_KEY_RouterBaseURL = "https://api.nighthawklabs.org";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Mission Control reads your calendar only to show events beside your day.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Mission Control reads your calendar only to show events beside your day.";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.kumarabd.MissionControlMac;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kumarabd.MissionControl;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -209,6 +211,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLERK_PUBLISHABLE_KEY = pk_live_Y2xlcmsubmlnaHRoYXdrbGFicy5vcmck;
+				CODE_SIGN_ENTITLEMENTS = MissionControl.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = D9B866T935;
@@ -218,12 +221,13 @@
 				INFOPLIST_KEY_ClerkPublishableKey = "$(CLERK_PUBLISHABLE_KEY)";
 				INFOPLIST_KEY_RouterBaseURL = "https://api.nighthawklabs.org";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Mission Control reads your calendar only to show events beside your day.";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "Mission Control reads your calendar only to show events beside your day.";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.kumarabd.MissionControlMac;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kumarabd.MissionControl;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;

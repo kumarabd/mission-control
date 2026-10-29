@@ -110,6 +110,14 @@ struct WorkspaceView: View {
         }
     }
 
+    /// Developer mode has no account to name, so it never shows the signed-in address.
+    private var accountLabel: String {
+        #if DEBUG
+        if Config.devEngine { return "Your workspace" }
+        #endif
+        return clerk.user?.primaryEmailAddress?.emailAddress ?? "Your workspace"
+    }
+
     private func sidebar(workspace: WorkspaceModel) -> some View {
         @Bindable var workspace = workspace
         return VStack(spacing: 0) {
@@ -118,7 +126,7 @@ struct WorkspaceView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Mission Control")
                         .font(.mission(.headline, .semibold))
-                    Text(clerk.user?.primaryEmailAddress?.emailAddress ?? "Your workspace")
+                    Text(accountLabel)
                         .font(.mission(.caption))
                         .foregroundStyle(Tok.muted)
                         .lineLimit(1)
