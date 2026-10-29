@@ -6,7 +6,7 @@ import { NavIcon } from './navIcons'
 
 const ITEMS: NavItem[] = [
   { to: '/today', label: 'Today', icon: 'home' },
-  { to: '/goals', label: 'Goals', icon: 'target', matchPrefix: '/goals' },
+  { to: '/life', label: 'Life', icon: 'layers', matchPrefix: '/life' },
   { to: '/chat', label: 'Chat', icon: 'message-square' },
   { to: '/memory', label: 'Memory', icon: 'brain', matchPrefix: '/memory' },
 ]

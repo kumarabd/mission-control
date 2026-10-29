@@ -7,7 +7,7 @@ describe('Mission Control navigation', () => {
   it('keeps the native order first and Settings last', () => {
     expect(ALL_NAV_ITEMS.map((item) => item.label)).toEqual([
       'Today',
-      'Goals',
+      'Life',
       'Chat',
       'Memory',
       'Finance',
@@ -31,9 +31,9 @@ describe('Mission Control navigation', () => {
   })
 
   it('matches detail routes through the section prefix', () => {
-    const goals = ALL_NAV_ITEMS.find((item) => item.label === 'Goals')!
-    expect(isNavActive('/goals', goals)).toBe(true)
-    expect(isNavActive('/goals/fx-goal-book', goals)).toBe(true)
-    expect(isNavActive('/today', goals)).toBe(false)
+    const life = ALL_NAV_ITEMS.find((item) => item.label === 'Life')!
+    expect(isNavActive('/life', life)).toBe(true)
+    expect(isNavActive('/life/anything', life)).toBe(true)
+    expect(isNavActive('/today', life)).toBe(false)
   })
 })

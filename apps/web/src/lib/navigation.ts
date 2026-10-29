@@ -28,7 +28,7 @@ export const NAV_GROUPS: NavGroup[] = [
     flat: true,
     items: [
       { to: '/today', label: 'Today', icon: 'home' },
-      { to: '/goals', label: 'Goals', icon: 'target', matchPrefix: '/goals' },
+      { to: '/life', label: 'Life', icon: 'layers', matchPrefix: '/life' },
       { to: '/chat', label: 'Chat', icon: 'message-square' },
       { to: '/memory', label: 'Memory', icon: 'brain', matchPrefix: '/memory' },
     ],
@@ -76,13 +76,14 @@ export const LEGACY_REDIRECTS: LegacyRedirect[] = [
   { from: '/memory/mental-models', to: '/settings/advanced/raw?table=mental_model' },
   { from: '/emus', to: '/memory' },
   { from: '/episodes', to: '/memory' },
-  { from: '/events', to: '/goals?view=events' },
+  { from: '/events', to: '/life', prefix: true },
   { from: '/memory/events', to: '/memory' },
 
   // Routines and reminders were retired with the clean-slate engine: a routine is a repeating task, a reminder is a
   // task with an alert, and both live with the other tasks and events.
-  { from: '/routines', to: '/goals?view=tasks', prefix: true },
-  { from: '/reminders', to: '/goals?view=tasks', prefix: true },
+  { from: '/goals', to: '/life', prefix: true },
+  { from: '/routines', to: '/life', prefix: true },
+  { from: '/reminders', to: '/life', prefix: true },
   { from: '/memory/episodes', to: '/memory' },
   { from: '/graph', to: '/memory' },
   { from: '/knowledge', to: '/memory', prefix: true },

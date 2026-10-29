@@ -15,15 +15,18 @@ import {
 function targetPath(item: GatewayNotification): string | null {
   if (!item.link) return null
   switch (item.link.entity) {
+    case 'intention':
+    case 'commitment':
+    case 'decision':
     case 'goal':
-      return `/goals/${item.link.id}`
+      return '/life' 
     case 'task':
     case 'event':
     case 'plan_item':
       return `/today?item=${item.link.id}`
     case 'routine':
     case 'reminder':
-      return `/goals?view=tasks`
+      return '/life' 
     default:
       return null
   }

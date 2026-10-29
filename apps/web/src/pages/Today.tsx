@@ -1,246 +1,164 @@
-import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useQueryClient } from '@tanstack/react-query'
-import { CloudOff, RefreshCw, SquarePen } from 'lucide-react'
-import AddTaskSheet from '../components/today/AddTaskSheet'
-import ScheduleWindow from '../components/today/ScheduleWindow'
-import TaskDeck from '../components/today/TaskDeck'
-import TaskDetailSheet from '../components/today/TaskDetailSheet'
-import { EmptyState, IconButton, Skeleton, toast, useConfirm } from '../components/ui'
+import { useNavigate } from 'react-router-dom'
+import { Check, CloudOff, SquarePen } from 'lucide-react'
+import { EmptyState, IconButton, Skeleton, toast } from '../components/ui'
 import Screen from '../components/mission/Screen'
 import InlineError from '../components/mission/InlineError'
-import { cn } from '../lib/cn'
-import {
-  formatDay,
-  isLifeError,
-  lifeKeys,
-  localDay,
-  useCompleteTask,
-  useDay,
-  useDeleteTask,
-  useItem,
-  useOpenTasks,
-  useUpdateTask,
-  type Item,
-} from '../lib/life'
+import ListCard from '../components/mission/ListCard'
+import { formatDay, formatTime, isLifeError } from '../lib/life'
+import { useCompleteTask, useDay, useOpenTasks, type DayEntry, type Task } from '../lib/life/personal'
+import { useChatDraft } from '../lib/chatDraft'
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : 'Something went wrong.'
+}
 
 export default function Today() {
   const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const qc = useQueryClient()
-  const confirm = useConfirm()
-
+  const requestDraft = useChatDraft((state) => state.request)
   const day = useDay()
   const tasks = useOpenTasks()
   const complete = useCompleteTask()
-  const update = useUpdateTask()
-  const remove = useDeleteTask()
 
-  const [manualAdd, setManualAdd] = useState(false)
-  const [detailItem, setDetailItem] = useState<Item | null>(null)
-  const [movedToBottom, setMovedToBottom] = useState<Set<string>>(() => new Set())
-
-  const dayName = day.data?.day ?? localDay()
-  const title = formatDay(dayName, { weekday: 'long', month: 'long', day: 'numeric' })
-
-  // URLs are the source of truth for the add sheet and a deep-linked item;
-  // local state covers taps and is cleared when the surface closes.
-  const addParam = searchParams.get('add')
-  const addTaskOpen = manualAdd || addParam === 'task'
-  const itemParam = searchParams.get('item')
   const entries = day.data?.entries ?? []
-  const openTasks = (tasks.data?.items ?? []).filter((item) => !item.at)
-  const listed =
-    entries.find((entry) => entry.item.id === itemParam)?.item ??
-    openTasks.find((item) => item.id === itemParam) ??
-    null
-  // A receipt can deep-link a task or event that is not part of today; fetch that one by id.
-  const linked = useItem(itemParam && !listed ? itemParam : '')
-  const activeItem = detailItem ?? listed ?? linked.data ?? null
+  const untimed = (tasks.data?.items ?? []).filter((task) => !task.at)
+  const done = entries.filter((entry) => entry.state === 'done').length
+  const title = day.data?.day
+    ? formatDay(day.data.day, { weekday: 'long', month: 'long', day: 'numeric' })
+    : 'Today'
 
-  const clearParam = (key: string) => {
-    const nextParams = new URLSearchParams(searchParams)
-    nextParams.delete(key)
-    setSearchParams(nextParams, { replace: true })
+  const startNew = () => {
+    requestDraft('Remind me to ')
+    navigate('/chat')
   }
 
-  const closeAdd = () => {
-    setManualAdd(false)
-    if (addParam) clearParam('add')
-  }
-
-  const closeDetail = () => {
-    setDetailItem(null)
-    if (itemParam) clearParam('item')
-  }
-
-  const doneCount = entries.filter((entry) => entry.state === 'done' || entry.item.done_at).length
-  const summaryLine = entries.length
-    ? `${doneCount} of ${entries.length} done today`
-    : undefined
-
-  const reportError = (error: unknown) => {
-    const message =
-      isLifeError(error) && error.kind === 'conflict'
-        ? 'That changed elsewhere. It has been refreshed.'
-        : error instanceof Error
-          ? error.message
-          : 'Something went wrong.'
-    toast.error(message)
-    if (isLifeError(error) && error.kind === 'conflict') {
-      void qc.invalidateQueries({ queryKey: lifeKeys.all })
-    }
-  }
-
-  const onComplete = (item: Item, done: boolean) => {
-    complete.mutate({ item, done }, { onError: reportError })
-  }
-
-  const onTogglePriority = (item: Item) => {
-    update.mutate(
+  const finish = (task: Task, at?: string) =>
+    complete.mutate(
+      { task, at: task.recurrence ? at : undefined },
       {
-        item,
-        title: item.title,
-        minutes: item.minutes,
-        at: item.at,
-        is_priority: !item.is_priority,
-        goal_id: item.goal_id,
+        onSuccess: () => toast.success('Done.'),
+        onError: (error) => toast.error(message(error)),
       },
-      { onError: reportError },
+    )
+
+  if (day.isPending) {
+    return (
+      <Screen title="Today">
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-14 rounded-flat-md" />
+          <Skeleton className="h-14 rounded-flat-md" />
+          <Skeleton className="h-14 rounded-flat-md" />
+        </div>
+      </Screen>
+    )
+  }
+  if (isLifeError(day.error) && day.error.kind === 'not_provisioned') {
+    return (
+      <Screen title="Today">
+        <EmptyState icon={<CloudOff />} title="Today needs your workspace" body="It isn’t reachable right now." />
+      </Screen>
+    )
+  }
+  if (day.error) {
+    return (
+      <Screen title="Today">
+        <InlineError title="Couldn’t load today" description={message(day.error)} onRetry={() => void day.refetch()} />
+      </Screen>
     )
   }
 
-  const onDelete = (item: Item) => {
-    void (async () => {
-      const yes = await confirm({
-        title: 'Delete this task?',
-        body: `“${item.title}” will be removed.`,
-        confirmLabel: 'Delete',
-        tone: 'danger',
-      })
-      if (!yes) return
-      remove.mutate(item, {
-        onSuccess: () => {
-          if (activeItem?.id === item.id) closeDetail()
-        },
-        onError: reportError,
-      })
-    })()
-  }
-
-  const isFetching = day.isFetching || tasks.isFetching
-  const notProvisioned = isLifeError(day.error) && day.error.kind === 'not_provisioned'
-
   return (
     <Screen
-      eyebrow={title}
-      title="Today"
-      description={summaryLine}
+      title={title}
+      description={entries.length ? `${done} of ${entries.length} done` : undefined}
       actions={
-        <>
-          <IconButton label="Add a task" size="lg" onClick={() => setManualAdd(true)}>
-            <SquarePen aria-hidden />
-          </IconButton>
-          <IconButton
-            label="Refresh today"
-            size="lg"
-            className="max-sm:hidden"
-            onClick={() => void qc.invalidateQueries({ queryKey: lifeKeys.all })}
-          >
-            <RefreshCw className={cn(isFetching && 'animate-spin motion-reduce:animate-none')} aria-hidden />
-          </IconButton>
-        </>
+        <IconButton label="Tell your assistant" size="lg" onClick={startNew}>
+          <SquarePen aria-hidden />
+        </IconButton>
       }
     >
-      {day.isPending ? (
-        <TodaySkeleton />
-      ) : notProvisioned ? (
-        <div className="rounded-2xl border border-flat-border bg-flat-surface">
-          <EmptyState
-            icon={<CloudOff />}
-            title="Today isn’t connected yet"
-            body="This workspace isn’t provisioned for the Life Engine, so there is no day to show. Everything else in the console still works."
-          />
-        </div>
-      ) : day.isError ? (
-        <InlineError
-          title="Today couldn’t load"
-          description={day.error instanceof Error ? day.error.message : 'Could not load today.'}
-          onRetry={() => void day.refetch()}
+      {entries.length === 0 && untimed.length === 0 ? (
+        <EmptyState
+          icon={<Check />}
+          title="A clear day"
+          body="Tell your assistant what needs doing and it will keep the day here."
+          action={{ label: 'Tell your assistant', onClick: startNew }}
         />
       ) : (
-        <div className="flex flex-col gap-7">
-          {tasks.isError && (
-            <InlineError
-              title="Tasks didn’t load"
-              description={tasks.error instanceof Error ? tasks.error.message : 'Could not load tasks.'}
-              onRetry={() => void tasks.refetch()}
-            />
+        <div className="flex flex-col gap-5">
+          {entries.length > 0 && (
+            <ListCard>
+              {entries.map((entry) => (
+                <EntryRow
+                  key={`${entry.task?.id ?? entry.event?.id}-${entry.at}`}
+                  entry={entry}
+                  pending={complete.isPending}
+                  onComplete={() => entry.task && finish(entry.task, entry.at)}
+                />
+              ))}
+            </ListCard>
           )}
-
-          <ScheduleWindow entries={entries} onOpen={setDetailItem} />
-
-          <TaskDeck
-            items={openTasks}
-            busyItemId={complete.isPending ? complete.variables?.item.id : null}
-            movedToBottom={movedToBottom}
-            onOpenTask={setDetailItem}
-            onCompleteTask={onComplete}
-            onTogglePriority={onTogglePriority}
-            onMoveToBottom={(item) =>
-              setMovedToBottom((current) => {
-                const nextSet = new Set(current)
-                nextSet.add(item.id)
-                return nextSet
-              })
-            }
-            onDeleteTask={onDelete}
-            onAddTask={() => setManualAdd(true)}
-          />
+          {untimed.length > 0 && (
+            <section>
+              <h2 className="mb-2 px-1 text-native-footnote font-medium uppercase tracking-wide text-flat-subtle-fg">Anytime</h2>
+              <ListCard>
+                {untimed.map((task) => (
+                  <UntimedRow key={task.id} task={task} pending={complete.isPending} onComplete={() => finish(task)} />
+                ))}
+              </ListCard>
+            </section>
+          )}
         </div>
-      )}
-
-      {addTaskOpen && <AddTaskSheet onOpenChange={(open) => {
-        if (!open) closeAdd()
-      }} />}
-
-      {activeItem && (
-        <TaskDetailSheet
-          key={activeItem.id}
-          item={activeItem}
-          onOpenChange={(open) => {
-            if (!open) closeDetail()
-          }}
-          onOpenGoal={(goalId) => {
-            closeDetail()
-            navigate(`/goals/${goalId}`)
-          }}
-        />
       )}
     </Screen>
   )
 }
 
-function TodaySkeleton() {
+function EntryRow({ entry, onComplete, pending }: { entry: DayEntry; onComplete: () => void; pending: boolean }) {
+  const task = entry.task
+  const event = entry.event
+  const title = task?.title ?? event?.title ?? ''
+  const done = entry.state === 'done'
+  const meta = [formatTime(entry.at), entry.overdue ? 'Overdue' : '', event ? 'Event' : task?.recurrence ? 'Routine' : '']
+    .filter(Boolean)
+    .join(' · ')
   return (
-    <div className="flex flex-col gap-7" aria-busy="true" aria-label="Loading your day">
-      <div>
-        <Skeleton className="mb-2 h-4 w-24" />
-        <Skeleton className="h-[268px] rounded-2xl" />
-      </div>
-      <div>
-        <Skeleton className="mb-2 h-4 w-20" />
-        <div className="rounded-2xl border border-flat-border bg-flat-surface p-4">
-          <div className="flex flex-col gap-3">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div key={index} className="flex items-center gap-3">
-                <Skeleton variant="circle" className="size-8" />
-                <Skeleton className="h-4 flex-1" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+    <div className="flex min-h-14 items-center gap-3 border-b border-flat-border px-4 py-3 last:border-b-0">
+      <span className="min-w-0 flex-1">
+        <span className={done ? 'block text-native-callout text-flat-subtle-fg line-through' : 'block text-native-callout font-medium text-flat-foreground'}>
+          {title}
+        </span>
+        <span className="mt-0.5 block text-native-footnote text-flat-subtle-fg">{meta}</span>
+      </span>
+      {task && !done && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={onComplete}
+          className="press shrink-0 rounded-full border border-flat-border px-3 py-1 text-native-footnote font-medium text-flat-foreground transition-colors hover:bg-flat-muted/60 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flat-primary"
+        >
+          Done
+        </button>
+      )}
+      {done && <Check className="size-4 shrink-0 text-flat-success" aria-label="Done" />}
+    </div>
+  )
+}
+
+function UntimedRow({ task, onComplete, pending }: { task: Task; onComplete: () => void; pending: boolean }) {
+  return (
+    <div className="flex min-h-14 items-center gap-3 border-b border-flat-border px-4 py-3 last:border-b-0">
+      <span className="min-w-0 flex-1">
+        <span className="block text-native-callout font-medium text-flat-foreground">{task.title}</span>
+        {task.notes && <span className="mt-0.5 block text-native-footnote text-flat-subtle-fg">{task.notes}</span>}
+      </span>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={onComplete}
+        className="press shrink-0 rounded-full border border-flat-border px-3 py-1 text-native-footnote font-medium text-flat-foreground transition-colors hover:bg-flat-muted/60 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flat-primary"
+      >
+        Done
+      </button>
     </div>
   )
 }

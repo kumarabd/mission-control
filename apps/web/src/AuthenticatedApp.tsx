@@ -7,8 +7,7 @@ import { LEGACY_REDIRECTS } from './lib/navigation'
 
 const AuditLog = lazy(() => import('./pages/AuditLog'))
 const Today = lazy(() => import('./pages/Today'))
-const Goals = lazy(() => import('./pages/Goals'))
-const GoalDetail = lazy(() => import('./pages/GoalDetail'))
+const Life = lazy(() => import('./pages/Life'))
 const MissionMemory = lazy(() => import('./pages/MissionMemory'))
 const MemoryDetail = lazy(() => import('./pages/MemoryDetail'))
 const MemoryEntity = lazy(() => import('./pages/MemoryEntity'))
@@ -67,8 +66,7 @@ export default function AuthenticatedApp() {
           >
             <Route path="/today" element={<Today />} />
 
-            <Route path="/goals" element={<Goals />} />
-            <Route path="/goals/:goalId" element={<GoalDetail />} />
+            <Route path="/life" element={<Life />} />
 
             <Route path="/chat" element={<Chat />} />
 
