@@ -232,15 +232,14 @@ export function useGatewayThread(
       preview: '',
       is_running: false,
     }
-    const all = sessions.some((session) => session.session_id === MAIN_SESSION_ID)
-      ? sessions
-      : [main, ...sessions]
-    const ids = new Set(all.map((session) => session.session_id))
+    const hasMain = sessions.some((session) => session.session_id === MAIN_SESSION_ID)
+    const all = hasMain ? sessions : [main, ...sessions]
+    const byID = new Map(all.map((session) => [session.session_id, session] as const))
     const children = new Map<string, SessionSummary[]>()
     const roots: SessionSummary[] = []
     for (const session of all) {
       const parent = session.parent_session_id
-      if (parent && ids.has(parent)) {
+      if (parent && parent !== session.session_id && byID.has(parent)) {
         const siblings = children.get(parent) ?? []
         siblings.push(session)
         children.set(parent, siblings)
@@ -248,8 +247,17 @@ export function useGatewayThread(
         roots.push(session)
       }
     }
-    // Main is always the first root; forks follow their parent, depth-first, so the list reads like folders.
-    roots.sort((a, b) => Number(b.session_id === MAIN_SESSION_ID) - Number(a.session_id === MAIN_SESSION_ID))
+    // Folders read latest-first at every level; forks stay nested under their parent.
+    const latestFirst = (a: SessionSummary, b: SessionSummary) =>
+      Date.parse(b.updated_at) - Date.parse(a.updated_at)
+    roots.sort(latestFirst)
+    for (const siblings of children.values()) siblings.sort(latestFirst)
+    // The synthetic main has no gateway timestamp until its first message, so it
+    // stays pinned as the default conversation.
+    if (!hasMain) {
+      const index = roots.findIndex((session) => session.session_id === MAIN_SESSION_ID)
+      if (index > 0) roots.unshift(...roots.splice(index, 1))
+    }
     const list: SessionSummary[] = []
     const depth = new Map<string, number>()
     const seen = new Set<string>()
@@ -777,10 +785,8 @@ export function useGatewayThread(
         id: session.session_id,
         title: session.title,
         custom: {
-          preview: session.preview,
           updatedAt: session.updated_at,
           isRunning: session.session_id === activeSessionId ? isRunning : session.is_running,
-          isMain: session.session_id === MAIN_SESSION_ID,
           isFork: session.parent_session_id != null,
           depth: threadDepth.get(session.session_id) ?? 0,
         },

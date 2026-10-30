@@ -54,9 +54,9 @@ struct SessionSidebar: View {
                 get: { store.selectedSessionID },
                 set: { store.selectSession($0) }
             )) {
-                ForEach(store.sessions) { session in
-                    SessionRow(session: session, depth: depth(of: session))
-                        .tag(session.sessionID)
+                ForEach(orderedSessions, id: \.session.sessionID) { row in
+                    SessionRow(session: row.session, depth: row.depth)
+                        .tag(row.session.sessionID)
                 }
             }
             .listStyle(.sidebar)
@@ -68,16 +68,36 @@ struct SessionSidebar: View {
         .background(MissionTheme.surface)
     }
 
-    /// How many forks deep a conversation sits, capped so a bad parent chain
-    /// cannot march off the sidebar.
-    private func depth(of session: SessionSummary) -> Int {
-        var depth = 0
-        var parent = session.parentSessionID
-        while let id = parent, depth < 8 {
-            depth += 1
-            parent = store.sessions.first { $0.sessionID == id }?.parentSessionID
+    /// Latest-first at every level, with forks nested directly under their
+    /// parent. Depth is capped so a bad parent chain cannot march off the
+    /// sidebar.
+    private var orderedSessions: [(session: SessionSummary, depth: Int)] {
+        let sessions = store.sessions
+        var byID: [String: SessionSummary] = [:]
+        for session in sessions { byID[session.sessionID] = session }
+        var children: [String: [SessionSummary]] = [:]
+        var roots: [SessionSummary] = []
+        for session in sessions {
+            if let parent = session.parentSessionID, parent != session.sessionID, byID[parent] != nil {
+                children[parent, default: []].append(session)
+            } else {
+                roots.append(session)
+            }
         }
-        return depth
+        let latestFirst: (SessionSummary, SessionSummary) -> Bool = { $0.updatedAt > $1.updatedAt }
+        roots.sort(by: latestFirst)
+        for key in children.keys { children[key]?.sort(by: latestFirst) }
+
+        var ordered: [(session: SessionSummary, depth: Int)] = []
+        var seen = Set<String>()
+        func visit(_ session: SessionSummary, _ depth: Int) {
+            guard seen.insert(session.sessionID).inserted else { return }
+            ordered.append((session, depth))
+            for child in children[session.sessionID] ?? [] { visit(child, min(depth + 1, 8)) }
+        }
+        roots.forEach { visit($0, 0) }
+        for session in sessions { visit(session, 0) } // a malformed parent cycle still gets listed, once
+        return ordered
     }
 }
 
@@ -85,32 +105,30 @@ private struct SessionRow: View {
     let session: SessionSummary
     var depth = 0
 
+    private var isChild: Bool { depth > 0 }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 7) {
-                Image(systemName: session.parentSessionID == nil ? "house" : "bubble.left")
-                    .foregroundStyle(session.parentSessionID == nil ? MissionTheme.tint : MissionTheme.quietText)
-                Text(session.title)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(MissionTheme.ink)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                if session.isRunning {
-                    ProgressView()
-                        .controlSize(.mini)
-                }
-            }
-            if !session.preview.isEmpty {
-                Text(session.preview)
-                    .font(.mission(.caption))
+        HStack(spacing: 7) {
+            Image(systemName: session.parentSessionID == nil ? "house" : "bubble.left")
+                .font(.mission(.caption2))
+                .foregroundStyle(session.parentSessionID == nil ? MissionTheme.tint : MissionTheme.quietText)
+            Text(session.title)
+                .font(.mission(isChild ? .caption : .callout))
+                .fontWeight(isChild ? .regular : .semibold)
+                .foregroundStyle(MissionTheme.ink)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            if session.isRunning {
+                ProgressView()
+                    .controlSize(.mini)
+            } else {
+                Text(session.updatedAt.formatted(.relative(presentation: .named)))
+                    .font(.missionMono(.caption2))
                     .foregroundStyle(MissionTheme.quietText)
-                    .lineLimit(2)
+                    .lineLimit(1)
             }
-            Text(session.updatedAt.formatted(.relative(presentation: .named)))
-                .font(.missionMono(.caption2))
-                .foregroundStyle(MissionTheme.quietText)
         }
-        .padding(.vertical, 5)
+        .padding(.vertical, isChild ? 1 : 4)
         .padding(.leading, CGFloat(depth) * 12)
         .accessibilityElement(children: .combine)
         .accessibilityValue(session.parentSessionID == nil ? "Root conversation" : "Forked conversation")

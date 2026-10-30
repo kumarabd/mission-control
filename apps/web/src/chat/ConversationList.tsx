@@ -39,8 +39,6 @@ const ConversationItem: FC<{ onNavigate?: () => void; onFork?: (sessionId: strin
   const id = useAuiState((state) => state.threadListItem.id)
   const custom = useAuiState((state) => state.threadListItem.custom)
   const isActive = useAuiState((state) => state.threads.mainThreadId === state.threadListItem.id)
-  const preview = typeof custom?.preview === 'string' ? custom.preview : ''
-  const isMain = custom?.isMain === true
   const isFork = custom?.isFork === true
   const isRunning = custom?.isRunning === true
   const depth = typeof custom?.depth === 'number' ? custom.depth : 0
@@ -51,34 +49,28 @@ const ConversationItem: FC<{ onNavigate?: () => void; onFork?: (sessionId: strin
         <ThreadListItemPrimitive.Trigger
           onClick={onNavigate}
           className={cn(
-            'flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors',
+            'flex min-w-0 flex-1 items-center gap-2 rounded-xl border px-3 text-left transition-colors',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flat-primary',
+            isFork ? 'min-h-9 py-1.5 text-xs' : 'min-h-11 py-2 text-native-callout',
             isActive
               ? 'border-flat-border bg-flat-tint text-flat-foreground'
               : 'border-transparent text-flat-muted-fg hover:bg-flat-muted',
           )}
         >
-          <span className="min-w-0 flex-1">
-            <span className="flex min-w-0 items-center gap-1.5">
-              {isFork && <GitBranch className="size-3 shrink-0 text-flat-muted-fg" aria-hidden />}
-              <span className="min-w-0 flex-1 truncate text-native-callout font-medium">
-                <ThreadListItemPrimitive.Title fallback="New session" />
-              </span>
-              {isRunning ? (
-                <LoaderCircle
-                  className="size-3 shrink-0 animate-spin text-flat-primary motion-reduce:animate-none"
-                  aria-label="Running"
-                />
-              ) : (
-                <span className="shrink-0 font-mono text-[10px] text-flat-subtle-fg">
-                  {relativeTime(custom?.updatedAt)}
-                </span>
-              )}
-            </span>
-            <span className="mt-0.5 block truncate text-2xs text-flat-subtle-fg">
-              {preview || (isMain ? 'Your default conversation' : isFork ? 'A branch of this conversation' : 'A new conversation')}
-            </span>
+          {isFork && <GitBranch className="size-3 shrink-0 text-flat-muted-fg" aria-hidden />}
+          <span className="min-w-0 flex-1 truncate font-medium">
+            <ThreadListItemPrimitive.Title fallback="New session" />
           </span>
+          {isRunning ? (
+            <LoaderCircle
+              className="size-3 shrink-0 animate-spin text-flat-primary motion-reduce:animate-none"
+              aria-label="Running"
+            />
+          ) : (
+            <span className="shrink-0 font-mono text-[10px] text-flat-subtle-fg">
+              {relativeTime(custom?.updatedAt)}
+            </span>
+          )}
         </ThreadListItemPrimitive.Trigger>
         {onFork && (
           <button
