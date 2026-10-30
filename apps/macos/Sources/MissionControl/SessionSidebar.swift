@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SessionSidebar: View {
     @Bindable var store: ChatStore
+    @State private var expanded: Set<String> = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,14 +55,23 @@ struct SessionSidebar: View {
                 get: { store.selectedSessionID },
                 set: { store.selectSession($0) }
             )) {
-                ForEach(orderedSessions, id: \.session.sessionID) { row in
-                    SessionRow(session: row.session, depth: row.depth)
-                        .tag(row.session.sessionID)
+                ForEach(orderedRows) { row in
+                    SessionRow(
+                        session: row.session,
+                        depth: row.depth,
+                        childCount: row.childCount,
+                        isExpanded: expanded.contains(row.id),
+                        onToggle: { toggleExpanded(row.id) }
+                    )
+                    .tag(row.session.sessionID)
                 }
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
             .refreshable { await store.refreshSessions() }
+            .onChange(of: store.selectedSessionID) { _, sessionID in
+                expandAncestors(of: sessionID)
+            }
 
             ConnectionFooter(state: store.connectionState)
         }
@@ -69,9 +79,9 @@ struct SessionSidebar: View {
     }
 
     /// Latest-first at every level, with forks nested directly under their
-    /// parent. Depth is capped so a bad parent chain cannot march off the
-    /// sidebar.
-    private var orderedSessions: [(session: SessionSummary, depth: Int)] {
+    /// parent. A fork is listed only when every ancestor folder is expanded.
+    /// Depth is capped so a bad parent chain cannot march off the sidebar.
+    private var orderedRows: [OrderedSession] {
         let sessions = store.sessions
         var byID: [String: SessionSummary] = [:]
         for session in sessions { byID[session.sessionID] = session }
@@ -88,27 +98,89 @@ struct SessionSidebar: View {
         roots.sort(by: latestFirst)
         for key in children.keys { children[key]?.sort(by: latestFirst) }
 
-        var ordered: [(session: SessionSummary, depth: Int)] = []
+        var rows: [(session: SessionSummary, depth: Int)] = []
         var seen = Set<String>()
         func visit(_ session: SessionSummary, _ depth: Int) {
             guard seen.insert(session.sessionID).inserted else { return }
-            ordered.append((session, depth))
+            rows.append((session, depth))
             for child in children[session.sessionID] ?? [] { visit(child, min(depth + 1, 8)) }
         }
         roots.forEach { visit($0, 0) }
         for session in sessions { visit(session, 0) } // a malformed parent cycle still gets listed, once
-        return ordered
+
+        func isOpen(_ session: SessionSummary) -> Bool {
+            var parent = session.parentSessionID
+            var hops = 0
+            while let id = parent, hops < 8 {
+                guard expanded.contains(id) else { return false }
+                guard let ancestor = byID[id] else { return true }
+                parent = ancestor.parentSessionID
+                hops += 1
+            }
+            return true
+        }
+        return rows.filter { isOpen($0.session) }.map { row in
+            OrderedSession(
+                session: row.session,
+                depth: row.depth,
+                childCount: children[row.session.sessionID]?.count ?? 0
+            )
+        }
     }
+
+    private func toggleExpanded(_ sessionID: String) {
+        if expanded.contains(sessionID) { expanded.remove(sessionID) }
+        else { expanded.insert(sessionID) }
+    }
+
+    /// A newly forked or selected child must not be hidden inside a collapsed
+    /// folder, so its ancestors open with it.
+    private func expandAncestors(of sessionID: String) {
+        var parent = store.sessions.first { $0.sessionID == sessionID }?.parentSessionID
+        var hops = 0
+        while let id = parent, hops < 8 {
+            expanded.insert(id)
+            parent = store.sessions.first { $0.sessionID == id }?.parentSessionID
+            hops += 1
+        }
+    }
+}
+
+private struct OrderedSession: Identifiable {
+    let session: SessionSummary
+    let depth: Int
+    let childCount: Int
+
+    var id: String { session.sessionID }
 }
 
 private struct SessionRow: View {
     let session: SessionSummary
     var depth = 0
+    var childCount = 0
+    var isExpanded = false
+    var onToggle: () -> Void = {}
 
     private var isChild: Bool { depth > 0 }
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 5) {
+            if childCount > 0 {
+                Button(action: onToggle) {
+                    Image(systemName: "chevron.right")
+                        .font(.mission(.caption2))
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .foregroundStyle(MissionTheme.quietText)
+                        .frame(width: 12, height: 12)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .help(isExpanded ? "Collapse forks" : "Expand forks")
+                .accessibilityLabel(isExpanded ? "Collapse forks" : "Expand forks")
+            } else {
+                Color.clear
+                    .frame(width: 12, height: 12)
+            }
             Image(systemName: session.parentSessionID == nil ? "house" : "bubble.left")
                 .font(.mission(.caption2))
                 .foregroundStyle(session.parentSessionID == nil ? MissionTheme.tint : MissionTheme.quietText)
@@ -130,7 +202,7 @@ private struct SessionRow: View {
         }
         .padding(.vertical, isChild ? 1 : 4)
         .padding(.leading, CGFloat(depth) * 12)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: childCount > 0 ? .contain : .combine)
         .accessibilityValue(session.parentSessionID == nil ? "Root conversation" : "Forked conversation")
     }
 }

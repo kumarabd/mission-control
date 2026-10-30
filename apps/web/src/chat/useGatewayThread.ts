@@ -196,6 +196,7 @@ export function useGatewayThread(
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [sessionsLoading, setSessionsLoading] = useState(true)
   const [explicitSessionId, setExplicitSessionId] = useState<string | undefined>(undefined)
+  const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set())
   const [completedTurns, setCompletedTurns] = useState(0)
 
   const socketRef = useRef<WebSocket | null>(null)
@@ -222,7 +223,7 @@ export function useGatewayThread(
   const activeSessionId = currentSessionId
   const activeParentSessionId = sessions.find((session) => session.session_id === activeSessionId)?.parent_session_id
 
-  const { visibleSessions, threadDepth } = useMemo(() => {
+  const { visibleSessions, threadDepth, threadChildCount, threadExpanded } = useMemo(() => {
     const main: SessionSummary = {
       session_id: MAIN_SESSION_ID,
       parent_session_id: null,
@@ -270,8 +271,27 @@ export function useGatewayThread(
     }
     roots.forEach((root) => visit(root, 0))
     for (const session of all) visit(session, 0) // a malformed parent cycle still gets listed, once
-    return { visibleSessions: list, threadDepth: depth }
-  }, [sessions])
+    // A fork is hidden until every ancestor folder is expanded.
+    const isOpen = (session: SessionSummary) => {
+      let parent = session.parent_session_id
+      let guard = 0
+      while (parent && guard < 8) {
+        if (!expandedSessions.has(parent)) return false
+        const ancestor = byID.get(parent)
+        if (!ancestor) break
+        parent = ancestor.parent_session_id
+        guard += 1
+      }
+      return true
+    }
+    const childCount = new Map(all.map((session) => [session.session_id, children.get(session.session_id)?.length ?? 0] as const))
+    return {
+      visibleSessions: list.filter(isOpen),
+      threadDepth: depth,
+      threadChildCount: childCount,
+      threadExpanded: expandedSessions,
+    }
+  }, [expandedSessions, sessions])
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -759,6 +779,14 @@ export function useGatewayThread(
         is_running: false,
       },
     ])
+    if (parentSessionId) {
+      setExpandedSessions((previous) => {
+        if (previous.has(parentSessionId)) return previous
+        const next = new Set(previous)
+        next.add(parentSessionId)
+        return next
+      })
+    }
     setExplicitSessionId(newSessionId)
     setMessages([])
     setPendingInput(null)
@@ -771,6 +799,14 @@ export function useGatewayThread(
 
   const startSession = useCallback(() => openSession(null), [openSession])
   const forkSession = useCallback((parentSessionId: string) => openSession(parentSessionId), [openSession])
+  const toggleSessionExpanded = useCallback((sessionId: string) => {
+    setExpandedSessions((previous) => {
+      const next = new Set(previous)
+      if (next.has(sessionId)) next.delete(sessionId)
+      else next.add(sessionId)
+      return next
+    })
+  }, [])
 
   // assistant-ui's external thread-list adapter is intentionally isolated to
   // this boundary; the package still marks the API as evolving. Gateway
@@ -789,12 +825,24 @@ export function useGatewayThread(
           isRunning: session.session_id === activeSessionId ? isRunning : session.is_running,
           isFork: session.parent_session_id != null,
           depth: threadDepth.get(session.session_id) ?? 0,
+          childCount: threadChildCount.get(session.session_id) ?? 0,
+          expanded: threadExpanded.has(session.session_id),
         },
       })),
       onSwitchToThread: switchToSession,
       onSwitchToNewThread: startSession,
     }),
-    [activeSessionId, isRunning, sessionsLoading, startSession, switchToSession, visibleSessions, threadDepth],
+    [
+      activeSessionId,
+      isRunning,
+      sessionsLoading,
+      startSession,
+      switchToSession,
+      threadChildCount,
+      threadDepth,
+      threadExpanded,
+      visibleSessions,
+    ],
   )
 
   // A message sent while a turn runs goes straight to the gateway: the harness routes it (to a running task, or a new
@@ -837,7 +885,7 @@ export function useGatewayThread(
     connectionState,
     connectionError,
     assistantState,
-    sessions: visibleSessions,
+    sessions,
     sessionsLoading,
     currentSessionId: activeSessionId,
     mainSessionId: MAIN_SESSION_ID,
@@ -845,5 +893,6 @@ export function useGatewayThread(
     switchToSession,
     startSession,
     forkSession,
+    toggleSessionExpanded,
   }
 }

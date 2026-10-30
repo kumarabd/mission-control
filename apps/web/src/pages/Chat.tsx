@@ -389,6 +389,7 @@ function ChatSurface({
     sessionsLoading,
     currentSessionId,
     forkSession,
+    toggleSessionExpanded,
   } = gateway
   const aui = useAui()
   const messages = useAuiState((state) => state.thread.messages)
@@ -445,7 +446,12 @@ function ChatSurface({
     <>
       <div className="flex h-full min-h-0 bg-flat-background">
         <aside className="hidden w-64 shrink-0 border-r border-flat-border bg-flat-surface md:flex md:flex-col">
-          <ConversationList isLoading={sessionsLoading} onFork={forkSession} className="flex-1" />
+          <ConversationList
+            isLoading={sessionsLoading}
+            onFork={forkSession}
+            onToggleExpand={toggleSessionExpanded}
+            className="flex-1"
+          />
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
@@ -536,6 +542,7 @@ function ChatSurface({
             forkSession(sessionId)
             setConversationsOpen(false)
           }}
+          onToggleExpand={toggleSessionExpanded}
           showHeading={false}
           className="h-[60vh]"
         />

@@ -3,7 +3,7 @@ import {
   ThreadListPrimitive,
   useAuiState,
 } from '@assistant-ui/react'
-import { GitBranch, GitFork, LoaderCircle, SquarePen } from 'lucide-react'
+import { ChevronRight, GitBranch, GitFork, LoaderCircle, SquarePen } from 'lucide-react'
 import type { FC } from 'react'
 import { cn } from '../lib/cn'
 
@@ -15,6 +15,8 @@ type ConversationListProps = {
   showHeading?: boolean
   /** Branch a conversation: the gateway copies its context into a child, shown under it in this list. */
   onFork?: (sessionId: string) => void
+  /** Expand or collapse a conversation's forks; collapsed folders hide their children. */
+  onToggleExpand?: (sessionId: string) => void
 }
 
 function relativeTime(value: unknown): string {
@@ -32,20 +34,39 @@ function relativeTime(value: unknown): string {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(timestamp)
 }
 
-const ConversationItem: FC<{ onNavigate?: () => void; onFork?: (sessionId: string) => void }> = ({
-  onNavigate,
-  onFork,
-}) => {
+const ConversationItem: FC<{
+  onNavigate?: () => void
+  onFork?: (sessionId: string) => void
+  onToggleExpand?: (sessionId: string) => void
+}> = ({ onNavigate, onFork, onToggleExpand }) => {
   const id = useAuiState((state) => state.threadListItem.id)
   const custom = useAuiState((state) => state.threadListItem.custom)
   const isActive = useAuiState((state) => state.threads.mainThreadId === state.threadListItem.id)
   const isFork = custom?.isFork === true
   const isRunning = custom?.isRunning === true
   const depth = typeof custom?.depth === 'number' ? custom.depth : 0
+  const hasChildren = typeof custom?.childCount === 'number' && custom.childCount > 0
+  const expanded = custom?.expanded === true
 
   return (
     <ThreadListItemPrimitive.Root className="group/session relative" style={{ paddingLeft: depth * 14 }}>
       <div className="flex items-center gap-1">
+        {hasChildren && onToggleExpand ? (
+          <button
+            type="button"
+            onClick={() => onToggleExpand(id)}
+            aria-expanded={expanded}
+            aria-label={expanded ? 'Collapse forks' : 'Expand forks'}
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-flat-muted-fg transition-colors hover:bg-flat-muted hover:text-flat-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flat-primary"
+          >
+            <ChevronRight
+              className={cn('size-3.5 transition-transform', expanded && 'rotate-90')}
+              aria-hidden
+            />
+          </button>
+        ) : (
+          <span className="size-8 shrink-0" aria-hidden />
+        )}
         <ThreadListItemPrimitive.Trigger
           onClick={onNavigate}
           className={cn(
@@ -102,6 +123,7 @@ export function ConversationList({
   className,
   showHeading = true,
   onFork,
+  onToggleExpand,
 }: ConversationListProps) {
   return (
     <ThreadListPrimitive.Root className={cn('flex min-h-0 flex-col', className)}>
@@ -130,7 +152,15 @@ export function ConversationList({
           </div>
         )}
         <ThreadListPrimitive.Items
-          components={{ ThreadListItem: () => <ConversationItem onNavigate={onNavigate} onFork={onFork} /> }}
+          components={{
+            ThreadListItem: () => (
+              <ConversationItem
+                onNavigate={onNavigate}
+                onFork={onFork}
+                onToggleExpand={onToggleExpand}
+              />
+            ),
+          }}
         />
       </div>
     </ThreadListPrimitive.Root>
