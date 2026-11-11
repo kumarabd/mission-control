@@ -11,6 +11,7 @@ import Landing from './pages/Landing'
 import Slides from './pages/Slides'
 
 const Privacy = lazy(() => import('./pages/Privacy'))
+const Terms = lazy(() => import('./pages/Terms'))
 const Capabilities = lazy(() => import('./pages/Capabilities'))
 const Support = lazy(() => import('./pages/Support'))
 // The console, settings and record views, plus Clerk, load only on demand.
@@ -54,6 +55,7 @@ function PublicRoutes() {
           <Route path="/" element={<Landing />} />
           <Route path="/slides" element={<Slides />} />
           <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
           <Route path="/capabilities" element={<Capabilities />} />
           <Route path="/support" element={<Support />} />
           <Route path="/garage/*" element={<Garage />} />

@@ -79,6 +79,7 @@ export function LandingFooter({ signedIn }: { signedIn: boolean }) {
         <Link to="/docs">Documentation</Link>
         <Link to="/slides">Slides</Link>
         <Link to="/privacy">Privacy</Link>
+        <Link to="/terms">Terms</Link>
         <Link to="/support">Support</Link>
         <Link to="/capabilities">What’s available</Link>
         {!signedIn && <Link to="/login">Log in</Link>}
