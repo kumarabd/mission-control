@@ -17,6 +17,15 @@ import {
   type SessionSummary,
 } from '../lib/gateway'
 import { useVoiceInput } from '../voice/voice-context'
+import {
+  applyTextDelta,
+  finishStreamedText,
+  partsOf,
+  replacePart,
+  streamMessageID,
+  upsert,
+  type MessagePart,
+} from './threadMessages'
 
 const PENDING_PREFIX = 'pending:'
 const MAIN_SESSION_ID = 'main'
@@ -72,8 +81,6 @@ type GatewayFrame = {
   completed_at?: string
 }
 
-type MessageParts = Exclude<ThreadMessageLike['content'], string>
-type MessagePart = MessageParts[number]
 type ToolArguments = Extract<MessagePart, { type: 'tool-call' }>['args']
 
 function textOf(message: AppendMessage): string {
@@ -83,47 +90,8 @@ function textOf(message: AppendMessage): string {
     .join('')
 }
 
-function upsert(messages: ThreadMessageLike[], message: ThreadMessageLike): ThreadMessageLike[] {
-  const index = messages.findIndex((item) => item.id === message.id)
-  if (index === -1) return [...messages, message]
-  const next = [...messages]
-  next[index] = message
-  return next
-}
-
-function partsOf(message: ThreadMessageLike | undefined): MessagePart[] {
-  if (!message) return []
-  if (typeof message.content === 'string') {
-    return message.content ? [{ type: 'text', text: message.content }] : []
-  }
-  return [...message.content]
-}
-
-function textFrom(parts: MessagePart[]): string {
-  return parts
-    .filter((part): part is Extract<MessagePart, { type: 'text' }> => part.type === 'text')
-    .map((part) => part.text)
-    .join('')
-}
-
-function replacePart(
-  parts: MessagePart[],
-  type: 'text' | 'reasoning',
-  replacement: Extract<MessagePart, { type: typeof type }>,
-): MessagePart[] {
-  const index = parts.findIndex((part) => part.type === type)
-  if (index === -1) return [...parts, replacement]
-  const next = [...parts]
-  next[index] = replacement
-  return next
-}
-
 function messageID(turnSeq: number, seq: number): string {
   return `turn:${turnSeq}:message:${seq}`
-}
-
-function streamMessageID(turnSeq: number): string {
-  return `turn:${turnSeq}:stream`
 }
 
 function failureMessage(error: unknown, fallback: string): string {
@@ -201,6 +169,8 @@ export function useGatewayThread(
 
   const socketRef = useRef<WebSocket | null>(null)
   const reconnectTimerRef = useRef<number | null>(null)
+  // Turns whose streamed text is being built up (see applyTextDelta).
+  const rebuildingTurnsRef = useRef(new Set<number>())
   const throughTurnSeqRef = useRef(0)
   const hydratedSessionRef = useRef(new Set<string>())
   const awaitingTurnRef = useRef(false)
@@ -337,6 +307,7 @@ export function useGatewayThread(
               return upsert(withoutEchoedPending, { id, role, content: frame.content ?? '' })
             }
 
+            finishStreamedText(rebuildingTurnsRef.current, turnSeq)
             const streamID = streamMessageID(turnSeq)
             const streamed = withoutEchoedPending.find((message) => message.id === streamID)
             const existing = withoutEchoedPending.find((message) => message.id === id)
@@ -434,28 +405,7 @@ export function useGatewayThread(
             return
           }
           setAssistantState('responding')
-          setMessages((previous) => {
-            // On a cold replay the durable assistant message is emitted before
-            // its historical deltas. Reuse that first assistant message rather
-            // than creating a duplicate streaming bubble. During a live turn
-            // it does not exist yet, so the ephemeral stream bubble is used and
-            // later reconciled when the durable message arrives.
-            const durable = previous.find(
-              (message) =>
-                message.role === 'assistant' &&
-                String(message.id).startsWith(`turn:${turnSeq}:message:`),
-            )
-            const id = durable?.id ?? streamID
-            const existing = previous.find((message) => message.id === id)
-            const parts = partsOf(existing)
-            const nextContent = frame.replace ? (frame.text ?? '') : `${textFrom(parts)}${frame.text ?? ''}`
-            return upsert(previous, {
-              id,
-              role: 'assistant',
-              content: replacePart(parts, 'text', { type: 'text', text: nextContent }),
-              status: { type: 'running' },
-            })
-          })
+          setMessages((previous) => applyTextDelta(previous, turnSeq, frame, rebuildingTurnsRef.current))
           return
         }
         case 'task_progress': {
