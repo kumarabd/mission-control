@@ -263,7 +263,7 @@ final class MobileGateway {
 
     private func websocketEndpoint(token: String) -> URL {
         var components = URLComponents(url: gatewayURL, resolvingAgainstBaseURL: false)!
-        components.scheme = components.scheme == "https" ? "wss" : "ws"
+        if components.scheme == "https" { components.scheme = "wss" } else if components.scheme == "http" { components.scheme = "ws" }
         components.queryItems = [.init(name: "token", value: token)]
         return components.url!
     }
